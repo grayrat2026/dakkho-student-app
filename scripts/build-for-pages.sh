@@ -13,9 +13,22 @@ fi
 cp next.config.github-pages.ts next.config.ts
 echo "Replaced next.config.ts with GitHub Pages configuration"
 
+# API routes are not compatible with static export (output: 'export')
+# Temporarily move them aside during the build
+if [ -d "src/app/api" ]; then
+  mv src/app/api src/app/api.backup
+  echo "Moved API routes aside (not compatible with static export)"
+fi
+
 # Run the Next.js build (output: 'export' will produce ./out directory)
 npx next build
 echo "Build completed"
+
+# Restore API routes
+if [ -d "src/app/api.backup" ]; then
+  mv src/app/api.backup src/app/api
+  echo "Restored API routes"
+fi
 
 # Restore original config if backup exists
 if [ -f "next.config.ts.backup" ]; then
@@ -29,3 +42,4 @@ echo "Added .nojekyll file"
 
 echo "=== GitHub Pages build complete ==="
 echo "Static files are in ./out directory, ready for deployment"
+echo "Note: API routes are served by Supabase Edge Functions in production"
