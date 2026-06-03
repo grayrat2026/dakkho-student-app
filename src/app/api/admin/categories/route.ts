@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
     const result = await appwriteRest.listDocuments(APPWRITE_COLLECTIONS.CATEGORIES, [
       Query.limit(limit),
-      Query.orderAsc('order'),
+      Query.orderAsc('sort_order'),
     ]);
 
     return NextResponse.json({ documents: result.documents, total: result.total });
