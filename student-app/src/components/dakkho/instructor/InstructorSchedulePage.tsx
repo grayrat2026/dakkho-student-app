@@ -8,7 +8,7 @@ import {
   Zap, BookOpen, Globe, Monitor,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getInstructor } from '@/lib/mock-data';
+import { useInstructor } from '@/lib/data-hooks';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -50,10 +50,21 @@ const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export function InstructorSchedulePage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const instructorId = pageParams.instructorId as string;
-  const instructor = getInstructor(instructorId);
+  const { data: instructor, loading: instructorLoading } = useInstructor(instructorId);
 
   const [filterType, setFilterType] = useState<string>('all');
   const [reminders, setReminders] = useState<Set<string>>(new Set());
+
+  if (instructorLoading) {
+    return (
+      <AnimatedPage>
+        <div className="text-center py-16">
+          <div className="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-muted-foreground mt-3">Loading instructor...</p>
+        </div>
+      </AnimatedPage>
+    );
+  }
 
   if (!instructor) {
     return (

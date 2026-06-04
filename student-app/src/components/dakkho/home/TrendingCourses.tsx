@@ -1,40 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp } from 'lucide-react';
-import { COURSES } from '@/lib/mock-data';
-import { courseApi } from '@/lib/api-client';
-import { mapApiCourses } from '../shared/apiMappers';
+import { useCourses } from '@/lib/data-hooks';
 import type { Course } from '@/lib/mock-data';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
 import { CourseCardSkeleton } from '../shared/LoadingSkeleton';
 
 export function TrendingCourses() {
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: allCourses, loading } = useCourses({ limit: 20 });
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await courseApi.list({ limit: 20 });
-        if (!cancelled && result.courses?.length) {
-          const mapped = mapApiCourses(result.courses);
-          // Featured courses or most popular as trending
-          const trending = mapped.filter((c) => c.isFeatured).slice(0, 8);
-          setCourses(trending.length > 0 ? trending : mapped.slice(0, 8));
-        } else if (!cancelled) {
-          setCourses(COURSES.filter((c) => c.isFeatured).slice(0, 8));
-        }
-      } catch {
-        if (!cancelled) setCourses(COURSES.filter((c) => c.isFeatured).slice(0, 8));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  // Featured courses or most popular as trending
+  const featured = allCourses.filter((c) => c.isFeatured).slice(0, 8);
+  const courses: Course[] = featured.length > 0 ? featured : allCourses.slice(0, 8);
 
   if (loading) {
     return (

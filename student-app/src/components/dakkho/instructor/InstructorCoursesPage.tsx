@@ -7,7 +7,8 @@ import {
   GraduationCap, ArrowRight, Grid3X3, List,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getInstructor, getInstructorCourses, formatDuration, getLevelColor } from '@/lib/mock-data';
+import { useInstructor, useInstructorCourses } from '@/lib/data-hooks';
+import { formatDuration, getLevelColor } from '@/lib/mock-data';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -15,12 +16,23 @@ import { GradientButton } from '../shared/GradientButton';
 export function InstructorCoursesPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const instructorId = pageParams.instructorId as string;
-  const instructor = getInstructor(instructorId);
-  const courses = getInstructorCourses(instructorId);
+  const { data: instructor, loading: instructorLoading } = useInstructor(instructorId);
+  const { data: courses, loading: coursesLoading } = useInstructorCourses(instructorId);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  if (instructorLoading) {
+    return (
+      <AnimatedPage>
+        <div className="text-center py-16">
+          <div className="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-muted-foreground mt-3">Loading instructor...</p>
+        </div>
+      </AnimatedPage>
+    );
+  }
 
   if (!instructor) {
     return (
@@ -42,8 +54,8 @@ export function InstructorCoursesPage() {
     return true;
   });
 
-  const totalStudents = courses.reduce((sum, c) => sum + c.totalStudents, 0);
-  const avgRating = courses.length > 0 ? (courses.reduce((sum, c) => sum + c.rating, 0) / courses.length).toFixed(1) : '0';
+  const totalStudents = (courses ?? []).reduce((sum, c) => sum + c.totalStudents, 0);
+  const avgRating = (courses ?? []).length > 0 ? ((courses ?? []).reduce((sum, c) => sum + c.rating, 0) / (courses ?? []).length).toFixed(1) : '0';
 
   const coverColors = [
     'from-sky-400 to-blue-600',

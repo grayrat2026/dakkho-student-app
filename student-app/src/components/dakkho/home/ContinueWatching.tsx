@@ -4,9 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Play, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { useNavigationStore, useWatchProgressStore } from '@/lib/store';
-import { COURSES, VIDEOS, getInstructor, formatDuration, INSTRUCTORS } from '@/lib/mock-data';
-import { courseApi, instructorApi } from '@/lib/api-client';
-import { mapApiCourses, mapApiInstructors, mapApiVideos } from '../shared/apiMappers';
+import { useCourses, useInstructors } from '@/lib/data-hooks';
+import { courseApi } from '@/lib/api-client';
+import { mapApiVideos } from '../shared/apiMappers';
+import { formatDuration } from '@/lib/mock-data';
 import type { Course, Video, Instructor } from '@/lib/mock-data';
 import { ProgressBar } from '../shared/ProgressBar';
 import { GlassCard } from '../shared/GlassCard';
@@ -17,42 +18,10 @@ export function ContinueWatching() {
   const progressStore = useWatchProgressStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const [courses, setCourses] = useState<Course[]>(COURSES);
-  const [videos, setVideos] = useState<Video[]>(VIDEOS);
-  const [instructors, setInstructors] = useState<Instructor[]>(INSTRUCTORS);
-  const [loading, setLoading] = useState(true);
-
-  // Fetch courses from API
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await courseApi.list({ limit: 30 });
-        if (!cancelled && result.courses?.length) {
-          setCourses(mapApiCourses(result.courses));
-        }
-      } catch {
-        // Keep mock fallback
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Fetch instructors from API
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await instructorApi.list({ limit: 20 });
-        if (!cancelled && result.instructors?.length) {
-          setInstructors(mapApiInstructors(result.instructors));
-        }
-      } catch {
-        // Keep mock fallback
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const { data: courses, loading: coursesLoading } = useCourses({ limit: 30 });
+  const { data: instructors, loading: instructorsLoading } = useInstructors({ limit: 20 });
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [videosLoading, setVideosLoading] = useState(true);
 
   // Fetch videos for courses that have watch progress
   useEffect(() => {
@@ -62,10 +31,7 @@ export function ContinueWatching() {
         // Get course IDs from progress store that have progress
         const courseIdsWithProgress = Object.values(progressStore.progress)
           .filter((p) => p.progress > 0 && !p.completed)
-          .map((p) => {
-            const video = VIDEOS.find((v) => v.id === p.videoId);
-            return video?.courseId;
-          })
+          .map((p) => p.courseId)
           .filter(Boolean);
 
         // Fetch videos for each course with progress
@@ -86,9 +52,9 @@ export function ContinueWatching() {
           }
         }
       } catch {
-        // Keep mock fallback
+        // No videos available
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setVideosLoading(false);
       }
     })();
     return () => { cancelled = true; };
@@ -97,6 +63,8 @@ export function ContinueWatching() {
   // Helper to find instructor by id
   const findInstructor = (id: string) => instructors.find((i) => i.id === id);
 
+  const loading = coursesLoading || instructorsLoading || videosLoading;
+
   // Get videos with watch progress
   const continueWatching = Object.values(progressStore.progress)
     .filter((p) => p.progress > 0 && !p.completed)
@@ -104,7 +72,7 @@ export function ContinueWatching() {
     .slice(0, 10)
     .map((p) => {
       const video = videos.find((v) => v.id === p.videoId);
-      const course = video ? courses.find((c) => c.id === video.courseId) : undefined;
+      const course = video ? courses.find((c) => c.id === video.courseId) : courses.find((c) => c.id === p.courseId);
       const instructor = course ? findInstructor(course.instructorId) : undefined;
       return { ...p, video, course, instructor };
     })

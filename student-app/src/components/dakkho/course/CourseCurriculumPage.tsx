@@ -7,7 +7,8 @@ import {
   BookOpen, Video, FileText, Download, Eye, Circle,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getCourse, getCourseVideos, formatDuration } from '@/lib/mock-data';
+import { useCourse, useCourseVideos } from '@/lib/data-hooks';
+import { formatDuration } from '@/lib/mock-data';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -16,8 +17,8 @@ import { ProgressBar } from '../shared/ProgressBar';
 export function CourseCurriculumPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const courseId = pageParams.courseId as string;
-  const course = getCourse(courseId);
-  const videos = getCourseVideos(courseId);
+  const { data: course, loading: courseLoading, error: courseError } = useCourse(courseId);
+  const { data: videos = [] } = useCourseVideos(courseId);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ 'section-1': true });
 
   // Group videos into sections (every 8 videos = 1 section)
@@ -41,7 +42,20 @@ export function CourseCurriculumPage() {
   const currentVideoId = videos[Math.floor(videos.length * 0.3)]?.id;
   const overallProgress = videos.length > 0 ? Math.round((completedVideoIds.size / videos.length) * 100) : 0;
 
-  if (!course) {
+  if (courseLoading) {
+    return (
+      <AnimatedPage>
+        <div className="text-center py-16">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 bg-muted/30 rounded-lg w-1/2 mx-auto"></div>
+            <div className="h-4 bg-muted/30 rounded w-3/4 mx-auto"></div>
+          </div>
+        </div>
+      </AnimatedPage>
+    );
+  }
+
+  if (courseError || !course) {
     return (
       <AnimatedPage>
         <div className="text-center py-16">

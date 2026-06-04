@@ -9,7 +9,8 @@ import {
   CheckCircle, Play, ArrowRight, Search, Filter, BarChart3,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { COURSES, getInstructor, formatDuration } from '@/lib/mock-data';
+import { useCourses, useInstructors } from '@/lib/data-hooks';
+import { formatDuration } from '@/lib/mock-data';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -77,13 +78,15 @@ export function DepartmentPageTemplate({ departmentKey }: { departmentKey: strin
   const { navigate, goBack } = useNavigationStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
+  const { data: courses, loading: coursesLoading } = useCourses();
+  const { data: instructors } = useInstructors();
 
   const department = DEPARTMENTS[departmentKey];
   const featuredInstructor = FEATURED_INSTRUCTORS[departmentKey] || FEATURED_INSTRUCTORS['default'];
 
   const departmentCourses = useMemo(() => {
     if (!department) return [];
-    let filtered = COURSES.filter((c) => c.categoryId === department.categoryId);
+    let filtered = courses.filter((c) => c.categoryId === department.categoryId);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
@@ -94,7 +97,7 @@ export function DepartmentPageTemplate({ departmentKey }: { departmentKey: strin
       filtered = filtered.filter((c) => c.level === selectedLevel);
     }
     return filtered;
-  }, [department, searchQuery, selectedLevel]);
+  }, [department, searchQuery, selectedLevel, courses]);
 
   const totalStudents = departmentCourses.reduce((sum, c) => sum + c.totalStudents, 0);
   const totalHours = departmentCourses.reduce((sum, c) => sum + c.duration, 0);
@@ -251,7 +254,7 @@ export function DepartmentPageTemplate({ departmentKey }: { departmentKey: strin
             {departmentCourses.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                 {departmentCourses.map((course, i) => {
-                  const instructor = getInstructor(course.instructorId);
+                  const instructor = instructors.find((i) => i.id === course.instructorId);
                   const levelColors: Record<string, string> = {
                     beginner: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400',
                     intermediate: 'bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400',

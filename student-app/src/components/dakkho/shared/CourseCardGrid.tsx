@@ -2,25 +2,35 @@
 
 import { motion } from 'framer-motion';
 import { Star, Users, Clock, Play, BookOpen } from 'lucide-react';
-import { getInstructor, getCategory, formatDuration, getLevelColor } from '@/lib/mock-data';
+import { useInstructors, useCategories } from '@/lib/data-hooks';
+import { formatDuration, getLevelColor } from '@/lib/mock-data';
 import { useNavigationStore, useBookmarkStore } from '@/lib/store';
 import { GlassCard } from './GlassCard';
 import { ProgressBar } from './ProgressBar';
 import { Heart } from 'lucide-react';
-import type { Course } from '@/lib/mock-data';
+import type { Course, Instructor, Category } from '@/lib/mock-data';
 
 interface CourseCardProps {
   course: Course;
   showProgress?: boolean;
   progress?: number;
   index?: number;
+  instructors?: Instructor[];
+  categories?: Category[];
 }
 
-export function CourseCard({ course, showProgress = false, progress = 0, index = 0 }: CourseCardProps) {
+export function CourseCard({ course, showProgress = false, progress = 0, index = 0, instructors: instructorsProp, categories: categoriesProp }: CourseCardProps) {
   const navigate = useNavigationStore((s) => s.navigate);
   const { isBookmarked, toggleBookmark } = useBookmarkStore();
-  const instructor = getInstructor(course.instructorId);
-  const category = getCategory(course.categoryId);
+
+  // Use provided props or fallback to hooks
+  const { data: hookInstructors } = useInstructors();
+  const { data: hookCategories } = useCategories();
+  const instructors = instructorsProp ?? hookInstructors;
+  const categories = categoriesProp ?? hookCategories;
+
+  const instructor = instructors.find((i) => i.id === course.instructorId);
+  const category = categories.find((c) => c.id === course.categoryId);
   const bookmarked = isBookmarked(course.id);
 
   const thumbnailColors = [
@@ -128,9 +138,11 @@ interface CourseCardGridProps {
   courses: Course[];
   showProgress?: boolean;
   getProgress?: (courseId: string) => number;
+  instructors?: Instructor[];
+  categories?: Category[];
 }
 
-export function CourseCardGrid({ courses, showProgress = false, getProgress }: CourseCardGridProps) {
+export function CourseCardGrid({ courses, showProgress = false, getProgress, instructors, categories }: CourseCardGridProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {courses.map((course, i) => (
@@ -140,6 +152,8 @@ export function CourseCardGrid({ courses, showProgress = false, getProgress }: C
           showProgress={showProgress}
           progress={getProgress ? getProgress(course.id) : 0}
           index={i}
+          instructors={instructors}
+          categories={categories}
         />
       ))}
     </div>

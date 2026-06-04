@@ -1,11 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, SlidersHorizontal, Star, Users, BookOpen, ArrowRight, Filter } from 'lucide-react';
-import { INSTRUCTORS } from '@/lib/mock-data';
-import { instructorApi } from '@/lib/api-client';
-import { mapApiInstructors } from '../shared/apiMappers';
+import { Search, SlidersHorizontal, Star, Users, BookOpen, ArrowRight } from 'lucide-react';
+import { useInstructors } from '@/lib/data-hooks';
 import type { Instructor } from '@/lib/mock-data';
 import { useNavigationStore } from '@/lib/store';
 import { GlassCard } from '../shared/GlassCard';
@@ -31,25 +29,7 @@ export function InstructorsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  const [instructors, setInstructors] = useState<Instructor[]>(INSTRUCTORS);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await instructorApi.list();
-        if (!cancelled && result.instructors?.length) {
-          setInstructors(mapApiInstructors(result.instructors));
-        }
-      } catch {
-        // Keep mock fallback
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const { data: instructors, loading } = useInstructors();
 
   const SPECIALIZATIONS = Array.from(new Set(instructors.map((i) => i.specialization)));
 

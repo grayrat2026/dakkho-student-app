@@ -3,7 +3,8 @@
 import { motion } from 'framer-motion';
 import { Star, Users, BookOpen, Globe, Youtube, Linkedin, ChevronLeft } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getInstructor, getInstructorCourses, formatDuration } from '@/lib/mock-data';
+import { useInstructor, useInstructorCourses } from '@/lib/data-hooks';
+import { formatDuration } from '@/lib/mock-data';
 import { GlassCard } from '../shared/GlassCard';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
 import { AnimatedCounter } from '../shared/AnimatedCounter';
@@ -12,8 +13,17 @@ import { GradientButton } from '../shared/GradientButton';
 export function InstructorProfilePage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const instructorId = pageParams.instructorId as string;
-  const instructor = getInstructor(instructorId);
-  const courses = instructor ? getInstructorCourses(instructor.id) : [];
+  const { data: instructor, loading: instructorLoading } = useInstructor(instructorId);
+  const { data: courses } = useInstructorCourses(instructorId);
+
+  if (instructorLoading) {
+    return (
+      <div className="text-center py-16">
+        <div className="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-sm text-muted-foreground mt-3">Loading instructor...</p>
+      </div>
+    );
+  }
 
   if (!instructor) {
     return (

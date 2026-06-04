@@ -8,7 +8,7 @@ import {
   FolderOpen, Eye, CheckCircle,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getCourse, getInstructor, formatDuration } from '@/lib/mock-data';
+import { useCourse } from '@/lib/data-hooks';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -48,13 +48,26 @@ const TYPE_ICONS = {
 export function CourseResourcesPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const courseId = pageParams.courseId as string;
-  const course = getCourse(courseId);
+  const { data: course, loading: courseLoading, error: courseError } = useCourse(courseId);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [downloadedIds, setDownloadedIds] = useState<Set<string>>(new Set());
 
-  if (!course) {
+  if (courseLoading) {
+    return (
+      <AnimatedPage>
+        <div className="text-center py-16">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 bg-muted/30 rounded-lg w-1/2 mx-auto"></div>
+            <div className="h-4 bg-muted/30 rounded w-3/4 mx-auto"></div>
+          </div>
+        </div>
+      </AnimatedPage>
+    );
+  }
+
+  if (courseError || !course) {
     return (
       <AnimatedPage>
         <div className="text-center py-16">

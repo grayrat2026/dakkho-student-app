@@ -8,7 +8,8 @@ import {
   Play, Award, Users, Zap, BookMarked, ArrowRight,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { COURSES, getInstructor, formatDuration } from '@/lib/mock-data';
+import { useCourses, useInstructors } from '@/lib/data-hooks';
+import { formatDuration } from '@/lib/mock-data';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -125,6 +126,8 @@ const SUBJECT_CATEGORY_MAP: Record<string, string[]> = {
 
 export function SemesterPageTemplate({ semester }: { semester: number }) {
   const { navigate, goBack } = useNavigationStore();
+  const { data: courses } = useCourses();
+  const { data: instructors } = useInstructors();
   const data = SEMESTER_DATA[semester];
   const tips = SEMESTER_TIPS[semester];
 
@@ -136,9 +139,9 @@ export function SemesterPageTemplate({ semester }: { semester: number }) {
       const cats = SUBJECT_CATEGORY_MAP[subject.name];
       if (cats) cats.forEach((c) => matchedCategoryIds.add(c));
     });
-    if (matchedCategoryIds.size === 0) return COURSES.slice(0, 4);
-    return COURSES.filter((c) => matchedCategoryIds.has(c.categoryId)).slice(0, 6);
-  }, [data]);
+    if (matchedCategoryIds.size === 0) return courses.slice(0, 4);
+    return courses.filter((c) => matchedCategoryIds.has(c.categoryId)).slice(0, 6);
+  }, [data, courses]);
 
   const totalCredits = data ? data.subjects.reduce((sum, s) => sum + s.credits, 0) : 0;
   const totalSubjects = data ? data.subjects.length : 0;
@@ -329,7 +332,7 @@ export function SemesterPageTemplate({ semester }: { semester: number }) {
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
                   {relatedCourses.map((course, i) => {
-                    const instructor = getInstructor(course.instructorId);
+                    const instructor = instructors.find((i) => i.id === course.instructorId);
                     return (
                       <motion.div
                         key={course.id}

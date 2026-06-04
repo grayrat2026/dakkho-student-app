@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Play, Radio, Trophy, Flame, Clock, Star, Users } from 'lucide-react';
 import { HeroSection } from './HeroSection';
@@ -9,9 +9,8 @@ import { ContinueWatching } from './ContinueWatching';
 import { TrendingCourses } from './TrendingCourses';
 import { CategoryPills } from './CategoryPills';
 import { FeaturedInstructors } from './FeaturedInstructors';
-import { COURSES, getInstructor, formatDuration, INSTRUCTORS } from '@/lib/mock-data';
-import { courseApi, instructorApi, liveClassApi } from '@/lib/api-client';
-import { mapApiCourses, mapApiInstructors, mapLiveClassesToSessions } from '../shared/apiMappers';
+import { useCourses, useInstructors, useLiveClasses } from '@/lib/data-hooks';
+import { formatDuration } from '@/lib/mock-data';
 import type { Course, Instructor } from '@/lib/mock-data';
 import type { LiveSession } from '../shared/apiMappers';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
@@ -25,40 +24,12 @@ import { useNavigationStore, useServerConfigStore, useAuthStore } from '@/lib/st
 function NewReleases() {
   const navigate = useNavigationStore((s) => s.navigate);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [newReleases, setNewReleases] = useState<Course[]>([]);
-  const [instructors, setInstructors] = useState<Instructor[]>(INSTRUCTORS);
-  const [loading, setLoading] = useState(true);
+  const { data: allCourses, loading: coursesLoading } = useCourses({ limit: 20 });
+  const { data: instructors, loading: instructorsLoading } = useInstructors({ limit: 20 });
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [courseResult, instructorResult] = await Promise.all([
-          courseApi.list({ limit: 20 }),
-          instructorApi.list({ limit: 20 }),
-        ]);
-        if (!cancelled) {
-          if (courseResult.courses?.length) {
-            const mapped = mapApiCourses(courseResult.courses);
-            setNewReleases(mapped.filter((c) => c.isFeatured).slice(0, 8));
-          } else {
-            setNewReleases(COURSES.filter((c) => c.isFeatured).slice(0, 8));
-          }
-          if (instructorResult.instructors?.length) {
-            setInstructors(mapApiInstructors(instructorResult.instructors));
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setNewReleases(COURSES.filter((c) => c.isFeatured).slice(0, 8));
-          setInstructors(INSTRUCTORS);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const loading = coursesLoading || instructorsLoading;
+
+  const newReleases = allCourses.filter((c) => c.isFeatured).slice(0, 8);
 
   const findInstructor = (id: string) => instructors.find((i) => i.id === id);
 
@@ -175,15 +146,6 @@ function NewReleases() {
 
 // ============ LIVE NOW ============
 
-// Fallback live sessions when API is unavailable
-const FALLBACK_LIVE_SESSIONS: LiveSession[] = [
-  { id: 'live1', title: 'Power Systems Q&A', instructor: 'Dr. Shahid Hossain', viewers: 142, startedAt: '30 min ago', subject: 'EEE' },
-  { id: 'live2', title: 'React Hooks Deep Dive', instructor: 'Taslima Khatun', viewers: 89, startedAt: '15 min ago', subject: 'CSE' },
-  { id: 'live3', title: 'Arduino Project Build', instructor: 'Fatema Begum', viewers: 64, startedAt: '5 min ago', subject: 'ETE' },
-  { id: 'live4', title: 'Thermodynamics Live', instructor: 'Prof. Kamal', viewers: 53, startedAt: '10 min ago', subject: 'ME' },
-  { id: 'live5', title: 'Structural Analysis', instructor: 'Engr. Rahim', viewers: 41, startedAt: '20 min ago', subject: 'CE' },
-];
-
 const LIVE_THUMBNAIL_COLORS = [
   'from-red-500 to-rose-600',
   'from-sky-500 to-blue-600',
@@ -195,31 +157,14 @@ const LIVE_THUMBNAIL_COLORS = [
 function LiveNow() {
   const navigate = useNavigationStore((s) => s.navigate);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [liveSessions, setLiveSessions] = useState<LiveSession[]>(FALLBACK_LIVE_SESSIONS);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await liveClassApi.list();
-        if (!cancelled && result.liveClasses?.length) {
-          const sessions = mapLiveClassesToSessions(result.liveClasses);
-          if (sessions.length > 0) {
-            setLiveSessions(sessions);
-          }
-          // If no live/scheduled classes, keep fallback
-        }
-      } catch {
-        // Keep fallback
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const { data: liveSessions, loading } = useLiveClasses();
 
   const scroll = (dir: 'left' | 'right') => {
     if (!scrollRef.current) return;
     scrollRef.current.scrollBy({ left: dir === 'left' ? -200 : 200, behavior: 'smooth' });
   };
+
+  if (loading || liveSessions.length === 0) return null;
 
   return (
     <div className="mb-8">
@@ -451,26 +396,10 @@ function useHasEnrolledCourses(): boolean {
 }
 
 export function HomePage() {
-  const [recommended, setRecommended] = useState<Course[]>([]);
   const isHomeSectionVisible = useServerConfigStore((s) => s.isHomeSectionVisible);
   const hasEnrolled = useHasEnrolledCourses();
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await courseApi.list({ limit: 10 });
-        if (!cancelled && result.courses?.length) {
-          setRecommended(mapApiCourses(result.courses).slice(0, 8));
-        } else if (!cancelled) {
-          setRecommended(COURSES.slice(0, 8));
-        }
-      } catch {
-        if (!cancelled) setRecommended(COURSES.slice(0, 8));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const { data: allCourses, loading } = useCourses({ limit: 10 });
+  const recommended = allCourses.slice(0, 8);
 
   return (
     <div>
@@ -487,13 +416,17 @@ export function HomePage() {
       {isHomeSectionVisible('recommended') && (
         <div className="mb-8">
           <h2 className="text-lg font-extrabold text-foreground mb-4">Recommended For You</h2>
-          {recommended.length > 0 ? (
+          {!loading && recommended.length > 0 ? (
             <CourseCardGrid courses={recommended} />
-          ) : (
+          ) : loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {Array.from({ length: 4 }).map((_, i) => (
                 <LoadingSkeleton key={i} type="card" />
               ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground text-sm">No recommendations available yet</p>
             </div>
           )}
         </div>

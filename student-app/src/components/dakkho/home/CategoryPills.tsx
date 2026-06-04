@@ -1,15 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Globe, Smartphone, Cpu, Zap, Wrench, Building2, Ruler,
   Code, BarChart3, Wifi, Palette, Scissors, ArrowRight,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { CATEGORIES } from '@/lib/mock-data';
-import { technologyApi } from '@/lib/api-client';
-import { mapTechnologiesToCategories } from '../shared/apiMappers';
+import { useCategories } from '@/lib/data-hooks';
 import type { Category } from '@/lib/mock-data';
 import { LoadingSkeleton } from '../shared/LoadingSkeleton';
 
@@ -21,27 +19,7 @@ const lucideIconMap: Record<string, React.ElementType> = {
 export function CategoryPills() {
   const navigate = useNavigationStore((s) => s.navigate);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await technologyApi.list();
-        if (!cancelled && result.technologies?.length) {
-          setCategories(mapTechnologiesToCategories(result.technologies));
-        } else if (!cancelled) {
-          setCategories(CATEGORIES);
-        }
-      } catch {
-        if (!cancelled) setCategories(CATEGORIES);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const { data: categories, loading } = useCategories();
 
   if (loading) {
     return (

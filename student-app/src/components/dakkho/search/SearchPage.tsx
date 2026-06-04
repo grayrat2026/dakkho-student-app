@@ -1,34 +1,46 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { Search, X, TrendingUp, Clock, BookOpen, GraduationCap, Video } from 'lucide-react';
 import { useSearchStore, useNavigationStore } from '@/lib/store';
-import { searchCourses, searchInstructors, searchVideos, TRENDING_SEARCHES, formatDuration } from '@/lib/mock-data';
+import { useCourseSearch, useInstructorSearch, useVideoSearch } from '@/lib/data-hooks';
+import { formatDuration } from '@/lib/mock-data';
 import { GlassCard } from '../shared/GlassCard';
+
+const TRENDING_SEARCHES = [
+  'Web Development',
+  'Python',
+  'JavaScript',
+  'C Programming',
+  'Android Development',
+  'Database',
+  'Networking',
+  'Machine Learning',
+];
 
 export function SearchPage() {
   const { query, setQuery, recentSearches, addRecentSearch, clearRecentSearches } = useSearchStore();
   const navigate = useNavigationStore((s) => s.navigate);
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [isFocused, setIsFocused] = useState(false);
 
   // Debounce
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query), 300);
     return () => clearTimeout(timer);
   }, [query]);
 
-  const courses = searchCourses(debouncedQuery);
-  const instructors = searchInstructors(debouncedQuery);
-  const videos = searchVideos(debouncedQuery);
+  const { data: courses, loading: coursesLoading } = useCourseSearch(debouncedQuery);
+  const { data: instructors, loading: instructorsLoading } = useInstructorSearch(debouncedQuery);
+  const { data: videos, loading: videosLoading } = useVideoSearch(debouncedQuery);
+  const isSearching = coursesLoading || instructorsLoading || videosLoading;
 
   const handleSearch = (q: string) => {
     setQuery(q);
     if (q.trim()) addRecentSearch(q.trim());
   };
 
-  const hasResults = debouncedQuery && (courses.length > 0 || instructors.length > 0 || videos.length > 0);
+  const hasResults = debouncedQuery && !isSearching && (courses.length > 0 || instructors.length > 0 || videos.length > 0);
 
   return (
     <div>
@@ -43,7 +55,6 @@ export function SearchPage() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onFocus={() => setIsFocused(true)}
           placeholder="Search courses, instructors, videos..."
           className="w-full pl-12 pr-12 py-4 rounded-2xl bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl border border-white/50 dark:border-white/10 shadow-lg shadow-sky-500/5 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 transition-all text-base"
           autoFocus
@@ -116,6 +127,14 @@ export function SearchPage() {
       {/* Search results */}
       {debouncedQuery && (
         <div className="space-y-6">
+          {/* Loading state */}
+          {isSearching && (
+            <div className="text-center py-8">
+              <div className="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-sm text-muted-foreground mt-3">Searching...</p>
+            </div>
+          )}
+
           {/* Courses */}
           {courses.length > 0 && (
             <div>
@@ -219,7 +238,7 @@ export function SearchPage() {
           )}
 
           {/* No results */}
-          {!hasResults && debouncedQuery && (
+          {!isSearching && !hasResults && debouncedQuery && (
             <motion.div
               className="text-center py-16"
               initial={{ opacity: 0 }}

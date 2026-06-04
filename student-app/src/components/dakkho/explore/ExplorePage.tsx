@@ -1,11 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Filter, SlidersHorizontal } from 'lucide-react';
-import { CATEGORIES, COURSES, getCategory } from '@/lib/mock-data';
-import { courseApi, technologyApi } from '@/lib/api-client';
-import { mapApiCourses, mapTechnologiesToCategories } from '../shared/apiMappers';
+import { useCategories, useCourses } from '@/lib/data-hooks';
 import type { Course, Category } from '@/lib/mock-data';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
 import { CourseCardSkeleton } from '../shared/LoadingSkeleton';
@@ -16,47 +14,13 @@ export function ExplorePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
-  const [categories, setCategories] = useState<Category[]>(CATEGORIES);
-  const [courses, setCourses] = useState<Course[]>(COURSES);
-  const [loading, setLoading] = useState(true);
-
-  // Fetch categories (technologies) from API
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await technologyApi.list();
-        if (!cancelled && result.technologies?.length) {
-          setCategories(mapTechnologiesToCategories(result.technologies));
-        }
-      } catch {
-        // Keep mock fallback
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Fetch courses from API
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await courseApi.list({ limit: 50 });
-        if (!cancelled && result.courses?.length) {
-          setCourses(mapApiCourses(result.courses));
-        }
-      } catch {
-        // Keep mock fallback
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const { data: categories, loading: categoriesLoading } = useCategories();
+  const { data: allCourses, loading: coursesLoading } = useCourses({ limit: 50 });
+  const loading = categoriesLoading || coursesLoading;
 
   const levels = ['beginner', 'intermediate', 'advanced', 'expert'];
 
-  const filteredCourses = courses.filter((c) => {
+  const filteredCourses = allCourses.filter((c) => {
     const matchesCategory = !selectedCategory || c.categoryId === selectedCategory;
     const matchesLevel = !selectedLevel || c.level === selectedLevel;
     const matchesSearch = !searchQuery ||

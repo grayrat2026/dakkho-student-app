@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { GlassCard } from '../shared/GlassCard';
 import { GradientButton } from '../shared/GradientButton';
 import { ProgressBar } from '../shared/ProgressBar';
-import { COURSES, formatDuration } from '@/lib/mock-data';
+// Downloads are managed locally, no API data imports needed
 
 interface DownloadItem {
   id: string;

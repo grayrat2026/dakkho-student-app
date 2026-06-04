@@ -1,12 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Star, Users, BookOpen, ArrowRight } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { INSTRUCTORS } from '@/lib/mock-data';
-import { instructorApi } from '@/lib/api-client';
-import { mapApiInstructors } from '../shared/apiMappers';
+import { useInstructors } from '@/lib/data-hooks';
 import type { Instructor } from '@/lib/mock-data';
 import { LoadingSkeleton } from '../shared/LoadingSkeleton';
 import { GlassCard } from '../shared/GlassCard';
@@ -23,27 +21,8 @@ const AVATAR_GRADIENTS = [
 export function FeaturedInstructors() {
   const navigate = useNavigationStore((s) => s.navigate);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [instructors, setInstructors] = useState<Instructor[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await instructorApi.list({ limit: 6 });
-        if (!cancelled && result.instructors?.length) {
-          setInstructors(mapApiInstructors(result.instructors).slice(0, 6));
-        } else if (!cancelled) {
-          setInstructors(INSTRUCTORS.slice(0, 6));
-        }
-      } catch {
-        if (!cancelled) setInstructors(INSTRUCTORS.slice(0, 6));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const { data: allInstructors, loading } = useInstructors({ limit: 6 });
+  const instructors = allInstructors.slice(0, 6);
 
   const scroll = (dir: 'left' | 'right') => {
     if (!scrollRef.current) return;

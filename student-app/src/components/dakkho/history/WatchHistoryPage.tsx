@@ -1,45 +1,71 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Clock, Trash2, Play, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { Clock, Trash2, Play, ChevronRight, Loader2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
 import { GlassCard } from '../shared/GlassCard';
 import { GradientButton } from '../shared/GradientButton';
 import { ProgressBar } from '../shared/ProgressBar';
-import { COURSES, VIDEOS, formatDuration, formatTimeAgo } from '@/lib/mock-data';
-import { useNavigationStore } from '@/lib/store';
-
-interface HistoryItem {
-  id: string;
-  videoId: string;
-  videoTitle: string;
-  courseId: string;
-  courseName: string;
-  watchedAt: string;
-  progress: number;
-  duration: number;
-}
-
-const MOCK_HISTORY: HistoryItem[] = [
-  { id: 'h1', videoId: 'v-c1-1', videoTitle: 'Introduction & Overview — Complete Web Development', courseId: 'c1', courseName: 'Complete Web Development with HTML, CSS & JavaScript', watchedAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(), progress: 85, duration: 1200 },
-  { id: 'h2', videoId: 'v-c2-3', videoTitle: 'Basic Concepts — React.js & Next.js', courseId: 'c2', courseName: 'React.js & Next.js - Modern Frontend Development', watchedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), progress: 45, duration: 900 },
-  { id: 'h3', videoId: 'v-c3-5', videoTitle: 'Core Principles — Digital Electronics', courseId: 'c3', courseName: 'Digital Electronics Fundamentals', watchedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), progress: 100, duration: 1500 },
-  { id: 'h4', videoId: 'v-c13-2', videoTitle: 'Getting Started — Python Programming', courseId: 'c13', courseName: 'Python Programming for Beginners', watchedAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), progress: 30, duration: 800 },
-  { id: 'h5', videoId: 'v-c5-8', videoTitle: 'Hands-on Practice — Electrical Circuit', courseId: 'c5', courseName: 'Electrical Circuit Analysis', watchedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), progress: 60, duration: 1100 },
-  { id: 'h6', videoId: 'v-c19-4', videoTitle: 'Understanding the Fundamentals — Flutter Mobile', courseId: 'c19', courseName: 'Flutter Mobile App Development', watchedAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(), progress: 15, duration: 1400 },
-  { id: 'h7', videoId: 'v-c15-10', videoTitle: 'Real-world Applications — Machine Learning', courseId: 'c15', courseName: 'Machine Learning with Python', watchedAt: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(), progress: 70, duration: 1000 },
-  { id: 'h8', videoId: 'v-c4-6', videoTitle: 'Deep Dive into Theory — Arduino Programming', courseId: 'c4', courseName: 'Microcontroller Programming with Arduino', watchedAt: new Date(Date.now() - 1000 * 60 * 60 * 96).toISOString(), progress: 50, duration: 950 },
-];
+import { formatTimeAgo } from '@/lib/mock-data';
+import { useCourses } from '@/lib/data-hooks';
+import { useNavigationStore, useWatchProgressStore } from '@/lib/store';
 
 export function WatchHistoryPage() {
-  const [history, setHistory] = useState<HistoryItem[]>(MOCK_HISTORY);
   const [showConfirm, setShowConfirm] = useState(false);
   const navigate = useNavigationStore((s) => s.navigate);
+  const progress = useWatchProgressStore((s) => s.progress);
+  const { data: courses, loading, error } = useCourses();
+
+  // Build history items from watch progress store
+  const historyItems = useMemo(() => {
+    const entries = Object.values(progress)
+      .sort((a, b) => (b.lastWatched || 0) - (a.lastWatched || 0));
+
+    return entries.map((entry) => {
+      const course = courses.find((c) => c.id === entry.courseId);
+      return {
+        id: entry.videoId,
+        videoId: entry.videoId,
+        courseId: entry.courseId,
+        courseName: course?.title || 'Unknown Course',
+        watchedAt: entry.lastWatched ? new Date(entry.lastWatched).toISOString() : '',
+        progress: entry.progress || 0,
+        completed: entry.completed || false,
+      };
+    });
+  }, [progress, courses]);
+
+  const [history, setHistory] = useState<typeof historyItems>([]);
+
+  // Sync history from progress store once courses are loaded
+  useEffect(() => {
+    if (!loading && courses.length >= 0) {
+      setHistory(historyItems);
+    }
+  }, [loading, historyItems]);
 
   const handleClearHistory = () => {
     setHistory([]);
     setShowConfirm(false);
   };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <Loader2 className="w-10 h-10 text-sky-500 animate-spin" />
+        <p className="text-sm text-muted-foreground font-semibold">Loading watch history...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 md:p-6 max-w-4xl mx-auto text-center py-16">
+        <p className="text-lg font-bold text-red-500">Failed to load history</p>
+        <p className="text-sm text-muted-foreground mt-2">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
@@ -126,19 +152,17 @@ export function WatchHistoryPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-sm text-foreground truncate">{item.videoTitle}</h3>
+                        <h3 className="font-semibold text-sm text-foreground truncate">{item.videoId}</h3>
                         <p className="text-xs text-muted-foreground mt-0.5 truncate">{item.courseName}</p>
                       </div>
                       <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
                     </div>
 
                     <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {formatDuration(item.duration)}
-                      </span>
-                      <span>{formatTimeAgo(item.watchedAt)}</span>
-                      {item.progress === 100 && (
+                      {item.watchedAt && (
+                        <span>{formatTimeAgo(item.watchedAt)}</span>
+                      )}
+                      {item.completed && (
                         <span className="text-emerald-500 font-semibold">Completed</span>
                       )}
                     </div>

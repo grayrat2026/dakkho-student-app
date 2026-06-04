@@ -5,10 +5,11 @@ import { motion } from 'framer-motion';
 import {
   BarChart3, TrendingUp, Clock, BookOpen, Award, Target,
   Calendar, Flame, Zap, CheckCircle, Circle, Play,
-  ChevronLeft, PieChart, Activity,
+  ChevronLeft, PieChart, Activity, Loader2,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getCourse, getCourseVideos, formatDuration } from '@/lib/mock-data';
+import { useCourse, useCourseVideos } from '@/lib/data-hooks';
+import { formatDuration } from '@/lib/mock-data';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -45,12 +46,23 @@ const DAILY_STREAK = [
 export function CourseProgressPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const courseId = pageParams.courseId as string;
-  const course = getCourse(courseId);
-  const videos = getCourseVideos(courseId);
+  const { data: course, loading: courseLoading, error: courseError } = useCourse(courseId);
+  const { data: videos, loading: videosLoading } = useCourseVideos(courseId);
 
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week');
 
-  if (!course) {
+  if (courseLoading || videosLoading) {
+    return (
+      <AnimatedPage>
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <Loader2 className="w-10 h-10 text-sky-500 animate-spin" />
+          <p className="text-sm text-muted-foreground font-semibold">Loading progress...</p>
+        </div>
+      </AnimatedPage>
+    );
+  }
+
+  if (courseError || !course) {
     return (
       <AnimatedPage>
         <div className="text-center py-16">

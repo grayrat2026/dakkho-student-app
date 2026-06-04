@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Star, Users, Clock, BookOpen, Play, ChevronLeft, Heart, Share2, Award, CheckCircle, ChevronDown, User } from 'lucide-react';
 import { useNavigationStore, useBookmarkStore } from '@/lib/store';
-import { getCourse, getInstructor, getCategory, getCourseVideos, formatDuration, getLevelColor, COURSES } from '@/lib/mock-data';
+import { useCourse, useInstructor, useCategories, useCourseVideos, useCourses } from '@/lib/data-hooks';
+import { formatDuration, getLevelColor } from '@/lib/mock-data';
 import { GlassCard } from '../shared/GlassCard';
 import { GradientButton } from '../shared/GradientButton';
 import { ProgressBar } from '../shared/ProgressBar';
@@ -17,15 +18,19 @@ export function CourseDetailPage() {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ 'section-1': true });
 
   const courseId = pageParams.courseId as string;
-  const course = getCourse(courseId);
-  const instructor = course ? getInstructor(course.instructorId) : undefined;
-  const category = course ? getCategory(course.categoryId) : undefined;
-  const videos = course ? getCourseVideos(course.id) : [];
+  const { data: course, loading: courseLoading, error: courseError } = useCourse(courseId);
+  const { data: instructor } = useInstructor(course?.instructorId || null);
+  const { data: categories } = useCategories();
+  const { data: videos = [] } = useCourseVideos(courseId);
+  const { data: allCourses = [] } = useCourses();
   const bookmarked = course ? isBookmarked(course.id) : false;
+
+  // Category from categories list
+  const category = course ? categories.find((c) => c.id === course.categoryId) : undefined;
 
   // Related courses - same category, different course
   const relatedCourses = course
-    ? COURSES.filter((c) => c.categoryId === course.categoryId && c.id !== course.id).slice(0, 4)
+    ? allCourses.filter((c) => c.categoryId === course.categoryId && c.id !== course.id).slice(0, 4)
     : [];
 
   // What You'll Learn items (derived from tags and course content)
@@ -50,7 +55,19 @@ export function CourseDetailPage() {
       )
     : [];
 
-  if (!course) {
+  if (courseLoading) {
+    return (
+      <div className="text-center py-16">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-muted/30 rounded-lg w-1/2 mx-auto"></div>
+          <div className="h-4 bg-muted/30 rounded w-3/4 mx-auto"></div>
+          <div className="h-64 bg-muted/20 rounded-xl mx-auto max-w-4xl"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (courseError || !course) {
     return (
       <div className="text-center py-16">
         <p className="text-lg font-bold">Course not found</p>

@@ -1,12 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft, Globe, Smartphone, Cpu, Zap, Wrench, Building2, Ruler, Code, BarChart3, Wifi, Palette, Scissors } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getCategory, getCategoryCourses, CATEGORIES, COURSES } from '@/lib/mock-data';
-import { courseApi, technologyApi } from '@/lib/api-client';
-import { mapApiCourses, mapTechnologiesToCategories } from '../shared/apiMappers';
+import { useCategories, useCourses } from '@/lib/data-hooks';
 import type { Category, Course } from '@/lib/mock-data';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
 import { GradientButton } from '../shared/GradientButton';
@@ -21,43 +19,9 @@ export function CategoryPage() {
   const { pageParams, goBack, navigate } = useNavigationStore();
   const categoryId = pageParams.categoryId as string;
 
-  const [categories, setCategories] = useState<Category[]>(CATEGORIES);
-  const [courses, setCourses] = useState<Course[]>(COURSES);
-  const [loading, setLoading] = useState(true);
-
-  // Fetch categories (technologies) from API
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await technologyApi.list();
-        if (!cancelled && result.technologies?.length) {
-          setCategories(mapTechnologiesToCategories(result.technologies));
-        }
-      } catch {
-        // Keep mock fallback
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Fetch courses from API
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await courseApi.list({ limit: 50 });
-        if (!cancelled && result.courses?.length) {
-          setCourses(mapApiCourses(result.courses));
-        }
-      } catch {
-        // Keep mock fallback
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const { data: categories, loading: categoriesLoading } = useCategories();
+  const { data: courses, loading: coursesLoading } = useCourses({ limit: 100 });
+  const loading = categoriesLoading || coursesLoading;
 
   // Helper to find category by id
   const findCategory = (id: string) => categories.find((c) => c.id === id);

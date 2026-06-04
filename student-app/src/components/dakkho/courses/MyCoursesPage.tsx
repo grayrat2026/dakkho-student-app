@@ -2,20 +2,36 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Clock, CheckCircle } from 'lucide-react';
-import { COURSES } from '@/lib/mock-data';
+import { BookOpen, Clock, CheckCircle, Loader2 } from 'lucide-react';
+import { useCourses } from '@/lib/data-hooks';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
 
 export function MyCoursesPage() {
   const [activeTab, setActiveTab] = useState<'in-progress' | 'completed' | 'all'>('all');
+  const { data: courses, loading, error } = useCourses();
 
-  // Mock enrolled courses
-  const enrolledCourses = COURSES.slice(0, 8);
-  const inProgress = enrolledCourses.slice(0, 5);
-  const completed = enrolledCourses.slice(5, 8);
+  // For now, show all courses as available since enrollment tracking comes from the API
+  const enrolledCourses = courses;
 
-  const displayCourses = activeTab === 'in-progress' ? inProgress :
-    activeTab === 'completed' ? completed : enrolledCourses;
+  const displayCourses = activeTab === 'all' ? enrolledCourses : [];
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <Loader2 className="w-10 h-10 text-sky-500 animate-spin" />
+        <p className="text-sm text-muted-foreground font-semibold">Loading your courses...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-lg font-bold text-red-500">Failed to load courses</p>
+        <p className="text-sm text-muted-foreground mt-2">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -51,16 +67,23 @@ export function MyCoursesPage() {
       </div>
 
       {/* Course grid */}
-      <CourseCardGrid
-        courses={displayCourses}
-        showProgress
-        getProgress={(courseId) => {
-          const idx = enrolledCourses.findIndex((c) => c.id === courseId);
-          if (activeTab === 'completed') return 100;
-          if (activeTab === 'in-progress') return Math.floor(Math.random() * 80) + 10;
-          return idx < 5 ? Math.floor(Math.random() * 80) + 10 : 100;
-        }}
-      />
+      {displayCourses.length > 0 ? (
+        <CourseCardGrid
+          courses={displayCourses}
+          showProgress
+          getProgress={() => 0}
+        />
+      ) : (
+        <div className="text-center py-16">
+          <BookOpen className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
+          <h3 className="text-lg font-semibold text-muted-foreground">
+            {activeTab === 'in-progress' ? 'No courses in progress' : activeTab === 'completed' ? 'No completed courses yet' : 'No courses found'}
+          </h3>
+          <p className="text-sm text-muted-foreground/60 mt-1">
+            {activeTab === 'all' ? 'Enroll in courses to see them here.' : 'Keep learning to see courses here.'}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
