@@ -25,6 +25,7 @@ import {
   VideoIcon,
   CreditCard,
   Send,
+  Cpu,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -36,6 +37,7 @@ const navItems = [
   { id: 'instructors', label: 'Instructors', icon: GraduationCap },
   { id: 'categories', label: 'Categories', icon: Tags },
   { id: 'institutes', label: 'Institutes', icon: Building2 },
+  { id: 'technologies', label: 'Technologies', icon: Cpu },
   { id: 'institute-requests', label: 'Inst. Requests', icon: FileQuestion },
   { id: 'coupons', label: 'Coupons', icon: Tag },
   { id: 'discounts', label: 'Discounts', icon: Percent },

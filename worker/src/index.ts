@@ -36,6 +36,7 @@ import paymentRoutes from './routes/payments';
 import instituteRequestRoutes from './routes/institute-requests';
 import studentApiRoutes from './routes/student-api';
 import pushRoutes from './routes/push';
+import techRoutes from './routes/technologies';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -94,6 +95,7 @@ app.route('/admin/live-classes', liveClassRoutes);
 app.route('/admin/payments', paymentRoutes);
 app.route('/admin/institute-requests', instituteRequestRoutes);
 app.route('/admin/push', pushRoutes);
+app.route('/admin/technologies', techRoutes);
 
 // Student-facing API (no admin auth)
 app.route('/api', studentApiRoutes);

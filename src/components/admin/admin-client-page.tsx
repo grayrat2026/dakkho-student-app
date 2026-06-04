@@ -27,6 +27,7 @@ import EventsPanel from '@/components/admin/events-panel';
 import LiveClassesPanel from '@/components/admin/live-classes-panel';
 import PaymentsPanel from '@/components/admin/payments-panel';
 import PushPanel from '@/components/admin/push-panel';
+import TechnologiesTable from '@/components/admin/technologies-table';
 
 const pageComponents: Record<string, React.ComponentType> = {
   dashboard: Dashboard,
@@ -36,6 +37,7 @@ const pageComponents: Record<string, React.ComponentType> = {
   instructors: InstructorsTable,
   categories: CategoriesTable,
   institutes: InstitutesTable,
+  technologies: TechnologiesTable,
   'institute-requests': InstituteRequests,
   coupons: CouponsPanel,
   discounts: DiscountsPanel,
