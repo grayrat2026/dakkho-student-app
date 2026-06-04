@@ -423,3 +423,73 @@ export interface PaymentConfigRow {
   created_at: string;
   updated_at: string;
 }
+
+export interface NotificationPreferenceRow {
+  id: number;
+  user_id: string;
+  push_enabled: number;
+  email_enabled: number;
+  sms_enabled: number;
+  quiet_hours_start: string;
+  quiet_hours_end: string;
+  course_updates_push: number;
+  course_updates_email: number;
+  grades_push: number;
+  grades_email: number;
+  schedule_push: number;
+  schedule_email: number;
+  payment_push: number;
+  payment_email: number;
+  promotions_push: number;
+  promotions_email: number;
+  social_push: number;
+  social_email: number;
+  system_push: number;
+  system_email: number;
+  updated_at: string;
+  created_at: string;
+}
+
+export interface StudentActivityRow {
+  id: number;
+  user_id: string;
+  activity_type: string;
+  resource_type: string;
+  resource_id: string | null;
+  title: string;
+  description: string | null;
+  metadata: string;
+  created_at: string;
+}
+
+export interface AchievementDefinitionRow {
+  id: number;
+  slug: string;
+  name: string;
+  name_bn: string | null;
+  description: string;
+  description_bn: string | null;
+  category: string;
+  icon: string;
+  xp: number;
+  condition_type: string;
+  condition_value: string;
+  is_active: number;
+  created_at: string;
+}
+
+export interface StudentAchievementRow {
+  id: number;
+  user_id: string;
+  achievement_id: number;
+  unlocked_at: string;
+}
+
+export interface NotificationSoundRow {
+  id: number;
+  name: string;
+  file_url: string;
+  is_default: number;
+  is_active: number;
+  created_at: string;
+}

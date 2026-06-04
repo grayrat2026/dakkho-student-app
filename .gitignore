@@ -55,6 +55,16 @@ server.log
 # Skills directory
 /skills/
 
+# Download directory (contains credentials)
+/download/
+
+# Deploy scripts with hardcoded secrets
+worker/deploy.sh
+DEPLOY.md
+
+# Worklog
+worklog.md
+
 # Prisma DB files
 *.db
 *.db-journal

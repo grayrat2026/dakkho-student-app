@@ -13,13 +13,13 @@ import { generateId, getSessionExpiry } from './utils';
 export async function validateStudentSession(
   env: Env,
   token: string
-): Promise<{ authorized: boolean; userId?: string; email?: string }> {
+): Promise<{ authorized: boolean; userId?: string; email?: string; name?: string }> {
   try {
     const session = await env.DB.prepare(
-      'SELECT user_id, email, expires_at, is_active FROM student_sessions WHERE id = ? AND is_active = 1'
+      'SELECT user_id, email, name, expires_at, is_active FROM student_sessions WHERE id = ? AND is_active = 1'
     )
       .bind(token)
-      .first<{ user_id: string; email: string; expires_at: string; is_active: number }>();
+      .first<{ user_id: string; email: string; name: string | null; expires_at: string; is_active: number }>();
 
     if (!session) {
       return { authorized: false };
@@ -38,6 +38,7 @@ export async function validateStudentSession(
       authorized: true,
       userId: session.user_id,
       email: session.email,
+      name: session.name || undefined,
     };
   } catch (error) {
     console.error('Student session validation error:', error);

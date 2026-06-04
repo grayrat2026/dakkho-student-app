@@ -336,6 +336,96 @@ CREATE INDEX IF NOT EXISTS idx_payments_gateway ON payments(gateway);
 CREATE INDEX IF NOT EXISTS idx_payments_created ON payments(created_at DESC);
 
 -- ============================================================
+-- ADDITIONAL TABLES (Student Features)
+-- ============================================================
+
+-- notification_preferences table
+CREATE TABLE IF NOT EXISTS notification_preferences (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL UNIQUE,
+  push_enabled INTEGER DEFAULT 1,
+  email_enabled INTEGER DEFAULT 1,
+  sms_enabled INTEGER DEFAULT 0,
+  quiet_hours_start TEXT DEFAULT '22:00',
+  quiet_hours_end TEXT DEFAULT '08:00',
+  course_updates_push INTEGER DEFAULT 1,
+  course_updates_email INTEGER DEFAULT 1,
+  grades_push INTEGER DEFAULT 1,
+  grades_email INTEGER DEFAULT 1,
+  schedule_push INTEGER DEFAULT 1,
+  schedule_email INTEGER DEFAULT 1,
+  payment_push INTEGER DEFAULT 1,
+  payment_email INTEGER DEFAULT 1,
+  promotions_push INTEGER DEFAULT 0,
+  promotions_email INTEGER DEFAULT 0,
+  social_push INTEGER DEFAULT 1,
+  social_email INTEGER DEFAULT 0,
+  system_push INTEGER DEFAULT 1,
+  system_email INTEGER DEFAULT 1,
+  updated_at TEXT DEFAULT (datetime('now')),
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_prefs_user ON notification_preferences(user_id);
+
+-- student_activity table
+CREATE TABLE IF NOT EXISTS student_activity (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  activity_type TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id TEXT,
+  title TEXT NOT NULL,
+  description TEXT,
+  metadata TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_student_activity_user ON student_activity(user_id);
+CREATE INDEX IF NOT EXISTS idx_student_activity_type ON student_activity(activity_type);
+CREATE INDEX IF NOT EXISTS idx_student_activity_created ON student_activity(created_at DESC);
+
+-- achievement_definitions table
+CREATE TABLE IF NOT EXISTS achievement_definitions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  name_bn TEXT,
+  description TEXT NOT NULL,
+  description_bn TEXT,
+  category TEXT NOT NULL,
+  icon TEXT DEFAULT 'trophy',
+  xp INTEGER DEFAULT 0,
+  condition_type TEXT NOT NULL,
+  condition_value TEXT NOT NULL,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_achievements_slug ON achievement_definitions(slug);
+CREATE INDEX IF NOT EXISTS idx_achievements_category ON achievement_definitions(category);
+CREATE INDEX IF NOT EXISTS idx_achievements_active ON achievement_definitions(is_active);
+
+-- student_achievements table
+CREATE TABLE IF NOT EXISTS student_achievements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  achievement_id INTEGER NOT NULL,
+  unlocked_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (achievement_id) REFERENCES achievement_definitions(id),
+  UNIQUE(user_id, achievement_id)
+);
+CREATE INDEX IF NOT EXISTS idx_student_achievements_user ON student_achievements(user_id);
+CREATE INDEX IF NOT EXISTS idx_student_achievements_achievement ON student_achievements(achievement_id);
+
+-- notification_sounds table (admin configurable)
+CREATE TABLE IF NOT EXISTS notification_sounds (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  file_url TEXT NOT NULL,
+  is_default INTEGER DEFAULT 0,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- ============================================================
 -- SEED DATA
 -- ============================================================
 
@@ -351,3 +441,25 @@ INSERT OR IGNORE INTO payment_config (gateway, is_active, config, sandbox_mode, 
   ('manual', 1, '{}', 0, 'Send payment via bKash/Nagad to 01XXXXXXXXX and submit your Transaction ID below.', 'bKash/Nagad এ 01XXXXXXXXX নম্বরে পেমেন্ট পাঠিয়ে আপনার Transaction ID নিচে জমা দিন।'),
   ('sslcommerz', 0, '{}', 1, NULL, NULL),
   ('bkash', 0, '{}', 1, NULL, NULL);
+
+-- Seed technologies
+INSERT OR IGNORE INTO technologies (name, name_bn, short_code, description, is_active) VALUES
+  ('Civil Technology', 'সিভিল টেকনোলজি', 'CT', 'Civil Engineering Technology', 1),
+  ('Computer Science & Technology', 'কম্পিউটার সায়েন্স অ্যান্ড টেকনোলজি', 'CST', 'Computer Science and Technology', 1),
+  ('Electrical Technology', 'ইলেকট্রিক্যাল টেকনোলজি', 'ET', 'Electrical Engineering Technology', 1),
+  ('Electro Medical Technology', 'ইলেক্ট্রো মেডিক্যাল টেকনোলজি', 'EMT', 'Electro Medical Technology', 1),
+  ('Electronics Technology', 'ইলেকট্রনিক্স টেকনোলজি', 'EnT', 'Electronics Engineering Technology', 1),
+  ('Mechanical Technology', 'মেকানিক্যাল টেকনোলজি', 'MT', 'Mechanical Engineering Technology', 1),
+  ('Power Technology', 'পাওয়ার টেকনোলজি', 'PT', 'Power Engineering Technology', 1);
+
+-- Seed achievement definitions
+INSERT OR IGNORE INTO achievement_definitions (slug, name, name_bn, description, description_bn, category, icon, xp, condition_type, condition_value) VALUES
+  ('first-course', 'First Course', 'প্রথম কোর্স', 'Enroll in your first course', 'প্রথম কোর্সে ভর্তি হন', 'learning', 'book-open', 50, 'enrollment_count', '1'),
+  ('quick-learner', 'Quick Learner', 'দ্রুত শিক্ষার্থী', 'Complete 3 courses', '৩টি কোর্স সম্পন্ন করুন', 'learning', 'zap', 150, 'completion_count', '3'),
+  ('top-student', 'Top Student', 'শীর্ষ শিক্ষার্থী', 'Appear in top 10 leaderboard', 'লিডারবোর্ডে শীর্ষ ১০-এ উপস্থিত হন', 'learning', 'crown', 300, 'leaderboard_rank', '10'),
+  ('week-streak', 'Week Warrior', 'সপ্তাহ যোদ্ধা', '7-day learning streak', '৭ দিনের লার্নিং স্ট্রিক', 'streaks', 'flame', 100, 'streak_days', '7'),
+  ('month-streak', 'Monthly Master', 'মাসিক মাস্টার', '30-day learning streak', '৩০ দিনের লার্নিং স্ট্রিক', 'streaks', 'flame', 500, 'streak_days', '30'),
+  ('social-butterfly', 'Social Butterfly', 'সামাজিক প্রজাপতি', 'Join 3 study groups', '৩টি স্টাডি গ্রুপে যোগ দিন', 'social', 'users', 75, 'group_count', '3'),
+  ('helper', 'Helpful Hand', 'সাহায্যকারী', 'Answer 10 questions', '১০টি প্রশ্নের উত্তর দিন', 'social', 'heart', 200, 'answer_count', '10'),
+  ('early-bird', 'Early Bird', 'প্রাথমিক পাখি', 'Join DAKKHO in first month', 'প্রথম মাসে DAKKHO-তে যোগ দিন', 'special', 'sunrise', 25, 'early_joiner', '1'),
+  ('certified', 'Certified Learner', 'প্রত্যয়িত শিক্ষার্থী', 'Earn your first certificate', 'প্রথম সার্টিফিকেট অর্জন করুন', 'learning', 'award', 100, 'certificate_count', '1');

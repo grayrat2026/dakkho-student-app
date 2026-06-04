@@ -52,6 +52,11 @@ export const api = {
   }),
 };
 
+// ============ HELPER FUNCTIONS ============
+const apiGet = <T>(path: string) => api.get<T>(path);
+const apiPut = <T>(path: string, body: unknown) => api.put<T>(path, body);
+const getToken = getAuthToken;
+
 // ============ TYPE-SAFE API FUNCTIONS ============
 
 export interface Institute {
@@ -286,4 +291,75 @@ export const instructorApi = {
 export const videoApi = {
   streamUrl: (key: string, bucket?: string) =>
     api.get<{ url: string }>(`/api/video/stream-url?key=${key}&bucket=${bucket || 'videos'}`),
+};
+
+// ─── Student Profile & Stats ───
+export const studentProfileApi = {
+  stats: () => apiGet<{ stats: { coursesEnrolled: number; hoursWatched: number; certificates: number; currentStreak: number }; profile: { phone: string; bio: string; semester: string; avatarUrl: string } }>('/api/student/profile/stats'),
+  update: (data: { name?: string; phone?: string; bio?: string; semester?: string; technology?: string; instituteId?: string }) => apiPut<{ success: boolean; updated: Record<string, unknown> }>('/api/student/profile', data),
+  uploadAvatar: async (file: File): Promise<{ success: boolean; avatarUrl: string }> => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const response = await fetch(`${API_BASE}/api/student/upload-avatar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+      body: formData,
+    });
+    if (!response.ok) throw new Error('Avatar upload failed');
+    return response.json();
+  },
+};
+
+// ─── Student Notifications ───
+export const studentNotificationsApi = {
+  list: (params?: { limit?: number; offset?: number; unread?: boolean }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.offset) query.set('offset', String(params.offset));
+    if (params?.unread) query.set('unread', 'true');
+    return apiGet<{ notifications: Array<{ id: string; title: string; message: string; type: string; actionUrl: string; read: boolean; createdAt: string }>; total: number }>(`/api/student/notifications?${query.toString()}`);
+  },
+  markRead: (id: string) => apiPut<{ success: boolean }>(`/api/student/notifications/${id}/read`, {}),
+  markAllRead: () => apiPut<{ success: boolean; count: number }>('/api/student/notifications/read-all', {}),
+};
+
+// ─── Student Leaderboard ───
+export const leaderboardApi = {
+  get: (params?: { technology?: string; period?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.technology) query.set('technology', params.technology);
+    if (params?.period) query.set('period', params.period);
+    if (params?.limit) query.set('limit', String(params.limit));
+    return apiGet<{ entries: Array<{ rank: number; userId: string; name: string; technology: string; xp: number; breakdown: { video: number; quiz: number; assignment: number; streak: number }; activeDays: number }>; yourRank: number | null; yourXp: number; period: string }>(`/api/student/leaderboard?${query.toString()}`);
+  },
+};
+
+// ─── Student Achievements ───
+export const achievementsApi = {
+  list: () => apiGet<{ achievements: Array<{ id: number; slug: string; name: string; nameBn: string | null; description: string; descriptionBn: string | null; category: string; icon: string; xp: number; unlocked: boolean; unlockedAt: string | null }>; totalXp: number; unlockedCount: number; totalCount: number }>('/api/student/achievements'),
+};
+
+// ─── Student Activity ───
+export const activityApi = {
+  list: (params?: { limit?: number; offset?: number; type?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.offset) query.set('offset', String(params.offset));
+    if (params?.type) query.set('type', params.type);
+    return apiGet<{ activities: Array<{ id: number; type: string; resourceType: string; resourceId: string | null; title: string; description: string | null; metadata: Record<string, unknown>; createdAt: string }>; total: number }>(`/api/student/activity?${query.toString()}`);
+  },
+};
+
+// ─── Student Settings ───
+export const studentSettingsApi = {
+  get: () => apiGet<{ preferences: Record<string, unknown> }>('/api/student/settings'),
+  update: (preferences: Record<string, unknown>) => apiPut<{ success: boolean }>('/api/student/settings', preferences),
+};
+
+// ─── Student Learning Stats ───
+export const learningStatsApi = {
+  get: (range?: string) => {
+    const query = range ? `?range=${range}` : '';
+    return apiGet<{ dailyData: Array<{ date: string; videos: number; activities: number }>; subjectProgress: Array<{ subject: string; progress: number }>; overview: { hoursWatched: number; coursesEnrolled: number; certificates: number; currentStreak: number }; range: string }>(`/api/student/learning-stats${query}`);
+  },
 };

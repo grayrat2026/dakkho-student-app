@@ -8,13 +8,14 @@
 import { Hono } from 'hono';
 import type { Env } from '../env';
 import { validateStudentSession, createStudentSession, deleteStudentSession } from '../lib/student-auth';
+import { studentAuthMiddleware, type StudentAuthVariables } from '../lib/student-auth-middleware';
 import { registerPushToken, unregisterPushToken } from '../lib/onesignal';
 import { createSession as createAppwriteSession, deleteSession as deleteAppwriteSession, getAccount, listDocuments, getDocument, createDocument, updateDocument, Query } from '../lib/appwrite';
 import { APPWRITE_COLLECTIONS, DEFAULT_CONFIG, type ServerConfig } from '../lib/types';
 import { getBucketForType, getPublicUrl } from '../lib/r2';
 import { getErrorMessage, generateId, getSessionExpiry } from '../lib/utils';
 
-const studentApiRoutes = new Hono<{ Bindings: Env }>();
+const studentApiRoutes = new Hono<{ Bindings: Env; Variables: StudentAuthVariables }>();
 
 // ─── Helper: Get student auth from header ───
 async function getStudentAuth(c: any): Promise<{ authorized: boolean; userId?: string; email?: string; name?: string }> {
@@ -917,5 +918,724 @@ studentApiRoutes.get('/packages/mine', async (c) => {
     return c.json({ error: getErrorMessage(error) }, 500);
   }
 });
+
+// ═══════════════════════════════════════════════════
+// NEW AUTHENTICATED STUDENT ROUTES
+// ═══════════════════════════════════════════════════
+
+// Apply student auth middleware to a group
+const studentAuthenticated = new Hono<{ Bindings: Env; Variables: StudentAuthVariables }>();
+studentAuthenticated.use('*', studentAuthMiddleware);
+
+// ─── Notifications ───
+
+// GET /student/notifications — Fetch user's notifications from Appwrite
+studentAuthenticated.get('/notifications', async (c) => {
+  try {
+    const userId = c.get('studentId');
+    const limit = parseInt(c.req.query('limit') || '20');
+    const offset = parseInt(c.req.query('offset') || '0');
+    const unreadOnly = c.req.query('unread') === 'true';
+
+    const queries: string[] = [
+      Query.equal('userId', userId),
+      Query.limit(limit),
+      Query.offset(offset),
+      Query.orderDesc('$createdAt'),
+    ];
+
+    if (unreadOnly) {
+      queries.push(Query.equal('read', false));
+    }
+
+    const result = await listDocuments(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, queries);
+
+    const notifications = (result.documents as any[]).map(doc => ({
+      id: doc.$id,
+      title: doc.title || '',
+      message: doc.message || '',
+      type: doc.type || 'info',
+      actionUrl: doc.actionUrl || '',
+      read: doc.read || false,
+      createdAt: doc.$createdAt,
+    }));
+
+    return c.json({ notifications, total: result.total });
+  } catch (error) {
+    return c.json({ notifications: [], total: 0 });
+  }
+});
+
+// PUT /student/notifications/:id/read — Mark notification as read
+studentAuthenticated.put('/notifications/:id/read', async (c) => {
+  try {
+    const userId = c.get('studentId');
+    const notifId = c.req.param('id');
+
+    // Verify this notification belongs to the user
+    const doc = await getDocument(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, notifId);
+    if ((doc as any)?.userId !== userId) {
+      return c.json({ error: 'Notification not found' }, 404);
+    }
+
+    await updateDocument(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, notifId, { read: true });
+
+    return c.json({ success: true });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// PUT /student/notifications/read-all — Mark all notifications as read
+studentAuthenticated.put('/notifications/read-all', async (c) => {
+  try {
+    const userId = c.get('studentId');
+
+    const result = await listDocuments(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, [
+      Query.equal('userId', userId),
+      Query.equal('read', false),
+      Query.limit(100),
+    ]);
+
+    for (const doc of result.documents as any[]) {
+      try {
+        await updateDocument(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, doc.$id, { read: true });
+      } catch {}
+    }
+
+    return c.json({ success: true, count: result.documents.length });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ─── Profile Stats ───
+
+// GET /student/profile/stats — Get user's learning stats
+studentAuthenticated.get('/profile/stats', async (c) => {
+  try {
+    const userId = c.get('studentId');
+
+    // Get enrolled courses count from Appwrite
+    let coursesEnrolled = 0;
+    try {
+      const enrollResult = await listDocuments(c.env, APPWRITE_COLLECTIONS.ENROLLMENTS, [
+        Query.equal('userId', userId),
+        Query.limit(1),
+      ]);
+      coursesEnrolled = enrollResult.total;
+    } catch {}
+
+    // Get hours watched from watch_progress
+    let hoursWatched = 0;
+    try {
+      const progressResult = await listDocuments(c.env, APPWRITE_COLLECTIONS.WATCH_PROGRESS, [
+        Query.equal('userId', userId),
+        Query.limit(1000),
+      ]);
+      let totalMinutes = 0;
+      for (const doc of progressResult.documents as any[]) {
+        totalMinutes += (doc.watchedMinutes || 0);
+      }
+      hoursWatched = Math.round(totalMinutes / 60 * 10) / 10;
+    } catch {}
+
+    // Get certificates count (from completed user_packages)
+    let certificates = 0;
+    try {
+      const certResult = await c.env.DB.prepare(
+        "SELECT COUNT(*) as count FROM user_packages WHERE user_id = ? AND status = 'completed'"
+      ).bind(userId).first();
+      certificates = (certResult as any)?.count || 0;
+    } catch {}
+
+    // Calculate current streak from student_activity
+    let currentStreak = 0;
+    try {
+      const activities = await c.env.DB.prepare(
+        "SELECT DISTINCT date(created_at) as day FROM student_activity WHERE user_id = ? ORDER BY day DESC LIMIT 30"
+      ).bind(userId).all();
+
+      const days = (activities.results as any[]).map(r => r.day);
+      const today = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+      if (days.length > 0 && (days[0] === today || days[0] === yesterday)) {
+        currentStreak = 1;
+        for (let i = 1; i < days.length; i++) {
+          const prev = new Date(days[i - 1]);
+          const curr = new Date(days[i]);
+          const diff = (prev.getTime() - curr.getTime()) / 86400000;
+          if (diff === 1) {
+            currentStreak++;
+          } else {
+            break;
+          }
+        }
+      }
+    } catch {}
+
+    // Get user document for phone, bio, semester, avatarUrl
+    const userDoc = await getStudentUserDoc(c.env, userId);
+
+    return c.json({
+      stats: {
+        coursesEnrolled,
+        hoursWatched,
+        certificates,
+        currentStreak,
+      },
+      profile: {
+        phone: (userDoc as any)?.phone || '',
+        bio: (userDoc as any)?.bio || '',
+        semester: (userDoc as any)?.semester || '',
+        avatarUrl: (userDoc as any)?.avatarUrl || '',
+      },
+    });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ─── Leaderboard ───
+
+// GET /student/leaderboard — Get leaderboard data
+studentAuthenticated.get('/leaderboard', async (c) => {
+  try {
+    const technology = c.req.query('technology') || '';
+    const period = c.req.query('period') || 'week'; // 'day', 'week', 'month', 'all'
+    const limit = parseInt(c.req.query('limit') || '20');
+    const userId = c.get('studentId');
+
+    // Try KV cache first
+    const cacheKey = `leaderboard:${technology}:${period}`;
+    const cached = await c.env.KV_CONFIG.get(cacheKey, 'json');
+    if (cached) {
+      const result = cached as any;
+      // Add "your rank" to cached result
+      const yourEntry = result.entries.find((e: any) => e.userId === userId);
+      result.yourRank = yourEntry ? yourEntry.rank : null;
+      result.yourXp = yourEntry ? yourEntry.xp : 0;
+      return c.json(result);
+    }
+
+    // Calculate period date filter
+    let dateFilter = '';
+    if (period === 'day') {
+      dateFilter = `AND created_at >= date('now', '-1 day')`;
+    } else if (period === 'week') {
+      dateFilter = `AND created_at >= date('now', '-7 days')`;
+    } else if (period === 'month') {
+      dateFilter = `AND created_at >= date('now', '-30 days')`;
+    }
+    // 'all' has no filter
+
+    const d1Query = `
+      SELECT
+        user_id,
+        SUM(CASE WHEN activity_type = 'video_watch' THEN 10 ELSE 0 END) as video_xp,
+        SUM(CASE WHEN activity_type = 'quiz_complete' THEN 15 ELSE 0 END) as quiz_xp,
+        SUM(CASE WHEN activity_type = 'assignment_submit' THEN 20 ELSE 0 END) as assignment_xp,
+        SUM(CASE WHEN activity_type = 'streak_bonus' THEN 5 ELSE 0 END) as streak_xp,
+        COUNT(DISTINCT date(created_at)) as active_days,
+        COUNT(*) as total_activities
+      FROM student_activity
+      WHERE 1=1 ${dateFilter}
+      GROUP BY user_id
+      ORDER BY total_activities DESC
+      LIMIT ?
+    `;
+
+    const result = await c.env.DB.prepare(d1Query).bind(limit).all();
+
+    // Enrich with user data from Appwrite
+    const entries = [];
+    let rank = 1;
+    let yourRank = null;
+    let yourXp = 0;
+
+    for (const row of result.results as any[]) {
+      let userName = 'Student';
+      let userTechnology = '';
+
+      try {
+        const userDoc = await getStudentUserDoc(c.env, row.user_id);
+        userName = (userDoc as any)?.name || 'Student';
+        userTechnology = (userDoc as any)?.technology || '';
+      } catch {}
+
+      // Filter by technology if specified
+      if (technology && userTechnology !== technology) continue;
+
+      const totalXp = (row.video_xp || 0) + (row.quiz_xp || 0) + (row.assignment_xp || 0) + (row.streak_xp || 0);
+
+      if (row.user_id === userId) {
+        yourRank = rank;
+        yourXp = totalXp;
+      }
+
+      entries.push({
+        rank,
+        userId: row.user_id,
+        name: userName,
+        technology: userTechnology,
+        xp: totalXp,
+        breakdown: {
+          video: row.video_xp || 0,
+          quiz: row.quiz_xp || 0,
+          assignment: row.assignment_xp || 0,
+          streak: row.streak_xp || 0,
+        },
+        activeDays: row.active_days || 0,
+        coursesCompleted: 0,
+      });
+
+      rank++;
+    }
+
+    // If user has no activity, still provide their info
+    if (!yourRank) {
+      const userDoc = await getStudentUserDoc(c.env, userId);
+      yourXp = 0;
+    }
+
+    const response = {
+      entries,
+      yourRank,
+      yourXp,
+      period,
+      technology: technology || 'all',
+    };
+
+    // Cache for 5 minutes
+    await c.env.KV_CONFIG.put(cacheKey, JSON.stringify(response), { expirationTtl: 300 });
+
+    return c.json(response);
+  } catch (error) {
+    return c.json({ entries: [], yourRank: null, yourXp: 0, error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ─── Achievements ───
+
+// GET /student/achievements — Get user's achievements
+studentAuthenticated.get('/achievements', async (c) => {
+  try {
+    const userId = c.get('studentId');
+
+    // Get all active achievement definitions
+    const definitions = await c.env.DB.prepare(
+      'SELECT * FROM achievement_definitions WHERE is_active = 1 ORDER BY category, xp ASC'
+    ).all();
+
+    // Get user's unlocked achievements
+    const unlocked = await c.env.DB.prepare(
+      'SELECT * FROM student_achievements WHERE user_id = ?'
+    ).bind(userId).all();
+
+    const unlockedMap = new Map<number, string>();
+    for (const row of (unlocked.results as any[])) {
+      unlockedMap.set(row.achievement_id, row.unlocked_at);
+    }
+
+    const achievements = (definitions.results as any[]).map(def => ({
+      id: def.id,
+      slug: def.slug,
+      name: def.name,
+      nameBn: def.name_bn,
+      description: def.description,
+      descriptionBn: def.description_bn,
+      category: def.category,
+      icon: def.icon,
+      xp: def.xp,
+      conditionType: def.condition_type,
+      unlocked: unlockedMap.has(def.id),
+      unlockedAt: unlockedMap.get(def.id) || null,
+    }));
+
+    const totalXp = achievements.filter(a => a.unlocked).reduce((sum, a) => sum + a.xp, 0);
+    const unlockedCount = achievements.filter(a => a.unlocked).length;
+
+    return c.json({
+      achievements,
+      totalXp,
+      unlockedCount,
+      totalCount: achievements.length,
+    });
+  } catch (error) {
+    return c.json({ achievements: [], totalXp: 0, unlockedCount: 0, totalCount: 0 });
+  }
+});
+
+// ─── Activity Log ───
+
+// GET /student/activity — Get user's recent activity
+studentAuthenticated.get('/activity', async (c) => {
+  try {
+    const userId = c.get('studentId');
+    const limit = parseInt(c.req.query('limit') || '20');
+    const offset = parseInt(c.req.query('offset') || '0');
+    const activityType = c.req.query('type') || '';
+
+    let query = 'SELECT * FROM student_activity WHERE user_id = ?';
+    const params: any[] = [userId];
+
+    if (activityType) {
+      query += ' AND activity_type = ?';
+      params.push(activityType);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const result = await c.env.DB.prepare(query).bind(...params).all();
+
+    const activities = (result.results as any[]).map(row => ({
+      id: row.id,
+      type: row.activity_type,
+      resourceType: row.resource_type,
+      resourceId: row.resource_id,
+      title: row.title,
+      description: row.description,
+      metadata: row.metadata ? JSON.parse(row.metadata) : {},
+      createdAt: row.created_at,
+    }));
+
+    return c.json({ activities, total: result.results.length });
+  } catch (error) {
+    return c.json({ activities: [], total: 0 });
+  }
+});
+
+// ─── Profile Update ───
+
+// PUT /student/profile — Update user profile
+studentAuthenticated.put('/student/profile', async (c) => {
+  try {
+    const userId = c.get('studentId');
+    const body = await c.req.json();
+
+    const allowedFields = ['name', 'phone', 'bio', 'semester', 'technology', 'instituteId'];
+    const updates: Record<string, unknown> = {};
+
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        updates[field] = body[field];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return c.json({ error: 'No valid fields to update' }, 400);
+    }
+
+    await updateDocument(c.env, APPWRITE_COLLECTIONS.USERS, userId, updates);
+
+    // Log activity for profile update
+    await c.env.DB.prepare(`
+      INSERT INTO student_activity (user_id, activity_type, resource_type, title, description)
+      VALUES (?, 'profile_update', 'profile', 'Profile Updated', 'Updated profile information')
+    `).bind(userId).run();
+
+    return c.json({ success: true, updated: updates });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ─── Avatar Upload ───
+
+// POST /student/upload-avatar — Upload profile picture to R2
+studentAuthenticated.post('/student/upload-avatar', async (c) => {
+  try {
+    const userId = c.get('studentId');
+    const formData = await c.req.formData();
+    const file = formData.get('avatar') as File | null;
+
+    if (!file) {
+      return c.json({ error: 'Avatar file required' }, 400);
+    }
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      return c.json({ error: 'Invalid file type. Use JPEG, PNG, WebP, or GIF.' }, 400);
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      return c.json({ error: 'File too large. Maximum 2MB.' }, 400);
+    }
+
+    // Upload to R2
+    const key = `avatars/${userId}/${Date.now()}-${file.name}`;
+    await c.env.R2_AVATARS.put(key, file.stream(), {
+      httpMetadata: { contentType: file.type },
+    });
+
+    // Generate public URL
+    const avatarUrl = `https://dakkho-assets.dakkho.workers.dev/avatars/${key}`;
+
+    // Update user document
+    await updateDocument(c.env, APPWRITE_COLLECTIONS.USERS, userId, { avatarUrl });
+
+    // Log activity
+    await c.env.DB.prepare(`
+      INSERT INTO student_activity (user_id, activity_type, resource_type, title, description)
+      VALUES (?, 'avatar_upload', 'profile', 'Avatar Updated', 'Updated profile picture')
+    `).bind(userId).run();
+
+    return c.json({ success: true, avatarUrl });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ─── Notification Settings ───
+
+// GET /student/settings — Get notification preferences
+studentAuthenticated.get('/settings', async (c) => {
+  try {
+    const userId = c.get('studentId');
+
+    const prefs = await c.env.DB.prepare(
+      'SELECT * FROM notification_preferences WHERE user_id = ?'
+    ).bind(userId).first();
+
+    if (!prefs) {
+      // Return defaults
+      return c.json({
+        preferences: {
+          pushEnabled: true,
+          emailEnabled: true,
+          smsEnabled: false,
+          quietHoursStart: '22:00',
+          quietHoursEnd: '08:00',
+          courseUpdates: { push: true, email: true },
+          grades: { push: true, email: true },
+          schedule: { push: true, email: true },
+          payment: { push: true, email: true },
+          promotions: { push: false, email: false },
+          social: { push: true, email: false },
+          system: { push: true, email: true },
+        },
+      });
+    }
+
+    const p = prefs as any;
+    return c.json({
+      preferences: {
+        pushEnabled: !!p.push_enabled,
+        emailEnabled: !!p.email_enabled,
+        smsEnabled: !!p.sms_enabled,
+        quietHoursStart: p.quiet_hours_start,
+        quietHoursEnd: p.quiet_hours_end,
+        courseUpdates: { push: !!p.course_updates_push, email: !!p.course_updates_email },
+        grades: { push: !!p.grades_push, email: !!p.grades_email },
+        schedule: { push: !!p.schedule_push, email: !!p.schedule_email },
+        payment: { push: !!p.payment_push, email: !!p.payment_email },
+        promotions: { push: !!p.promotions_push, email: !!p.promotions_email },
+        social: { push: !!p.social_push, email: !!p.social_email },
+        system: { push: !!p.system_push, email: !!p.system_email },
+      },
+    });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// PUT /student/settings — Save notification preferences
+studentAuthenticated.put('/settings', async (c) => {
+  try {
+    const userId = c.get('studentId');
+    const prefs = await c.req.json();
+
+    // Upsert notification preferences
+    await c.env.DB.prepare(`
+      INSERT INTO notification_preferences (
+        user_id, push_enabled, email_enabled, sms_enabled,
+        quiet_hours_start, quiet_hours_end,
+        course_updates_push, course_updates_email,
+        grades_push, grades_email,
+        schedule_push, schedule_email,
+        payment_push, payment_email,
+        promotions_push, promotions_email,
+        social_push, social_email,
+        system_push, system_email
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        push_enabled = excluded.push_enabled,
+        email_enabled = excluded.email_enabled,
+        sms_enabled = excluded.sms_enabled,
+        quiet_hours_start = excluded.quiet_hours_start,
+        quiet_hours_end = excluded.quiet_hours_end,
+        course_updates_push = excluded.course_updates_push,
+        course_updates_email = excluded.course_updates_email,
+        grades_push = excluded.grades_push,
+        grades_email = excluded.grades_email,
+        schedule_push = excluded.schedule_push,
+        schedule_email = excluded.schedule_email,
+        payment_push = excluded.payment_push,
+        payment_email = excluded.payment_email,
+        promotions_push = excluded.promotions_push,
+        promotions_email = excluded.promotions_email,
+        social_push = excluded.social_push,
+        social_email = excluded.social_email,
+        system_push = excluded.system_push,
+        system_email = excluded.system_email,
+        updated_at = datetime('now')
+    `).bind(
+      userId,
+      prefs.pushEnabled ? 1 : 0,
+      prefs.emailEnabled ? 1 : 0,
+      prefs.smsEnabled ? 1 : 0,
+      prefs.quietHoursStart || '22:00',
+      prefs.quietHoursEnd || '08:00',
+      prefs.courseUpdates?.push ? 1 : 0,
+      prefs.courseUpdates?.email ? 1 : 0,
+      prefs.grades?.push ? 1 : 0,
+      prefs.grades?.email ? 1 : 0,
+      prefs.schedule?.push ? 1 : 0,
+      prefs.schedule?.email ? 1 : 0,
+      prefs.payment?.push ? 1 : 0,
+      prefs.payment?.email ? 1 : 0,
+      prefs.promotions?.push ? 1 : 0,
+      prefs.promotions?.email ? 1 : 0,
+      prefs.social?.push ? 1 : 0,
+      prefs.social?.email ? 1 : 0,
+      prefs.system?.push ? 1 : 0,
+      prefs.system?.email ? 1 : 0
+    ).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ─── Learning Stats ───
+
+// GET /student/learning-stats — Get detailed learning statistics
+studentAuthenticated.get('/learning-stats', async (c) => {
+  try {
+    const userId = c.get('studentId');
+    const range = c.req.query('range') || 'week'; // 'week', 'month', 'year'
+
+    // Get activity summary for the period
+    let daysBack = 7;
+    if (range === 'month') daysBack = 30;
+    if (range === 'year') daysBack = 365;
+
+    // Daily activity data
+    const dailyData = await c.env.DB.prepare(`
+      SELECT
+        date(created_at) as date,
+        SUM(CASE WHEN activity_type = 'video_watch' THEN 1 ELSE 0 END) as videos,
+        COUNT(*) as activities
+      FROM student_activity
+      WHERE user_id = ? AND created_at >= date('now', '-' || ? || ' days')
+      GROUP BY date(created_at)
+      ORDER BY date ASC
+    `).bind(userId, daysBack).all();
+
+    // Subject/technology progress (from watch_progress in Appwrite)
+    let subjectProgress: any[] = [];
+    try {
+      const progressDocs = await listDocuments(c.env, APPWRITE_COLLECTIONS.WATCH_PROGRESS, [
+        Query.equal('userId', userId),
+        Query.limit(100),
+      ]);
+
+      // Group by course/subject
+      const subjectMap = new Map<string, { total: number; watched: number }>();
+      for (const doc of progressDocs.documents as any[]) {
+        const courseName = doc.courseName || doc.courseId || 'Unknown';
+        const current = subjectMap.get(courseName) || { total: 0, watched: 0 };
+        current.total += (doc.totalDuration || 100);
+        current.watched += (doc.watchedDuration || 0);
+        subjectMap.set(courseName, current);
+      }
+
+      subjectProgress = Array.from(subjectMap.entries()).map(([name, data]) => ({
+        subject: name,
+        progress: data.total > 0 ? Math.round((data.watched / data.total) * 100) : 0,
+      }));
+    } catch {}
+
+    // Overview stats (reuse profile/stats logic)
+    let coursesEnrolled = 0;
+    try {
+      const enrollResult = await listDocuments(c.env, APPWRITE_COLLECTIONS.ENROLLMENTS, [
+        Query.equal('userId', userId),
+        Query.limit(1),
+      ]);
+      coursesEnrolled = enrollResult.total;
+    } catch {}
+
+    let hoursWatched = 0;
+    try {
+      const progressResult = await listDocuments(c.env, APPWRITE_COLLECTIONS.WATCH_PROGRESS, [
+        Query.equal('userId', userId),
+        Query.limit(1000),
+      ]);
+      let totalMinutes = 0;
+      for (const doc of progressResult.documents as any[]) {
+        totalMinutes += (doc.watchedMinutes || 0);
+      }
+      hoursWatched = Math.round(totalMinutes / 60 * 10) / 10;
+    } catch {}
+
+    let certificates = 0;
+    try {
+      const certResult = await c.env.DB.prepare(
+        "SELECT COUNT(*) as count FROM user_packages WHERE user_id = ? AND status = 'completed'"
+      ).bind(userId).first();
+      certificates = (certResult as any)?.count || 0;
+    } catch {}
+
+    // Streak calculation
+    let currentStreak = 0;
+    try {
+      const activities = await c.env.DB.prepare(
+        "SELECT DISTINCT date(created_at) as day FROM student_activity WHERE user_id = ? ORDER BY day DESC LIMIT 30"
+      ).bind(userId).all();
+
+      const days = (activities.results as any[]).map(r => r.day);
+      const today = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+      if (days.length > 0 && (days[0] === today || days[0] === yesterday)) {
+        currentStreak = 1;
+        for (let i = 1; i < days.length; i++) {
+          const prev = new Date(days[i - 1]);
+          const curr = new Date(days[i]);
+          const diff = (prev.getTime() - curr.getTime()) / 86400000;
+          if (diff === 1) currentStreak++;
+          else break;
+        }
+      }
+    } catch {}
+
+    return c.json({
+      dailyData: (dailyData.results as any[]).map(r => ({
+        date: r.date,
+        videos: r.videos,
+        activities: r.activities,
+      })),
+      subjectProgress,
+      overview: {
+        hoursWatched,
+        coursesEnrolled,
+        certificates,
+        currentStreak,
+      },
+      range,
+    });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// Mount authenticated student routes under /student prefix
+studentApiRoutes.route('/student', studentAuthenticated);
 
 export default studentApiRoutes;

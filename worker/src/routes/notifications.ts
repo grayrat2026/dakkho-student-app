@@ -1,6 +1,7 @@
 /**
  * Notifications routes — GET, POST
  * In-app notifications stored in Appwrite + logged to D1
+ * Also sends OneSignal push notifications
  */
 
 import { Hono } from 'hono';
@@ -11,6 +12,7 @@ import { listDocuments, createDocument, Query } from '../lib/appwrite';
 import { APPWRITE_COLLECTIONS } from '../lib/types';
 import { logAudit } from '../lib/audit';
 import { getErrorMessage } from '../lib/utils';
+import { sendPushNotification, getUserPushTokens } from '../lib/onesignal';
 
 const notificationRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -121,6 +123,7 @@ notificationRoutes.post('/', async (c) => {
     }
 
     const created: Record<string, unknown>[] = [];
+    let failedCount = 0;
     let targetType = 'user';
     let targetId = targetUserId || '';
 
@@ -151,7 +154,7 @@ notificationRoutes.post('/', async (c) => {
             });
             created.push(doc);
           } catch (docErr) {
-            // Skip individual failures
+            failedCount++;
             console.error('Failed to create notification for user:', userObj.$id, getErrorMessage(docErr));
           }
         }
@@ -181,6 +184,7 @@ notificationRoutes.post('/', async (c) => {
           });
           created.push(doc);
         } catch (docErr) {
+          failedCount++;
           console.error('Failed to create notification for user:', userObj.$id, getErrorMessage(docErr));
         }
       }
@@ -197,10 +201,45 @@ notificationRoutes.post('/', async (c) => {
         });
         created.push(doc);
       } catch (docErr) {
+        failedCount++;
         console.error('Failed to create notification:', getErrorMessage(docErr));
       }
     } else {
       return c.json({ error: 'Specify targetAll, targetUserId, or targetInstitute' }, 400);
+    }
+
+    // Send OneSignal push notification in addition to in-app
+    try {
+      if (targetAll) {
+        await sendPushNotification(c.env, {
+          title,
+          message,
+          targetSegment: 'All',
+          url: actionUrl || undefined,
+        });
+      } else if (targetUserId) {
+        const pushTokens = await getUserPushTokens(c.env, targetUserId);
+        if (pushTokens.length > 0) {
+          await sendPushNotification(c.env, {
+            title,
+            message,
+            targetPlayerIds: pushTokens,
+            url: actionUrl || undefined,
+          });
+        }
+      } else if (targetInstitute) {
+        // For institute targeting, send broadcast with data filter
+        await sendPushNotification(c.env, {
+          title,
+          message,
+          targetSegment: 'All',
+          url: actionUrl || undefined,
+          data: { institute: targetInstitute },
+        });
+      }
+    } catch (pushErr) {
+      console.error('Push notification failed:', getErrorMessage(pushErr));
+      // Non-fatal — in-app notification was still created
     }
 
     // ALWAYS log to D1 notification_logs (even if 0 Appwrite docs created)
@@ -216,7 +255,7 @@ notificationRoutes.post('/', async (c) => {
       targetType,
       targetId,
       created.length,
-      0, // failedCount — we skip individual failures silently
+      failedCount,
       logMetadata,
       user.id
     ).run();
@@ -228,9 +267,10 @@ notificationRoutes.post('/', async (c) => {
       targetUserId,
       targetInstitute,
       sentCount: created.length,
+      failedCount,
     });
 
-    return c.json({ created, count: created.length, logged: true });
+    return c.json({ created, count: created.length, failedCount, logged: true });
   } catch (error) {
     const message = getErrorMessage(error);
     return c.json({ error: message }, 500);

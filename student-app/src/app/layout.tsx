@@ -61,7 +61,7 @@ export default function RootLayout({
                 OneSignal.init({
                   appId: "ba6c42b2-d564-4254-b422-a2bed67d8b0f",
                   safari_web_id: "web.onesignal.auto.028d9952-ba2c-477b-babc-6aee5c5ba0de",
-                  notifyButton: { enable: true },
+                  notifyButton: { enable: false },
                 });
               });
             `,
