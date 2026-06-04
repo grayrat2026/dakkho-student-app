@@ -20,6 +20,13 @@ import ConfigPanel from '@/components/admin/config-panel';
 import EmailPanel from '@/components/admin/email-panel';
 import AnalyticsPanel from '@/components/admin/analytics-panel';
 import SettingsPanel from '@/components/admin/settings-panel';
+import InstituteRequests from '@/components/admin/institute-requests';
+import CouponsPanel from '@/components/admin/coupons-panel';
+import DiscountsPanel from '@/components/admin/discounts-panel';
+import EventsPanel from '@/components/admin/events-panel';
+import LiveClassesPanel from '@/components/admin/live-classes-panel';
+import PaymentsPanel from '@/components/admin/payments-panel';
+import PushPanel from '@/components/admin/push-panel';
 
 const pageComponents: Record<string, React.ComponentType> = {
   dashboard: Dashboard,
@@ -29,6 +36,13 @@ const pageComponents: Record<string, React.ComponentType> = {
   instructors: InstructorsTable,
   categories: CategoriesTable,
   institutes: InstitutesTable,
+  'institute-requests': InstituteRequests,
+  coupons: CouponsPanel,
+  discounts: DiscountsPanel,
+  events: EventsPanel,
+  'live-classes': LiveClassesPanel,
+  payments: PaymentsPanel,
+  push: PushPanel,
   notifications: NotificationsPanel,
   config: ConfigPanel,
   email: EmailPanel,
@@ -44,10 +58,14 @@ export default function AdminClientPage({ currentPage: initialPage }: { currentP
   const [isDesktop, setIsDesktop] = useState(false);
   const [currentPage, setCurrentPage] = useState(initialPage);
 
-  // Helper: extract page name from URL path (handles trailing slashes)
+  // Helper: extract page name from URL path (handles trailing slashes and hyphens)
   const getPageFromPath = (pathname: string): string => {
     const clean = pathname.replace(/^\/+|\/+$/g, ''); // strip leading/trailing slashes
-    const firstSegment = clean.split('/')[0] || 'dashboard';
+    const segments = clean.split('/');
+    // Try multi-segment pages first (e.g., "institute-requests", "live-classes")
+    const twoSegment = segments.length >= 2 ? `${segments[0]}-${segments[1]}` : '';
+    if (validPages.includes(twoSegment)) return twoSegment;
+    const firstSegment = segments[0] || 'dashboard';
     return validPages.includes(firstSegment) ? firstSegment : 'dashboard';
   };
 

@@ -210,3 +210,36 @@ Stage Summary:
 - OneSignal: Secrets configured ✅
 - Student API: All public endpoints verified ✅
 - Admin API: All new admin routes mounted ✅
+---
+Task ID: 8b
+Agent: UI Builder Batch 2
+Task: Create 3 admin UI component files
+
+Work Log:
+- Created /src/components/admin/live-classes-panel.tsx: Live class scheduling & management panel with create dialog (title, title_bn, description, scheduled_at, duration, platform selector, meeting URL, course_id), table + mobile card views, status badges (scheduled/live/completed/cancelled), cancel action, join link
+- Created /src/components/admin/discounts-panel.tsx: Discount management panel with create dialog (name, name_bn, description, type %/flat, value, applicable_type, valid_from/until, auto-apply checkbox), table + mobile card views, deactivate action, auto-apply badge
+- Created /src/components/admin/push-panel.tsx: Push notification management with stats cards (subscribers, notifications sent), broadcast dialog (title/message in EN/BN, URL), notification logs table + mobile cards showing sent/failed counts
+- All 3 files follow dark theme pattern: glass-card, bg-white/5 inputs, gradient-primary buttons, framer-motion animations, loading skeleton states, responsive md:hidden layouts
+
+Stage Summary:
+- live-classes-panel.tsx: Schedule + manage live classes ✅
+- discounts-panel.tsx: Create + manage discounts ✅
+- push-panel.tsx: Broadcast push + view logs ✅
+---
+Task ID: 8a
+Agent: UI Builder Batch 1
+Task: Create 4 admin UI component files
+
+Work Log:
+- Read worklog.md and categories-table.tsx for existing patterns
+- Created /src/components/admin/institute-requests.tsx: Institute request management with pending/approved/rejected filter, approve/reject actions, reject dialog with admin note, status badges, desktop table + mobile cards
+- Created /src/components/admin/coupons-panel.tsx: Coupon CRUD with create dialog (code, type, value, max discount, min purchase, usage limit, dates), active/inactive badges, deactivate action, desktop table + mobile cards
+- Created /src/components/admin/events-panel.tsx: Events & Special Days management with create dialog (title, title_bn, description, type, dates, featured checkbox), type-colored badges, broadcast push action, delete, desktop table + mobile cards
+- Created /src/components/admin/payments-panel.tsx: Payment management with status filter (all/pending/verified/failed/refunded), verify/reject/refund actions, payment config dialog with gateway settings, setup guide button, desktop table + mobile cards
+- All 4 files follow exact same patterns: 'use client', framer-motion, glass-card, bg-[#1A1A2E] dialogs, bg-white/5 inputs, border-white/10, apiGet/apiPost/apiPut/apiDelete from @/lib/api-client, mobile responsive
+
+Stage Summary:
+- institute-requests.tsx: created ✅ (approve/reject with dialog, status filter, mobile cards)
+- coupons-panel.tsx: created ✅ (CRUD, create dialog, deactivate, mobile cards)
+- events-panel.tsx: created ✅ (CRUD + broadcast, create dialog, type badges, mobile cards)
+- payments-panel.tsx: created ✅ (verify/reject/refund, config dialog, status filter, mobile cards)

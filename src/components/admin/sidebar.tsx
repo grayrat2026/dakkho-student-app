@@ -18,6 +18,13 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  FileQuestion,
+  Tag,
+  Percent,
+  Calendar,
+  VideoIcon,
+  CreditCard,
+  Send,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -29,6 +36,13 @@ const navItems = [
   { id: 'instructors', label: 'Instructors', icon: GraduationCap },
   { id: 'categories', label: 'Categories', icon: Tags },
   { id: 'institutes', label: 'Institutes', icon: Building2 },
+  { id: 'institute-requests', label: 'Inst. Requests', icon: FileQuestion },
+  { id: 'coupons', label: 'Coupons', icon: Tag },
+  { id: 'discounts', label: 'Discounts', icon: Percent },
+  { id: 'events', label: 'Events', icon: Calendar },
+  { id: 'live-classes', label: 'Live Classes', icon: VideoIcon },
+  { id: 'payments', label: 'Payments', icon: CreditCard },
+  { id: 'push', label: 'Push Notify', icon: Send },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'config', label: 'App Config', icon: Settings },
   { id: 'email', label: 'Email', icon: Mail },
@@ -41,7 +55,15 @@ export default function Sidebar() {
   const router = useRouter();
   const { sidebarCollapsed, toggleSidebar, sidebarMobileOpen, setSidebarMobileOpen } = useAdminStore();
 
-  const currentPage = pathname?.replace(/^\/+|\/+$/g, '').split('/')[0] || 'dashboard';
+  const currentPage = (() => {
+    const clean = (pathname || '').replace(/^\/+|\/+$/g, '');
+    const segments = clean.split('/');
+    // Try two-segment match first (e.g., institute-requests, live-classes)
+    const twoSeg = segments.length >= 2 ? `${segments[0]}-${segments[1]}` : '';
+    if (navItems.some(item => item.id === twoSeg)) return twoSeg;
+    const first = segments[0] || 'dashboard';
+    return navItems.some(item => item.id === first) ? first : 'dashboard';
+  })();
 
   const handleNav = (id: string) => {
     router.push(`/${id}`);

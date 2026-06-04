@@ -16,6 +16,13 @@ const pageTitles: Record<string, string> = {
   instructors: 'Instructors',
   categories: 'Categories',
   institutes: 'Institutes',
+  'institute-requests': 'Institute Requests',
+  coupons: 'Coupons',
+  discounts: 'Discounts',
+  events: 'Events & Special Days',
+  'live-classes': 'Live Classes',
+  payments: 'Payments',
+  push: 'Push Notifications',
   notifications: 'Notifications',
   config: 'App Config',
   email: 'Email',
@@ -28,7 +35,13 @@ export default function Header() {
   const { adminUser, setAdminUser, setSidebarMobileOpen, sidebarCollapsed } = useAdminStore();
   const { toast } = useToast();
 
-  const currentPage = pathname?.replace(/^\/+|\/+$/g, '').split('/')[0] || 'dashboard';
+  const currentPage = (() => {
+    const clean = (pathname || '').replace(/^\/+|\/+$/g, '');
+    const segments = clean.split('/');
+    const twoSeg = segments.length >= 2 ? `${segments[0]}-${segments[1]}` : '';
+    if (pageTitles[twoSeg]) return twoSeg;
+    return segments[0] || 'dashboard';
+  })();
   const pageTitle = pageTitles[currentPage] || 'Dashboard';
 
   const handleLogout = async () => {
