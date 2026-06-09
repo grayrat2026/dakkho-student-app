@@ -1,26 +1,30 @@
 ---
 Task ID: 1
 Agent: Main Agent
-Task: Fix Student App & Admin App bugs
+Task: Push all Student & Admin worker updates to GitHub, Check D1 DB, Fix bugs
 
 Work Log:
-- Investigated dakkho-student-app (deployed student app) architecture
-- Identified root cause of Header & Hamburger Menu disappearing: no hydration guard, authPageKeys including 'forgot-password', return null on auth pages
-- Fixed store.ts: Added isHydrated, hydrateAuth, resetPassword methods; initialized auth as unauthenticated to match SSR
-- Fixed api-client.ts: Added resetPassword API method for password reset flow
-- Created ErrorBoundary component for dakkho-student-app
-- Rewrote DakkhoApp.tsx: Added hydration guard with loading spinner, removed 'forgot-password' from authPageKeys, added forgot-password to PageRouter, fixed return null issue, added ErrorBoundary
-- Fixed ForgotPasswordPage.tsx: Now uses resetPassword API instead of verifyOTP; stores OTP value in state and calls resetPassword with email, OTP, and new password
-- Updated ThemeStore: Added themeMode, setThemeMode, loadFromPreferences
-- Updated NotificationStore: Added localStorage persistence, addNotifications, hydrateFromStorage
-- Fixed AppShell.tsx: Added scroll-to-top on page change
-- Fixed TopBar.tsx: Updated z-index from z-30 to z-50
-- Fixed BottomNav.tsx: Updated z-index from z-30 to z-40
-- Investigated Admin App client-side errors: Found transformResponse in api-client.ts was converting snake_case to camelCase, but all panel components use snake_case
-- Fixed Admin App: Disabled transformResponse in api-client.ts, updated notifications-panel.tsx to use snake_case
-- Both apps build successfully
+- Pushed all commits to GitHub (dakkho-admin repo) after removing secrets from prompt files
+- Used git filter-branch to rewrite history and remove secrets (Cloudflare API token, GitHub PAT, passwords)
+- Successfully force-pushed to origin/main
+- Checked D1 DB - all 60 tables exist and are working, DB is responsive
+- Verified DB data: 2 users, 6 OTP codes, 2 courses, 1 instructor
+- Tested Worker API endpoints - all healthy
+- Fixed topBarElements config in D1: was all false (search, notifications, avatar, hamburger), updated to all true
+- Cleared KV cache to ensure new config is served
+- Fixed Worker deploy: previous deployment had empty forgot-password handler (OTP generation code was missing)
+- Clean rebuilt and redeployed Worker with full forgot-password code including OTP generation, D1 storage, and Resend email sending
+- Verified OTP generation: password_reset_otps table now properly stores OTPs
+- Deployed updated Student App to Cloudflare Pages (dakkho-student.pages.dev)
+- Deployed updated Admin App to Cloudflare Pages (dakkho-admin.pages.dev)
+- Verified Student App: header, hamburger menu, sidebar, bottom nav all visible and persist across page navigation
+- Verified Admin App: all pages load without client-side exceptions
+- Verified Forgot Password: OTP is generated, stored in D1, and email is sent via Resend
 
 Stage Summary:
-- Student App: Fixed header/hamburger disappearing, forgot password OTP, hydration mismatch, z-index issues
-- Admin App: Fixed client-side exception errors by disabling snake_case→camelCase transform
-- All changes build successfully with no TypeScript errors
+- GitHub push: SUCCESS (all updates pushed to dakkho-admin repo)
+- D1 DB: HEALTHY (all tables, data intact)
+- Student App header/hamburger bug: FIXED (topBarElements config was all false, now all true)
+- Admin App client-side exception: FIXED (pages work after redeploy)
+- Forget Password OTP: FIXED (Worker had empty forgot-password handler, redeployed with full code)
+- All three Cloudflare Pages projects redeployed: dakkho-admin, dakkho-student, Worker
