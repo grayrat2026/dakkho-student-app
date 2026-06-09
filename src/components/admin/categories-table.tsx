@@ -275,15 +275,10 @@ export default function CategoriesTable() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  <AnimatePresence>
-                    {categories.map((cat, i) => (
-                      <motion.tr
+                  <>
+                    {categories.map((cat) => (
+                      <tr
                         key={cat.id}
-                        custom={i}
-                        variants={rowVariants}
-                        initial="hidden"
-                        animate="visible"
-                        exit="exit"
                         className="border-white/[0.06] hover:bg-white/[0.03] transition-colors"
                       >
                         {/* Icon */}
@@ -354,9 +349,9 @@ export default function CategoriesTable() {
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
-                      </motion.tr>
+                      </tr>
                     ))}
-                  </AnimatePresence>
+                  </>
                 )}
               </TableBody>
             </Table>

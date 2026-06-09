@@ -18,7 +18,7 @@ import { getErrorMessage, generateId, getSessionExpiry } from '../lib/utils';
 const studentApiRoutes = new Hono<{ Bindings: Env; Variables: StudentAuthVariables }>();
 
 // ─── Helper: Get student auth from header ───
-async function getStudentAuth(c: any): Promise<{ authorized: boolean; userId?: string; email?: string; name?: string }> {
+async function getStudentAuth(c: any): Promise<{ authorized: boolean; userId?: string; email?: string; name?: string; emailVerified?: boolean }> {
   const authHeader = c.req.header('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return { authorized: false };
@@ -442,6 +442,9 @@ studentApiRoutes.get('/video/stream-url', async (c) => {
     if (!auth.authorized) {
       return c.json({ error: 'Unauthorized — login required to stream videos' }, 401);
     }
+    if (!auth.emailVerified) {
+      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+    }
 
     const key = c.req.query('key');
     const bucket = c.req.query('bucket') || 'videos';
@@ -460,7 +463,7 @@ studentApiRoutes.get('/video/stream-url', async (c) => {
     if (auth.userId) {
       // Look up the video record to get the course_id
       const video = await c.env.DB.prepare(
-        'SELECT course_id, is_preview FROM videos WHERE storage_key = ? OR id = ? LIMIT 1'
+        'SELECT course_id, is_preview FROM videos WHERE video_url = ? OR id = ? LIMIT 1'
       ).bind(key, key).first<{ course_id: string; is_preview: number }>();
 
       if (video) {
@@ -534,8 +537,8 @@ studentApiRoutes.post('/auth/signup', async (c) => {
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
     await c.env.DB.prepare(
-      'INSERT INTO password_reset_otps (email, otp, expires_at, used) VALUES (?, ?, ?, 0)'
-    ).bind(email, verifyOtp, otpExpiresAt).run();
+      'INSERT INTO password_reset_otps (email, otp, purpose, expires_at, used) VALUES (?, ?, ?, ?, 0)'
+    ).bind(email, verifyOtp, 'email_verification', otpExpiresAt).run();
 
     // Send verification email
     try {
@@ -706,6 +709,9 @@ studentApiRoutes.get('/auth/me', async (c) => {
         id: auth.userId,
         name: u?.full_name || auth.name || '',
         email: auth.email || u?.email || '',
+        phone: u?.phone || null,
+        bio: u?.bio || null,
+        semester: u?.semester || null,
         instituteId: u?.institute_id || null,
         technology: u?.technology || null,
         emailVerified: !!u?.email_verified,
@@ -730,10 +736,10 @@ studentApiRoutes.post('/auth/verify-otp', async (c) => {
       return c.json({ error: 'email and otp are required' }, 400);
     }
 
-    // Validate OTP against stored codes
+    // Validate OTP against stored codes — only email_verification purpose
     const otpRecord = await c.env.DB.prepare(
-      'SELECT * FROM password_reset_otps WHERE email = ? AND otp = ? AND expires_at > datetime("now") AND used = 0 ORDER BY created_at DESC LIMIT 1'
-    ).bind(email, otp).first();
+      'SELECT * FROM password_reset_otps WHERE email = ? AND otp = ? AND purpose = ? AND expires_at > datetime("now") AND used = 0 ORDER BY created_at DESC LIMIT 1'
+    ).bind(email, otp, 'email_verification').first();
 
     if (!otpRecord) {
       return c.json({ success: false, message: 'Invalid or expired OTP' }, 400);
@@ -824,10 +830,10 @@ studentApiRoutes.post('/auth/forgot-password', async (c) => {
     ).bind(email).first();
 
     if (user) {
-      // Delete any previous unused OTPs for this email
+      // Delete any previous unused OTPs for this email with password_reset purpose
       await c.env.DB.prepare(
-        'DELETE FROM password_reset_otps WHERE email = ? AND used = 0'
-      ).bind(email).run();
+        'DELETE FROM password_reset_otps WHERE email = ? AND used = 0 AND purpose = ?'
+      ).bind(email, 'password_reset').run();
 
       // Generate a 6-digit OTP
       const otp = generateOTP();
@@ -835,8 +841,8 @@ studentApiRoutes.post('/auth/forgot-password', async (c) => {
       // Store OTP in D1 with 5-minute expiration
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       await c.env.DB.prepare(
-        'INSERT INTO password_reset_otps (email, otp, expires_at) VALUES (?, ?, ?)'
-      ).bind(email, otp, expiresAt).run();
+        'INSERT INTO password_reset_otps (email, otp, purpose, expires_at) VALUES (?, ?, ?, ?)'
+      ).bind(email, otp, 'password_reset', expiresAt).run();
 
       // Send OTP email via Resend
       try {
@@ -867,10 +873,10 @@ studentApiRoutes.post('/auth/reset-password', async (c) => {
       return c.json({ error: 'Password must be at least 8 characters' }, 400);
     }
 
-    // Look up the most recent unused OTP for this email
+    // Look up the most recent unused OTP for this email with password_reset purpose
     const otpRecord = await c.env.DB.prepare(
-      'SELECT id, otp, expires_at, used FROM password_reset_otps WHERE email = ? AND used = 0 ORDER BY created_at DESC LIMIT 1'
-    ).bind(email).first<{ id: number; otp: string; expires_at: string; used: number }>();
+      'SELECT id, otp, expires_at, used FROM password_reset_otps WHERE email = ? AND purpose = ? AND used = 0 ORDER BY created_at DESC LIMIT 1'
+    ).bind(email, 'password_reset').first<{ id: number; otp: string; expires_at: string; used: number }>();
 
     if (!otpRecord) {
       return c.json({ error: 'Invalid or expired reset code. Please request a new one.' }, 400);
@@ -927,10 +933,15 @@ studentApiRoutes.post('/auth/resend-otp', async (c) => {
     ).bind(email).first();
 
     if (user) {
-      // Delete any previous unused OTPs for this email
+      // Delete any previous unused OTPs for this email (both purposes — resend can be for email_verification or password_reset)
+      const userForPurpose = await c.env.DB.prepare(
+        'SELECT email_verified FROM users WHERE email = ?'
+      ).bind(email).first<{ email_verified: number }>();
+      const resendPurpose = (userForPurpose && !userForPurpose.email_verified) ? 'email_verification' : 'password_reset';
+
       await c.env.DB.prepare(
-        'DELETE FROM password_reset_otps WHERE email = ? AND used = 0'
-      ).bind(email).run();
+        'DELETE FROM password_reset_otps WHERE email = ? AND used = 0 AND purpose = ?'
+      ).bind(email, resendPurpose).run();
 
       // Generate a new 6-digit OTP
       const otp = generateOTP();
@@ -938,19 +949,31 @@ studentApiRoutes.post('/auth/resend-otp', async (c) => {
       // Store OTP in D1 with 5-minute expiration
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       await c.env.DB.prepare(
-        'INSERT INTO password_reset_otps (email, otp, expires_at) VALUES (?, ?, ?)'
-      ).bind(email, otp, expiresAt).run();
+        'INSERT INTO password_reset_otps (email, otp, purpose, expires_at) VALUES (?, ?, ?, ?)'
+      ).bind(email, otp, resendPurpose, expiresAt).run();
 
       // Send OTP email via Resend
       try {
-        await sendPasswordResetEmail(c.env, email, otp);
+        if (resendPurpose === 'email_verification') {
+          const { sendEmail } = await import('../lib/resend');
+          await sendEmail(c.env, email, 'DAKKHO - Email Verification Code', `
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
+              <h2 style="color: #0ea5e9;">DAKKHO Email Verification</h2>
+              <p>Your verification code is:</p>
+              <div style="font-size: 32px; font-weight: bold; color: #0ea5e9; text-align: center; padding: 20px; background: #f0f9ff; border-radius: 8px; letter-spacing: 4px;">${otp}</div>
+              <p style="color: #666; font-size: 14px;">This code expires in 5 minutes.</p>
+            </div>
+          `);
+        } else {
+          await sendPasswordResetEmail(c.env, email, otp);
+        }
       } catch (emailError) {
-        console.error('Failed to resend password reset email:', emailError);
+        console.error('Failed to resend OTP email:', emailError);
       }
     }
 
     // Always return success for security
-    return c.json({ success: true, message: 'If an account exists, a new reset code has been sent.' });
+    return c.json({ success: true, message: 'If an account exists, a new code has been sent.' });
   } catch (error) {
     return c.json({ error: getErrorMessage(error) }, 500);
   }
@@ -967,6 +990,9 @@ studentApiRoutes.post('/institutes/requests', async (c) => {
     const auth = await getStudentAuth(c);
     if (!auth.authorized) {
       return c.json({ error: 'Unauthorized' }, 401);
+    }
+    if (!auth.emailVerified) {
+      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
     }
 
     const data = await c.req.json();
@@ -1009,6 +1035,9 @@ studentApiRoutes.get('/institutes/requests/mine', async (c) => {
     if (!auth.authorized) {
       return c.json({ error: 'Unauthorized' }, 401);
     }
+    if (!auth.emailVerified) {
+      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+    }
 
     const result = await c.env.DB.prepare(
       'SELECT * FROM institute_requests WHERE user_id = ? ORDER BY created_at DESC'
@@ -1025,6 +1054,9 @@ studentApiRoutes.post('/push/register', async (c) => {
     const auth = await getStudentAuth(c);
     if (!auth.authorized) {
       return c.json({ error: 'Unauthorized' }, 401);
+    }
+    if (!auth.emailVerified) {
+      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
     }
 
     const { push_token, device_type, device_info } = await c.req.json();
@@ -1046,6 +1078,9 @@ studentApiRoutes.delete('/push/unregister', async (c) => {
     if (!auth.authorized) {
       return c.json({ error: 'Unauthorized' }, 401);
     }
+    if (!auth.emailVerified) {
+      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+    }
 
     const { push_token } = await c.req.json();
     if (!push_token) {
@@ -1065,6 +1100,9 @@ studentApiRoutes.post('/payments/submit', async (c) => {
     const auth = await getStudentAuth(c);
     if (!auth.authorized) {
       return c.json({ error: 'Unauthorized' }, 401);
+    }
+    if (!auth.emailVerified) {
+      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
     }
 
     const { package_id, trx_id, phone, proof_url } = await c.req.json();
@@ -1098,6 +1136,9 @@ studentApiRoutes.get('/packages/mine', async (c) => {
     const auth = await getStudentAuth(c);
     if (!auth.authorized) {
       return c.json({ error: 'Unauthorized' }, 401);
+    }
+    if (!auth.emailVerified) {
+      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
     }
 
     const result = await c.env.DB.prepare(
@@ -1839,6 +1880,6 @@ studentAuthenticated.put('/preferences', async (c) => {
 });
 
 // Mount authenticated routes
-studentApiRoutes.route('/student', studentAuthenticated);
+studentApiRoutes.route('/', studentAuthenticated);
 
 export default studentApiRoutes;

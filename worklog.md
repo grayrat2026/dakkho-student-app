@@ -1,30 +1,19 @@
+# Dakkho Project Worklog
+
 ---
 Task ID: 1
 Agent: Main Agent
-Task: Push all Student & Admin worker updates to GitHub, Check D1 DB, Fix bugs
+Task: Full codebase analysis - Worker, Student App, Admin App, Git/Deployment
 
 Work Log:
-- Pushed all commits to GitHub (dakkho-admin repo) after removing secrets from prompt files
-- Used git filter-branch to rewrite history and remove secrets (Cloudflare API token, GitHub PAT, passwords)
-- Successfully force-pushed to origin/main
-- Checked D1 DB - all 60 tables exist and are working, DB is responsive
-- Verified DB data: 2 users, 6 OTP codes, 2 courses, 1 instructor
-- Tested Worker API endpoints - all healthy
-- Fixed topBarElements config in D1: was all false (search, notifications, avatar, hamburger), updated to all true
-- Cleared KV cache to ensure new config is served
-- Fixed Worker deploy: previous deployment had empty forgot-password handler (OTP generation code was missing)
-- Clean rebuilt and redeployed Worker with full forgot-password code including OTP generation, D1 storage, and Resend email sending
-- Verified OTP generation: password_reset_otps table now properly stores OTPs
-- Deployed updated Student App to Cloudflare Pages (dakkho-student.pages.dev)
-- Deployed updated Admin App to Cloudflare Pages (dakkho-admin.pages.dev)
-- Verified Student App: header, hamburger menu, sidebar, bottom nav all visible and persist across page navigation
-- Verified Admin App: all pages load without client-side exceptions
-- Verified Forgot Password: OTP is generated, stored in D1, and email is sent via Resend
+- Launched 4 parallel agents to analyze Worker backend, Student App, Admin App, and Git/Deployment config
+- Worker Backend: Found studentAuthenticated router NEVER MOUNTED (dead code), storage_key column doesn't exist, /auth/me incomplete
+- Student App: Found mock reviews, My Courses shows all courses not enrolled, template-generated content
+- Admin App: Found motion.tr causing DOM nesting errors (why /instructors/ crashes), no hardcoded mock data found
+- Git: Single monorepo at github.com/grayrat2026/dakkho-admin.git, student-app is production version
 
 Stage Summary:
-- GitHub push: SUCCESS (all updates pushed to dakkho-admin repo)
-- D1 DB: HEALTHY (all tables, data intact)
-- Student App header/hamburger bug: FIXED (topBarElements config was all false, now all true)
-- Admin App client-side exception: FIXED (pages work after redeploy)
-- Forget Password OTP: FIXED (Worker had empty forgot-password handler, redeployed with full code)
-- All three Cloudflare Pages projects redeployed: dakkho-admin, dakkho-student, Worker
+- ROOT CAUSE of profile issues: studentAuthenticated router not mounted → all student profile/settings/notifications endpoints return 404
+- ROOT CAUSE of Admin page crashes: motion.tr invalid DOM nesting inside Table
+- ROOT CAUSE of My Courses bug: no enrollment filtering, shows all courses
+- Student App mock data: 3 fake reviews in CourseDetailPage, template "What You'll Learn", generated section titles

@@ -16,6 +16,7 @@ export interface StudentAuthVariables {
 /**
  * Middleware that validates student session from Authorization header
  * Sets c.set('studentId'), c.set('studentEmail'), c.set('studentName')
+ * Also enforces email verification — unverified users get 403
  */
 export async function studentAuthMiddleware(c: Context<{ Bindings: Env; Variables: StudentAuthVariables }>, next: Next) {
   const authHeader = c.req.header('Authorization');
@@ -28,6 +29,11 @@ export async function studentAuthMiddleware(c: Context<{ Bindings: Env; Variable
 
   if (!result.authorized) {
     return c.json({ error: 'Session expired — please login again' }, 401);
+  }
+
+  // Enforce email verification for all authenticated routes
+  if (!result.emailVerified) {
+    return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
   }
 
   c.set('studentId', result.userId!);

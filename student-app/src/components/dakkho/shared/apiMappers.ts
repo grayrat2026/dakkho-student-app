@@ -57,6 +57,7 @@ export function mapApiCourse(raw: any): Course {
     isFeatured: Boolean(raw.isFeatured ?? raw.is_featured ?? false),
     tags: Array.isArray(raw.tags) ? raw.tags : [],
     price: Number(raw.price || 0),
+    learningItems: Array.isArray(raw.learningItems || raw.learning_items) ? (raw.learningItems || raw.learning_items) : undefined,
   };
 }
 

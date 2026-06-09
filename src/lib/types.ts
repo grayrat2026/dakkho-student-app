@@ -590,6 +590,7 @@ export interface DashboardStats {
   pendingPayments: number;
   activePackages: number;
   totalAchievements: number;
+  trends?: Partial<Record<keyof DashboardStats, number>>;
 }
 
 // ============================================================

@@ -50,6 +50,8 @@ export interface Course {
   isFeatured: boolean;
   tags: string[];
   price: number;
+  /** Learning objectives from the API (optional — not all courses have this) */
+  learningItems?: string[];
 }
 
 export interface Video {

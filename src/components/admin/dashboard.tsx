@@ -353,7 +353,7 @@ export default function Dashboard() {
             : statCardDefs.map((def) => (
                 <StatCard
                   key={def.title}
-                  def={def}
+                  def={{ ...def, trend: stats?.trends?.[def.key] ?? def.trend }}
                   value={stats?.[def.key] ?? 0}
                   loading={loading}
                 />

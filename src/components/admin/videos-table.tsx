@@ -471,15 +471,10 @@ export default function VideosTable() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  <AnimatePresence>
-                    {videos.map((video, i) => (
-                      <motion.tr
+                  <>
+                    {videos.map((video) => (
+                      <tr
                         key={video.id}
-                        custom={i}
-                        variants={rowVariants}
-                        initial="hidden"
-                        animate="visible"
-                        exit="exit"
                         className="border-white/[0.06] hover:bg-white/[0.03] transition-colors"
                       >
                         <TableCell className="font-medium">
@@ -549,9 +544,9 @@ export default function VideosTable() {
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
-                      </motion.tr>
+                      </tr>
                     ))}
-                  </AnimatePresence>
+                  </>
                 )}
               </TableBody>
             </Table>

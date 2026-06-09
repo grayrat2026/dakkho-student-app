@@ -449,15 +449,10 @@ export default function InstructorsTable() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  <AnimatePresence>
-                    {instructors.map((inst, i) => (
-                      <motion.tr
+                  <>
+                    {instructors.map((inst) => (
+                      <tr
                         key={inst.id}
-                        custom={i}
-                        variants={rowVariants}
-                        initial="hidden"
-                        animate="visible"
-                        exit="exit"
                         className="border-white/[0.06] hover:bg-white/[0.03] transition-colors"
                       >
                         <TableCell className="font-medium">
@@ -527,9 +522,9 @@ export default function InstructorsTable() {
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
-                      </motion.tr>
+                      </tr>
                     ))}
-                  </AnimatePresence>
+                  </>
                 )}
               </TableBody>
             </Table>

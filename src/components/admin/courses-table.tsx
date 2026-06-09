@@ -362,6 +362,12 @@ export default function CoursesTable() {
     </span>
   );
 
+  // ---- Instructor name lookup ----
+  const getInstructorName = (instructorId: string) => {
+    const instructor = instructors.find((inst) => inst.id === instructorId);
+    return instructor?.name || instructorId.slice(0, 8) + '...';
+  };
+
   // -------------------------------------------------------------------------
   // JSX
   // -------------------------------------------------------------------------
@@ -550,13 +556,8 @@ export default function CoursesTable() {
               {/* ---- Data rows ---- */}
               {!loading &&
                 !error &&
-                courses.map((course, idx) => (
-                  <motion.tr
-                    key={course.id}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.03, duration: 0.2 }}
-                  >
+                courses.map((course) => (
+                  <tr key={course.id}>
                     {/* Thumbnail + Title */}
                     <td>
                       <div className="flex items-center gap-3">
@@ -592,7 +593,7 @@ export default function CoursesTable() {
                     {/* Instructor */}
                     <td className="hidden lg:table-cell text-muted-foreground text-sm">
                       {course.instructorId ? (
-                        <span className="truncate max-w-[120px] block">{course.instructorId}</span>
+                        <span className="truncate max-w-[120px] block">{getInstructorName(course.instructorId)}</span>
                       ) : (
                         <span className="text-muted-foreground/50">—</span>
                       )}
@@ -693,7 +694,7 @@ export default function CoursesTable() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
-                  </motion.tr>
+                  </tr>
                 ))}
             </tbody>
           </table>

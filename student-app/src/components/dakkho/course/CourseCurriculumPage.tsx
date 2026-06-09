@@ -27,7 +27,7 @@ export function CourseCurriculumPage() {
         { length: Math.ceil(videos.length / 8) },
         (_, i) => ({
           id: `section-${i + 1}`,
-          title: `Section ${i + 1}: ${i === 0 ? 'Fundamentals' : i === 1 ? 'Core Concepts' : i === 2 ? 'Advanced Topics' : 'Projects & Practice'}`,
+          title: `Section ${i + 1}`,
           videos: videos.slice(i * 8, (i + 1) * 8),
         })
       )

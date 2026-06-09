@@ -503,13 +503,8 @@ export default function UsersTable() {
               {/* ---- Data rows ---- */}
               {!loading &&
                 !error &&
-                users.map((user, idx) => (
-                  <motion.tr
-                    key={user.id}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.03, duration: 0.2 }}
-                  >
+                users.map((user) => (
+                  <tr key={user.id}>
                     {/* Avatar + Name */}
                     <td>
                       <div className="flex items-center gap-3">
@@ -587,7 +582,7 @@ export default function UsersTable() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
-                  </motion.tr>
+                  </tr>
                 ))}
             </tbody>
           </table>

@@ -1,19 +1,105 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { BookOpen, Clock, CheckCircle, Loader2 } from 'lucide-react';
 import { useCourses } from '@/lib/data-hooks';
+import { packageApi } from '@/lib/api-client';
+import type { UserPackage } from '@/lib/api-client';
+import { useWatchProgressStore, useAuthStore } from '@/lib/store';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
+
+interface EnrolledCourseInfo {
+  courseId: string;
+  progress: number; // 0–100
+}
 
 export function MyCoursesPage() {
   const [activeTab, setActiveTab] = useState<'in-progress' | 'completed' | 'all'>('all');
-  const { data: courses, loading, error } = useCourses();
+  const { data: courses, loading: coursesLoading, error: coursesError } = useCourses();
+  const { isAuthenticated } = useAuthStore();
+  const watchProgress = useWatchProgressStore((s) => s.progress);
 
-  // For now, show all courses as available since enrollment tracking comes from the API
-  const enrolledCourses = courses;
+  const [myPackages, setMyPackages] = useState<UserPackage[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(true);
 
-  const displayCourses = activeTab === 'all' ? enrolledCourses : [];
+  // Fetch the user's active packages to determine enrolled courses
+  const fetchMyPackages = useCallback(async () => {
+    if (!isAuthenticated) {
+      setPackagesLoading(false);
+      return;
+    }
+    setPackagesLoading(true);
+    try {
+      const res = await packageApi.mine();
+      setMyPackages(res.packages || []);
+    } catch {
+      setMyPackages([]);
+    } finally {
+      setPackagesLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    fetchMyPackages();
+  }, [fetchMyPackages]);
+
+  // Derive enrolled course IDs from active packages
+  const enrolledCourseIds = new Set(
+    myPackages
+      .filter((p) => p.status === 'active')
+      .map((p) => p.course_id)
+  );
+
+  // Also include courses that have any watch progress (for free courses)
+  const coursesWithProgress = new Set<string>();
+  for (const wp of Object.values(watchProgress)) {
+    coursesWithProgress.add(wp.courseId);
+  }
+
+  // A course is "enrolled" if the user has an active package OR has watch progress
+  const isEnrolled = (courseId: string) =>
+    enrolledCourseIds.has(courseId) || coursesWithProgress.has(courseId);
+
+  // Filter to only enrolled courses
+  const enrolledCourses = courses.filter((c) => isEnrolled(c.id));
+
+  // Compute per-course progress from watch progress store
+  const getCourseProgress = (courseId: string): number => {
+    const courseVideos = Object.values(watchProgress).filter(
+      (wp) => wp.courseId === courseId
+    );
+    if (courseVideos.length === 0) return 0;
+    const totalProgress = courseVideos.reduce((sum, wp) => sum + wp.progress, 0);
+    return Math.round(totalProgress / courseVideos.length);
+  };
+
+  // Build enrolled course info list
+  const enrolledCourseInfos: EnrolledCourseInfo[] = enrolledCourses.map((c) => ({
+    courseId: c.id,
+    progress: getCourseProgress(c.id),
+  }));
+
+  // Filter by tab
+  const displayCourses = (() => {
+    switch (activeTab) {
+      case 'in-progress':
+        return enrolledCourses.filter((c) => {
+          const info = enrolledCourseInfos.find((i) => i.courseId === c.id);
+          return info && info.progress > 0 && info.progress < 100;
+        });
+      case 'completed':
+        return enrolledCourses.filter((c) => {
+          const info = enrolledCourseInfos.find((i) => i.courseId === c.id);
+          return info && info.progress >= 100;
+        });
+      case 'all':
+      default:
+        return enrolledCourses;
+    }
+  })();
+
+  const loading = coursesLoading || packagesLoading;
 
   if (loading) {
     return (
@@ -24,11 +110,11 @@ export function MyCoursesPage() {
     );
   }
 
-  if (error) {
+  if (coursesError) {
     return (
       <div className="text-center py-16">
         <p className="text-lg font-bold text-red-500">Failed to load courses</p>
-        <p className="text-sm text-muted-foreground mt-2">{error}</p>
+        <p className="text-sm text-muted-foreground mt-2">{coursesError}</p>
       </div>
     );
   }
@@ -71,16 +157,18 @@ export function MyCoursesPage() {
         <CourseCardGrid
           courses={displayCourses}
           showProgress
-          getProgress={() => 0}
+          getProgress={(courseId: string) => getCourseProgress(courseId)}
         />
       ) : (
         <div className="text-center py-16">
           <BookOpen className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
           <h3 className="text-lg font-semibold text-muted-foreground">
-            {activeTab === 'in-progress' ? 'No courses in progress' : activeTab === 'completed' ? 'No completed courses yet' : 'No courses found'}
+            {activeTab === 'in-progress' ? 'No courses in progress' : activeTab === 'completed' ? 'No completed courses yet' : enrolledCourses.length === 0 ? 'No enrolled courses yet' : 'No courses found'}
           </h3>
           <p className="text-sm text-muted-foreground/60 mt-1">
-            {activeTab === 'all' ? 'Enroll in courses to see them here.' : 'Keep learning to see courses here.'}
+            {activeTab === 'all' && enrolledCourses.length === 0
+              ? 'Enroll in courses to see them here.'
+              : 'Keep learning to see courses here.'}
           </p>
         </div>
       )}

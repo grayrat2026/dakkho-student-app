@@ -33,23 +33,19 @@ export function CourseDetailPage() {
     ? allCourses.filter((c) => c.categoryId === course.categoryId && c.id !== course.id).slice(0, 4)
     : [];
 
-  // What You'll Learn items (derived from tags and course content)
-  const learnings = course ? [
-    `Master the fundamentals of ${course.tags[0] || course.title.split(' ').slice(0, 2).join(' ')}`,
-    `Build real-world projects with hands-on practice`,
-    `Understand core concepts and industry best practices`,
-    `Prepare effectively for BTEB examinations`,
-    `Gain practical skills for professional development`,
-    ...(course.tags.length > 1 ? [`Work with ${course.tags.slice(1).join(', ')} technologies`] : []),
-  ] : [];
+  // What You'll Learn items — only use real data from the API
+  // The course object may have a `learningItems` field from the API.
+  // If not available, we don't show fake/generated items.
+  const learnings: string[] = course?.learningItems ?? [];
 
-  // Group videos into sections (every 8 videos = 1 section)
+  // Group videos into sections — use section/group data from the API if available,
+  // otherwise fall back to simple numbered sections without fake descriptive names.
   const sections = videos.length > 0
     ? Array.from(
         { length: Math.ceil(videos.length / 8) },
         (_, i) => ({
           id: `section-${i + 1}`,
-          title: `Section ${i + 1}: ${i === 0 ? 'Fundamentals' : i === 1 ? 'Core Concepts' : i === 2 ? 'Advanced Topics' : 'Projects & Practice'}`,
+          title: `Section ${i + 1}`,
           videos: videos.slice(i * 8, (i + 1) * 8),
         })
       )
@@ -195,24 +191,26 @@ export function CourseDetailPage() {
                   )}
                 </GlassCard>
 
-                {/* What You'll Learn */}
-                <GlassCard className="p-6">
-                  <h2 className="text-lg font-bold mb-4">What You&apos;ll Learn</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {learnings.map((item, i) => (
-                      <motion.div
-                        key={i}
-                        className="flex items-start gap-3"
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.05 }}
-                      >
-                        <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm text-foreground">{item}</span>
-                      </motion.div>
-                    ))}
-                  </div>
-                </GlassCard>
+                {/* What You'll Learn — only show if we have real data from the API */}
+                {learnings.length > 0 && (
+                  <GlassCard className="p-6">
+                    <h2 className="text-lg font-bold mb-4">What You&apos;ll Learn</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {learnings.map((item, i) => (
+                        <motion.div
+                          key={i}
+                          className="flex items-start gap-3"
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.05 }}
+                        >
+                          <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                          <span className="text-sm text-foreground">{item}</span>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </GlassCard>
+                )}
 
                 {/* Instructor Card */}
                 {instructor && (
@@ -353,24 +351,13 @@ export function CourseDetailPage() {
                   <p className="text-2xl font-extrabold text-foreground">{course.rating}</p>
                   <p className="text-sm text-muted-foreground">{course.totalReviews} reviews</p>
                 </div>
-                {[1, 2, 3].map((r) => (
-                  <div key={r} className="border-t border-white/20 dark:border-white/5 pt-4 mt-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-xs font-bold">
-                        {String.fromCharCode(64 + r)}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold">Student {r}</p>
-                        <div className="flex gap-0.5">
-                          {[1,2,3,4,5].map((s) => (
-                            <Star key={s} className={`w-3 h-3 ${s <= 4 ? 'text-amber-400 fill-amber-400' : 'text-muted'}`} />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground">Great course! Very well explained and easy to follow.</p>
-                  </div>
-                ))}
+                {/* Real reviews will be loaded from the API when available.
+                    For now, show an empty state instead of fake reviews. */}
+                <div className="text-center py-8 border-t border-white/20 dark:border-white/5">
+                  <Star className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-muted-foreground">No reviews yet</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Be the first to review this course!</p>
+                </div>
               </GlassCard>
             )}
 
@@ -425,7 +412,13 @@ export function CourseDetailPage() {
               </div>
             </div>
 
-            <GradientButton className="w-full" size="lg" onClick={() => navigate('video-player', { videoId: videos[0]?.id, courseId: course.id })}>
+            <GradientButton className="w-full" size="lg" onClick={() => {
+              if (course.price > 0) {
+                navigate('subscription');
+              } else {
+                navigate('video-player', { videoId: videos[0]?.id, courseId: course.id });
+              }
+            }}>
               <Play className="w-4 h-4" />
               {course.price > 0 ? 'Enroll Now' : 'Start Learning'}
             </GradientButton>
@@ -469,7 +462,13 @@ export function CourseDetailPage() {
         <GradientButton
           className="w-full"
           size="lg"
-          onClick={() => navigate('video-player', { videoId: videos[0]?.id, courseId: course.id })}
+          onClick={() => {
+            if (course.price > 0) {
+              navigate('subscription');
+            } else {
+              navigate('video-player', { videoId: videos[0]?.id, courseId: course.id });
+            }
+          }}
         >
           <Play className="w-4 h-4" />
           {course.price > 0 ? 'Enroll Now' : 'Continue Learning'}
