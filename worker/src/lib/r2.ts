@@ -102,36 +102,36 @@ export function getBucketForType(type: string, env: Env): R2Bucket {
 
 // ─── Generate public URL for an R2 object ───
 // Note: Workers R2 doesn't support presigned URLs natively.
-// Use R2 public bucket or custom domain for public access.
+// Use R2 public bucket dev URLs (pub-*.r2.dev) for public access.
+
+// R2 public dev URLs — enabled via `wrangler r2 bucket dev-url enable <bucket>`
+const R2_PUBLIC_URLS: Record<string, string> = {
+  videos: 'https://pub-e746ac3cc9cc4c6ebbd8dd4365dbab79.r2.dev',
+  video: 'https://pub-e746ac3cc9cc4c6ebbd8dd4365dbab79.r2.dev',
+  thumbnails: 'https://pub-60fdec4931744de9a37d73191723e1f8.r2.dev',
+  thumbnail: 'https://pub-60fdec4931744de9a37d73191723e1f8.r2.dev',
+  images: 'https://pub-60fdec4931744de9a37d73191723e1f8.r2.dev',
+  image: 'https://pub-60fdec4931744de9a37d73191723e1f8.r2.dev',
+  avatars: 'https://pub-06c9b4a41d0b402d847fb9139262cb70.r2.dev',
+  avatar: 'https://pub-06c9b4a41d0b402d847fb9139262cb70.r2.dev',
+  resources: 'https://pub-25692986d3ff446abba05633a1d20a9a.r2.dev',
+  resource: 'https://pub-25692986d3ff446abba05633a1d20a9a.r2.dev',
+  documents: 'https://pub-25692986d3ff446abba05633a1d20a9a.r2.dev',
+  document: 'https://pub-25692986d3ff446abba05633a1d20a9a.r2.dev',
+};
 
 export function getPublicUrl(env: Env, bucketType: string, key: string): string {
-  // If R2_PUBLIC_URL is set in env, use it; otherwise fall back
+  // 1. If R2_PUBLIC_URL is set in env, use it (for custom domain override)
   const envAny = env as unknown as Record<string, unknown>;
   const publicUrl = envAny.R2_PUBLIC_URL as string | undefined;
   if (publicUrl) {
     return `${publicUrl}/${key}`;
   }
-  // Default pattern — works with R2 public bucket or custom domain
-  const bucketName = getBucketName(bucketType);
-  const accountId = envAny.R2_ACCOUNT_ID || 'pub';
-  return `https://${bucketName}.${accountId}.r2.dev/${key}`;
-}
-
-function getBucketName(type: string): string {
-  switch (type) {
-    case 'videos':
-    case 'video':
-      return 'dakkho-videos';
-    case 'thumbnails':
-    case 'thumbnail':
-      return 'dakkho-thumbnails';
-    case 'avatars':
-    case 'avatar':
-      return 'dakkho-avatars';
-    case 'resources':
-    case 'resource':
-      return 'dakkho-resources';
-    default:
-      return 'dakkho-resources';
+  // 2. Use the correct R2 public dev URL for this bucket type
+  const bucketUrl = R2_PUBLIC_URLS[bucketType];
+  if (bucketUrl) {
+    return `${bucketUrl}/${key}`;
   }
+  // 3. Fallback — should not normally be reached
+  return `https://pub-25692986d3ff446abba05633a1d20a9a.r2.dev/${key}`;
 }

@@ -40,6 +40,9 @@ import packageRoutes from './routes/packages';
 import enrollmentRoutes from './routes/enrollments';
 import achievementRoutes from './routes/achievements';
 
+// R2 file serving (no auth needed — public access for images/videos)
+import { getFile, getBucketForType } from './lib/r2';
+
 const app = new Hono<{ Bindings: Env }>();
 
 // ─── Global Middleware ───
@@ -106,6 +109,39 @@ app.route('/admin/achievements', achievementRoutes);
 
 // Student-facing API (no admin auth)
 app.route('/api', studentApiRoutes);
+
+// ─── Public R2 File Serving ───
+// Serves files from R2 buckets — no auth required.
+// Pattern: /upload/:bucketType/:key{.+}
+// e.g., /upload/thumbnails/1780907668784-1000093181.jpg
+
+app.get('/upload/:bucketType/:key{.+}', async (c) => {
+  const bucketType = c.req.param('bucketType');
+  const key = c.req.param('key');
+
+  try {
+    const r2Bucket = getBucketForType(bucketType, c.env);
+    const file = await getFile(r2Bucket, key);
+
+    if (!file) {
+      return c.json({ error: 'File not found' }, 404);
+    }
+
+    const headers = new Headers();
+    // Set content type from R2 metadata
+    if (file.httpMetadata?.contentType) {
+      headers.set('Content-Type', file.httpMetadata.contentType);
+    }
+    // Cache for 7 days (images/videos rarely change)
+    headers.set('Cache-Control', 'public, max-age=604800, immutable');
+    headers.set('Access-Control-Allow-Origin', '*');
+    headers.set('CDN-Cache-Control', 'public, max-age=2592000');  // 30 days at CDN edge
+
+    return new Response(file.body, { headers });
+  } catch (error) {
+    return c.json({ error: 'Failed to serve file' }, 500);
+  }
+});
 
 // ─── 404 Handler ───
 
