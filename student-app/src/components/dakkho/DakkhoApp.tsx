@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useNavigationStore, useAuthStore, useNotificationStore, useServerConfigStore, urlToPage } from '@/lib/store';
+import { useNavigationStore, useAuthStore, useNotificationStore, useServerConfigStore, useThemeStore, urlToPage } from '@/lib/store';
 // Notifications now come from OneSignal push notifications
 import { ContentProtection } from './ContentProtection';
 import { AppShell } from './AppShell';
@@ -283,20 +283,50 @@ function PageRouter() {
 
 export function DakkhoApp() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const setUser = useAuthStore((s) => s.setUser);
   const currentPage = useNavigationStore((s) => s.currentPage);
   const navigate = useNavigationStore((s) => s.navigate);
   const syncFromUrl = useNavigationStore((s) => s.syncFromUrl);
-  const notifications = useNotificationStore((s) => s.notifications);
+  const loadFromPreferences = useThemeStore((s) => s.loadFromPreferences);
+  const hydrateFromStorage = useNotificationStore((s) => s.hydrateFromStorage);
 
   // Initialize server config on mount
   const fetchConfig = useServerConfigStore((s) => s.fetchConfig);
 
+  // Hydrate auth from localStorage on mount (fixes SSR hydration mismatch)
+  // SSR always renders as unauthenticated. On client mount, we read the
+  // persisted session from localStorage and update the Zustand store, which
+  // triggers a re-render showing the authenticated UI.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('dakkho-auth-session');
+      const token = localStorage.getItem('dakkho_student_token');
+      if (stored && token) {
+        const parsed = JSON.parse(stored);
+        if (parsed.expiresAt && Date.now() < parsed.expiresAt && parsed.isAuthenticated && parsed.user) {
+          setUser(parsed.user);
+        } else {
+          localStorage.removeItem('dakkho-auth-session');
+          localStorage.removeItem('dakkho_student_token');
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, []);
+
+  // Hydrate theme + notifications from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem('dakkho_theme_mode');
+    if (stored === 'light' || stored === 'dark' || stored === 'system') {
+      loadFromPreferences(stored as 'light' | 'dark' | 'system');
+    }
+    hydrateFromStorage();
+  }, []);
+
   useEffect(() => {
     fetchConfig();
   }, [fetchConfig]);
-
-  // Notifications managed by OneSignal + store
-  // No longer seeding from mock data
 
   // Sync from browser URL on initial load
   useEffect(() => {

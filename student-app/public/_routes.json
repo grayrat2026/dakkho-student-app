@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "include": [
+    "/*"
+  ],
+  "exclude": [
+    "/_next/static/*",
+    "/favicon.png",
+    "/logo.png",
+    "/logo.svg",
+    "/robots.txt",
+    "/OneSignalSDKWorker.js",
+    "/_headers"
+  ]
+}

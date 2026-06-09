@@ -31,3 +31,33 @@ Stage Summary:
   - student-app/public/_redirects (removed)
   - worker/src/lib/r2.ts (updated R2 public URLs)
   - worker/src/index.ts (added R2 file serving route)
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix Student App critical bugs - 404 on refresh, images not displaying, auth hydration
+
+Work Log:
+- Explored Student App codebase at /home/z/my-project/student-app/
+- Identified root cause of 404 on refresh: _routes.json was missing, causing Cloudflare Pages to route ALL requests (including /_next/static/*) to the Worker function, which returned HTML instead of JS/CSS files
+- Identified root cause of images not displaying: CourseCardGrid used gradient placeholders instead of actual thumbnail images
+- Identified auth hydration issue: Zustand store initialized with isAuthenticated:false during SSR, but useEffect hydration in DakkhoApp wasn't working because client-side JavaScript wasn't executing (due to _routes.json issue)
+- Added public/_routes.json to exclude static assets from Worker routing
+- Fixed CourseCardGrid.tsx to use <img> tags with course.thumbnailUrl, with fallback to gradients
+- Fixed VideoPlayerPage.tsx to use real <video> element when stream URL is available
+- Added auth hydration useEffect in DakkhoApp.tsx to read auth state from localStorage on client mount
+- Added D1 column enrolled_course_ids to users table (was missing, causing signup to fail)
+- Created test student account: teststudent@dakkho.com / Test1234@
+- Built and deployed Student App to Cloudflare Pages
+- Deployed Worker API to Cloudflare Workers
+- Verified all pages load correctly on refresh (explore, settings, profile, bookmarks, downloads, notifications, department/cse, semester/1, settings/theme, etc.)
+- Verified course thumbnails are loading from R2 via Worker API
+- Verified login/signup works correctly
+
+Stage Summary:
+- 404 on refresh bug FIXED - added _routes.json to serve static assets correctly
+- Cloudflare images bug FIXED - CourseCardGrid now uses <img> tags with thumbnail URLs
+- VideoPlayerPage FIXED - added real <video> element with stream URL support
+- Auth hydration FIXED - useEffect reads from localStorage on client mount
+- D1 schema FIXED - added enrolled_course_ids column
+- Student App deployed to https://dakkho-student.pages.dev/
+- Worker API deployed to https://dakkho-admin-api.dakkho-admin.workers.dev

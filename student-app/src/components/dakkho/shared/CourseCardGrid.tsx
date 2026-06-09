@@ -55,10 +55,28 @@ export function CourseCard({ course, showProgress = false, progress = 0, index =
         onClick={() => navigate('course-detail', { courseId: course.id })}
       >
         {/* Thumbnail */}
-        <div className={`relative aspect-video bg-gradient-to-br ${colorClass} overflow-hidden`}>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <BookOpen className="w-12 h-12 text-white/30" />
-          </div>
+        <div className={`relative aspect-video ${course.thumbnailUrl ? '' : 'bg-gradient-to-br ' + colorClass} overflow-hidden`}>
+          {course.thumbnailUrl ? (
+            <img
+              src={course.thumbnailUrl}
+              alt={course.title}
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="lazy"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                target.parentElement!.classList.add('bg-gradient-to-br', colorClass);
+                const placeholder = document.createElement('div');
+                placeholder.className = 'absolute inset-0 flex items-center justify-center';
+                placeholder.innerHTML = '<svg class="w-12 h-12 text-white/30" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
+                target.parentElement!.appendChild(placeholder);
+              }}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <BookOpen className="w-12 h-12 text-white/30" />
+            </div>
+          )}
           {/* Play overlay on hover */}
           <motion.div
             className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

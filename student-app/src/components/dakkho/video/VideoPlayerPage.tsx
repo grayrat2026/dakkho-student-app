@@ -647,7 +647,7 @@ export function VideoPlayerPage() {
             <GlassCard className="overflow-hidden mb-4 p-0">
               <div
                 ref={playerRef}
-                className={`relative aspect-video bg-gradient-to-br ${colorClass} flex items-center justify-center cursor-pointer`}
+                className={`relative aspect-video ${streamUrl ? 'bg-black' : 'bg-gradient-to-br ' + colorClass} flex items-center justify-center cursor-pointer`}
                 onMouseMove={showControls}
                 onTouchStart={showControls}
                 onClick={(e) => {
@@ -657,9 +657,47 @@ export function VideoPlayerPage() {
                   }
                 }}
               >
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Play className="w-16 h-16 text-white/20" />
-                </div>
+                {/* Real video element when stream URL is available */}
+                {streamUrl && (
+                  <video
+                    ref={(el) => {
+                      if (el && streamUrl) {
+                        el.src = streamUrl;
+                        if (isPlaying) {
+                          el.play().catch(() => {});
+                        } else {
+                          el.pause();
+                        }
+                        el.currentTime = currentTime;
+                        el.volume = effectiveVolume / 100;
+                        el.playbackRate = playbackSpeed;
+                      }
+                    }}
+                    className="absolute inset-0 w-full h-full object-contain"
+                    playsInline
+                    onTimeUpdate={(e) => {
+                      const video = e.target as HTMLVideoElement;
+                      setCurrentTime(video.currentTime);
+                      setBuffered(Math.min(video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0, videoDuration));
+                    }}
+                    onEnded={() => {
+                      if (nextVideo) {
+                        setShowNextEpisode(true);
+                        setNextEpisodeCountdown(5);
+                      }
+                    }}
+                    onLoadedMetadata={(e) => {
+                      // Video loaded, update duration if needed
+                    }}
+                  />
+                )}
+
+                {/* Placeholder when no stream URL */}
+                {!streamUrl && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Play className="w-16 h-16 text-white/20" />
+                  </div>
+                )}
 
                 {/* Stream loading indicator */}
                 {streamLoading && (
