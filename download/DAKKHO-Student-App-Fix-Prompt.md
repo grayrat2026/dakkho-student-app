@@ -908,5 +908,5 @@ DELETE FROM app_config WHERE key IN ('app_settings', 'streaming', 'notifications
 - R2 Secret: `<REDACTED>`
 - OneSignal App ID: `ba6c42b2-d564-4254-b422-a2bed67d8b0f`
 - OneSignal REST API Key: `<REDACTED>`
-- Admin Login: `himadrient@proton.me` / `<REDACTED>`
+- Admin Login: `<REDACTED>` / `<REDACTED>`
 - GitHub PAT: `<REDACTED>`
