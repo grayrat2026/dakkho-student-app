@@ -332,6 +332,19 @@ export function DakkhoApp() {
   // Sync from browser URL on initial load
   useEffect(() => {
     const currentPath = window.location.pathname;
+
+    // Handle hash-based redirect URLs from Piprapay (e.g., /#/payment/success?order_id=xxx)
+    // Convert hash path to pathname so the SPA router handles it correctly
+    if (currentPath === '/' && window.location.hash && window.location.hash.startsWith('#/')) {
+      const hashPath = window.location.hash.split('?')[0].replace('#', ''); // e.g., /payment/success
+      const hashQuery = window.location.hash.split('?')[1] || '';
+      // Replace the hash URL with a proper pathname URL (preserves query params)
+      const newPath = hashQuery ? `${hashPath}?${hashQuery}` : hashPath;
+      window.history.replaceState({}, '', newPath);
+      syncFromUrl(hashPath);
+      return;
+    }
+
     if (currentPath !== '/') {
       syncFromUrl(currentPath);
     }

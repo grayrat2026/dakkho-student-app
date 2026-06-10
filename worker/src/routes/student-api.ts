@@ -2466,9 +2466,9 @@ studentApiRoutes.post('/payments/create', async (c) => {
       amount: pkg.price,
       currency: 'BDT',
       webhook_url: `${workerBaseUrl}/api/payments/webhook`,
-      success_url: `https://dakkho-student.pages.dev/#/payment/success`,
-      fail_url: `https://dakkho-student.pages.dev/#/payment/failed`,
-      cancel_url: `https://dakkho-student.pages.dev/#/payment/cancel`,
+      success_url: `https://dakkho-student.pages.dev/payment/success`,
+      fail_url: `https://dakkho-student.pages.dev/payment/failed`,
+      cancel_url: `https://dakkho-student.pages.dev/payment/cancel`,
       custom_field: orderId,
     });
 

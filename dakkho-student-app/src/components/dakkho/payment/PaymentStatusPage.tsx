@@ -8,6 +8,8 @@ import { paymentApi } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 import { GradientButton } from '../shared/GradientButton';
 
+const PENDING_ORDER_KEY = 'dakkho_pending_order_id';
+
 interface PaymentStatusPageProps {
   type: 'success' | 'failed' | 'cancel';
 }
@@ -22,10 +24,20 @@ export function PaymentStatusPage({ type }: PaymentStatusPageProps) {
   const [orderId, setOrderId] = useState<string>('');
 
   useEffect(() => {
-    // Extract order_id from URL search params (hash-based routing)
-    const searchParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
-    const oid = pageParams?.order_id as string || searchParams.get('order_id') || '';
-    queueMicrotask(() => setOrderId(oid));
+    // Extract order_id from multiple sources:
+    // 1. pageParams (if navigated programmatically)
+    // 2. localStorage (stored before redirecting to Piprapay)
+    // 3. URL search params (pathname-based routing: /payment/success?order_id=xxx)
+    // 4. Hash-based URL params (fallback: /#/payment/success?order_id=xxx)
+    const fromPageParams = pageParams?.order_id as string || '';
+    const fromLocalStorage = typeof window !== 'undefined' ? localStorage.getItem(PENDING_ORDER_KEY) || '' : '';
+    const fromSearchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('order_id') || '' : '';
+    const fromHashParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.hash.split('?')[1] || '').get('order_id') || '' : '';
+
+    const oid = fromPageParams || fromLocalStorage || fromSearchParams || fromHashParams;
+    if (oid) {
+      queueMicrotask(() => setOrderId(oid));
+    }
   }, [pageParams]);
 
   useEffect(() => {
@@ -37,10 +49,13 @@ export function PaymentStatusPage({ type }: PaymentStatusPageProps) {
         const res = await paymentApi.getStatus(orderId);
         if (res.status === 'completed' && res.enrolled) {
           setStatus('completed');
+          // Clean up localStorage
+          localStorage.removeItem(PENDING_ORDER_KEY);
           return;
         }
         if (res.status === 'failed') {
           setStatus('failed');
+          localStorage.removeItem(PENDING_ORDER_KEY);
           return;
         }
         // Still pending

@@ -879,6 +879,10 @@ export function CourseDetailPage() {
                       package_id: selectedPackage.id,
                     });
                     if (res.pp_url) {
+                      // Store order_id in localStorage so PaymentStatusPage can poll status
+                      if (res.order_id) {
+                        localStorage.setItem('dakkho_pending_order_id', res.order_id);
+                      }
                       window.location.href = res.pp_url;
                     }
                   } catch (err: any) {
