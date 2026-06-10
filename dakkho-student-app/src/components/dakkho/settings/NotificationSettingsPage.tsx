@@ -111,9 +111,14 @@ export function NotificationSettingsPage() {
           return s;
         })
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch notification settings:', err);
-      setError('Failed to load settings. Using defaults.');
+      // Don't show error for auth issues — just use defaults silently
+      if (err?.status === 401 || err?.status === 403) {
+        // Auth issue — user might not be verified yet, use defaults silently
+      } else {
+        setError('Failed to load settings. Using defaults.');
+      }
     } finally {
       setIsLoading(false);
     }

@@ -1279,6 +1279,154 @@ studentApiRoutes.get('/packages/mine', async (c) => {
 });
 
 // ═══════════════════════════════════════════════════
+// NOTIFICATION SETTINGS (auth required, NO email verification required)
+// Students should be able to configure notification prefs even before verifying email
+// ═══════════════════════════════════════════════════
+
+studentApiRoutes.get('/settings', async (c) => {
+  try {
+    const auth = await getStudentAuth(c);
+    if (!auth.authorized) {
+      return c.json({ error: 'Unauthorized — login required' }, 401);
+    }
+
+    const userId = auth.userId!;
+
+    // Ensure a notification_preferences row exists for this user
+    let prefs = await c.env.DB.prepare(
+      'SELECT * FROM notification_preferences WHERE user_id = ?'
+    ).bind(userId).first();
+
+    if (!prefs) {
+      // Create default preferences row
+      await c.env.DB.prepare(
+        'INSERT OR IGNORE INTO notification_preferences (user_id) VALUES (?)'
+      ).bind(userId).run();
+      prefs = await c.env.DB.prepare(
+        'SELECT * FROM notification_preferences WHERE user_id = ?'
+      ).bind(userId).first();
+    }
+
+    if (!prefs) {
+      return c.json({
+        preferences: {
+          pushEnabled: true,
+          emailEnabled: true,
+          smsEnabled: false,
+          quietHoursEnabled: false,
+          quietHoursStart: '22:00',
+          quietHoursEnd: '08:00',
+          courseUpdates: { push: true, email: true },
+          grades: { push: true, email: true },
+          schedule: { push: true, email: true },
+          payment: { push: true, email: true },
+          promotions: { push: false, email: false },
+          social: { push: true, email: false },
+          system: { push: true, email: true },
+        },
+      });
+    }
+
+    const p = prefs as any;
+    return c.json({
+      preferences: {
+        pushEnabled: !!p.push_enabled,
+        emailEnabled: !!p.email_enabled,
+        smsEnabled: !!p.sms_enabled,
+        quietHoursEnabled: !!p.quiet_hours_enabled,
+        quietHoursStart: p.quiet_hours_start || '22:00',
+        quietHoursEnd: p.quiet_hours_end || '08:00',
+        courseUpdates: { push: !!p.course_updates_push, email: !!p.course_updates_email },
+        grades: { push: !!p.grades_push, email: !!p.grades_email },
+        schedule: { push: !!p.schedule_push, email: !!p.schedule_email },
+        payment: { push: !!p.payment_push, email: !!p.payment_email },
+        promotions: { push: !!p.promotions_push, email: !!p.promotions_email },
+        social: { push: !!p.social_push, email: !!p.social_email },
+        system: { push: !!p.system_push, email: !!p.system_email },
+      },
+    });
+  } catch (error) {
+    console.error('GET /settings error:', getErrorMessage(error));
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+studentApiRoutes.put('/settings', async (c) => {
+  try {
+    const auth = await getStudentAuth(c);
+    if (!auth.authorized) {
+      return c.json({ error: 'Unauthorized — login required' }, 401);
+    }
+
+    const userId = auth.userId!;
+    const prefs = await c.req.json();
+
+    await c.env.DB.prepare(`
+      INSERT INTO notification_preferences (
+        user_id, push_enabled, email_enabled, sms_enabled,
+        quiet_hours_enabled, quiet_hours_start, quiet_hours_end,
+        course_updates_push, course_updates_email,
+        grades_push, grades_email,
+        schedule_push, schedule_email,
+        payment_push, payment_email,
+        promotions_push, promotions_email,
+        social_push, social_email,
+        system_push, system_email
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        push_enabled = excluded.push_enabled,
+        email_enabled = excluded.email_enabled,
+        sms_enabled = excluded.sms_enabled,
+        quiet_hours_enabled = excluded.quiet_hours_enabled,
+        quiet_hours_start = excluded.quiet_hours_start,
+        quiet_hours_end = excluded.quiet_hours_end,
+        course_updates_push = excluded.course_updates_push,
+        course_updates_email = excluded.course_updates_email,
+        grades_push = excluded.grades_push,
+        grades_email = excluded.grades_email,
+        schedule_push = excluded.schedule_push,
+        schedule_email = excluded.schedule_email,
+        payment_push = excluded.payment_push,
+        payment_email = excluded.payment_email,
+        promotions_push = excluded.promotions_push,
+        promotions_email = excluded.promotions_email,
+        social_push = excluded.social_push,
+        social_email = excluded.social_email,
+        system_push = excluded.system_push,
+        system_email = excluded.system_email,
+        updated_at = datetime('now')
+    `).bind(
+      userId,
+      prefs.pushEnabled ? 1 : 0,
+      prefs.emailEnabled ? 1 : 0,
+      prefs.smsEnabled ? 1 : 0,
+      prefs.quietHoursEnabled ? 1 : 0,
+      prefs.quietHoursStart || '22:00',
+      prefs.quietHoursEnd || '08:00',
+      prefs.courseUpdates?.push ? 1 : 0,
+      prefs.courseUpdates?.email ? 1 : 0,
+      prefs.grades?.push ? 1 : 0,
+      prefs.grades?.email ? 1 : 0,
+      prefs.schedule?.push ? 1 : 0,
+      prefs.schedule?.email ? 1 : 0,
+      prefs.payment?.push ? 1 : 0,
+      prefs.payment?.email ? 1 : 0,
+      prefs.promotions?.push ? 1 : 0,
+      prefs.promotions?.email ? 1 : 0,
+      prefs.social?.push ? 1 : 0,
+      prefs.social?.email ? 1 : 0,
+      prefs.system?.push ? 1 : 0,
+      prefs.system?.email ? 1 : 0
+    ).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('PUT /settings error:', getErrorMessage(error));
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════
 // AUTHENTICATED STUDENT ROUTES (middleware-based)
 // ═══════════════════════════════════════════════════
 
@@ -1744,129 +1892,9 @@ studentAuthenticated.post('/upload-avatar', async (c) => {
   }
 });
 
-// ─── Notification Settings ───
-
-studentAuthenticated.get('/settings', async (c) => {
-  try {
-    const userId = c.get('studentId');
-
-    const prefs = await c.env.DB.prepare(
-      'SELECT * FROM notification_preferences WHERE user_id = ?'
-    ).bind(userId).first();
-
-    if (!prefs) {
-      return c.json({
-        preferences: {
-          pushEnabled: true,
-          emailEnabled: true,
-          smsEnabled: false,
-          quietHoursEnabled: false,
-          quietHoursStart: '22:00',
-          quietHoursEnd: '08:00',
-          courseUpdates: { push: true, email: true },
-          grades: { push: true, email: true },
-          schedule: { push: true, email: true },
-          payment: { push: true, email: true },
-          promotions: { push: false, email: false },
-          social: { push: true, email: false },
-          system: { push: true, email: true },
-        },
-      });
-    }
-
-    const p = prefs as any;
-    return c.json({
-      preferences: {
-        pushEnabled: !!p.push_enabled,
-        emailEnabled: !!p.email_enabled,
-        smsEnabled: !!p.sms_enabled,
-        quietHoursEnabled: !!p.quiet_hours_enabled,
-        quietHoursStart: p.quiet_hours_start || '22:00',
-        quietHoursEnd: p.quiet_hours_end || '08:00',
-        courseUpdates: { push: !!p.course_updates_push, email: !!p.course_updates_email },
-        grades: { push: !!p.grades_push, email: !!p.grades_email },
-        schedule: { push: !!p.schedule_push, email: !!p.schedule_email },
-        payment: { push: !!p.payment_push, email: !!p.payment_email },
-        promotions: { push: !!p.promotions_push, email: !!p.promotions_email },
-        social: { push: !!p.social_push, email: !!p.social_email },
-        system: { push: !!p.system_push, email: !!p.system_email },
-      },
-    });
-  } catch (error) {
-    return c.json({ error: getErrorMessage(error) }, 500);
-  }
-});
-
-studentAuthenticated.put('/settings', async (c) => {
-  try {
-    const userId = c.get('studentId');
-    const prefs = await c.req.json();
-
-    await c.env.DB.prepare(`
-      INSERT INTO notification_preferences (
-        user_id, push_enabled, email_enabled, sms_enabled,
-        quiet_hours_enabled, quiet_hours_start, quiet_hours_end,
-        course_updates_push, course_updates_email,
-        grades_push, grades_email,
-        schedule_push, schedule_email,
-        payment_push, payment_email,
-        promotions_push, promotions_email,
-        social_push, social_email,
-        system_push, system_email
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_id) DO UPDATE SET
-        push_enabled = excluded.push_enabled,
-        email_enabled = excluded.email_enabled,
-        sms_enabled = excluded.sms_enabled,
-        quiet_hours_enabled = excluded.quiet_hours_enabled,
-        quiet_hours_start = excluded.quiet_hours_start,
-        quiet_hours_end = excluded.quiet_hours_end,
-        course_updates_push = excluded.course_updates_push,
-        course_updates_email = excluded.course_updates_email,
-        grades_push = excluded.grades_push,
-        grades_email = excluded.grades_email,
-        schedule_push = excluded.schedule_push,
-        schedule_email = excluded.schedule_email,
-        payment_push = excluded.payment_push,
-        payment_email = excluded.payment_email,
-        promotions_push = excluded.promotions_push,
-        promotions_email = excluded.promotions_email,
-        social_push = excluded.social_push,
-        social_email = excluded.social_email,
-        system_push = excluded.system_push,
-        system_email = excluded.system_email,
-        updated_at = datetime('now')
-    `).bind(
-      userId,
-      prefs.pushEnabled ? 1 : 0,
-      prefs.emailEnabled ? 1 : 0,
-      prefs.smsEnabled ? 1 : 0,
-      prefs.quietHoursEnabled ? 1 : 0,
-      prefs.quietHoursStart || '22:00',
-      prefs.quietHoursEnd || '08:00',
-      prefs.courseUpdates?.push ? 1 : 0,
-      prefs.courseUpdates?.email ? 1 : 0,
-      prefs.grades?.push ? 1 : 0,
-      prefs.grades?.email ? 1 : 0,
-      prefs.schedule?.push ? 1 : 0,
-      prefs.schedule?.email ? 1 : 0,
-      prefs.payment?.push ? 1 : 0,
-      prefs.payment?.email ? 1 : 0,
-      prefs.promotions?.push ? 1 : 0,
-      prefs.promotions?.email ? 1 : 0,
-      prefs.social?.push ? 1 : 0,
-      prefs.social?.email ? 1 : 0,
-      prefs.system?.push ? 1 : 0,
-      prefs.system?.email ? 1 : 0
-    ).run();
-
-    return c.json({ success: true });
-  } catch (error) {
-    return c.json({ error: getErrorMessage(error) }, 500);
-  }
-});
-
 // ─── User Preferences (Theme, Privacy, Appearance) ───
+// NOTE: Notification settings routes are defined above (outside studentAuthenticated)
+// so they work even for unverified-email students
 
 const DEFAULT_PREFERENCES = {
   themeMode: 'system',
