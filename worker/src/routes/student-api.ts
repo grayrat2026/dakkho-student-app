@@ -436,6 +436,37 @@ studentApiRoutes.get('/instructors/:id', async (c) => {
   }
 });
 
+// GET /instructors/:id/courses — List courses by instructor
+studentApiRoutes.get('/instructors/:id/courses', async (c) => {
+  try {
+    const instructorId = c.req.param('id');
+    const limit = parseInt(c.req.query('limit') || '20');
+    const offset = parseInt(c.req.query('offset') || '0');
+
+    // Verify instructor exists and is active
+    const instructor = await c.env.DB.prepare(
+      'SELECT id FROM instructors WHERE id = ? AND is_active = 1'
+    ).bind(instructorId).first();
+
+    if (!instructor) {
+      return c.json({ error: 'Instructor not found' }, 404);
+    }
+
+    const result = await c.env.DB.prepare(
+      'SELECT * FROM courses WHERE instructor_id = ? AND is_published = 1 ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    ).bind(instructorId, limit, offset).all();
+
+    const countResult = await c.env.DB.prepare(
+      'SELECT COUNT(*) as total FROM courses WHERE instructor_id = ? AND is_published = 1'
+    ).bind(instructorId).first();
+    const total = (countResult as any)?.total || 0;
+
+    return c.json({ courses: result.results, total });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
 // ─── Video Streaming ───
 
 studentApiRoutes.get('/video/stream-url', async (c) => {
