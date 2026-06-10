@@ -26,8 +26,9 @@ import {
   Send,
   X,
 } from 'lucide-react';
-import { useNavigationStore, useWatchProgressStore } from '@/lib/store';
-import { getCourse, getCourseVideos, getInstructor, formatDuration } from '@/lib/mock-data';
+import { useNavigationStore, useWatchProgressStore, useAuthStore } from '@/lib/store';
+import { type Course, type Video, type Instructor, courseApi, instructorApi, watchHistoryApi } from '@/lib/api-client';
+import { formatDuration } from '@/lib/utils';
 import { GlassCard } from '../shared/GlassCard';
 import { GradientButton } from '../shared/GradientButton';
 import { ProgressBar } from '../shared/ProgressBar';
@@ -117,14 +118,34 @@ const MOCK_QA: QAItem[] = [
 export function VideoPlayerPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const { updateProgress, getProgress } = useWatchProgressStore();
+  const { user } = useAuthStore();
 
   // --- Data ---
   const videoId = pageParams.videoId as string;
   const courseId = pageParams.courseId as string;
-  const course = getCourse(courseId);
-  const videos = getCourseVideos(courseId);
+
+  const [course, setCourse] = useState<Course | null>(null);
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [instructor, setInstructor] = useState<Instructor | undefined>(undefined);
+
+  useEffect(() => {
+    if (!courseId) return;
+    courseApi.get(courseId)
+      .then((res) => {
+        setCourse(res.course);
+        if (res.course.instructorId) {
+          instructorApi.get(res.course.instructorId)
+            .then((instRes) => setInstructor(instRes.instructor))
+            .catch(() => {});
+        }
+      })
+      .catch(() => setCourse(null));
+    courseApi.videos(courseId)
+      .then((res) => setVideos(res.videos))
+      .catch(() => {});
+  }, [courseId]);
+
   const currentVideo = videos.find((v) => v.id === videoId);
-  const instructor = course ? getInstructor(course.instructorId) : undefined;
   const watchProgress = getProgress(videoId);
 
   const currentIndex = videos.findIndex((v) => v.id === videoId);
@@ -363,6 +384,17 @@ export function VideoPlayerPage() {
           completed: isCompleted,
           lastPosition: newTime,
         });
+        // Sync watch history to D1 via Worker API (non-blocking)
+        if (user) {
+          watchHistoryApi.upsert({
+            videoId,
+            videoTitle: currentVideo?.title,
+            courseId,
+            progress: isCompleted ? 100 : Math.round(progress),
+            lastPosition: newTime,
+            duration: videoDuration,
+          }).catch(() => {});
+        }
       }
 
       // Next episode auto-play detection

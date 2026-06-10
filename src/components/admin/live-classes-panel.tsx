@@ -89,7 +89,7 @@ export default function LiveClassesPanel() {
     setError(null);
     try {
       const data = (await apiGet('/live-classes?page=1&limit=100')) as any;
-      setClasses(data.liveClasses || []);
+      setClasses(data.liveClasses || data.live_classes || data.documents || []);
       setTotal(data.total || 0);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch live classes';

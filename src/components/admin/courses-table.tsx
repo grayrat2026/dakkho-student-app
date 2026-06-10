@@ -20,6 +20,7 @@ import {
   Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -143,8 +144,9 @@ export default function CoursesTable() {
     title: '',
     slug: '',
     description: '',
-    categoryId: '',
-    instructorId: '',
+    categoryIds: [] as string[],
+    instructorIds: [] as string[],
+    subjectIds: [] as string[],
     technologyId: '',
     level: 'beginner' as Course['level'],
     language: 'bangla' as Course['language'],
@@ -160,6 +162,8 @@ export default function CoursesTable() {
   // Dropdown data
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [instructors, setInstructors] = useState<{ id: string; name: string }[]>([]);
+  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
+  const [newSubjectName, setNewSubjectName] = useState('');
 
   // -------------------------------------------------------------------------
   // Data fetching
@@ -176,7 +180,7 @@ export default function CoursesTable() {
       if (publishedFilter === 'false') params.set('published', 'false');
 
       const data = (await apiGet(`/courses?${params}`)) as Record<string, unknown>;
-      const docs = (data.documents as Record<string, unknown>[]) || [];
+      const docs = (data.courses as Record<string, unknown>[]) || (data.documents as Record<string, unknown>[]) || [];
       setCourses(docs.map(mapCourse));
       setTotal((data.total as number) || 0);
     } catch (err) {
@@ -190,17 +194,22 @@ export default function CoursesTable() {
 
   const fetchDropdownData = useCallback(async () => {
     try {
-      const [catData, instData] = await Promise.all([
+      const [catData, instData, subData] = await Promise.all([
         apiGet('/categories?limit=200') as Promise<Record<string, unknown>>,
         apiGet('/instructors?limit=200') as Promise<Record<string, unknown>>,
+        apiGet('/subjects?limit=200') as Promise<Record<string, unknown>>,
       ]);
-      const catDocs = (catData.documents as Record<string, unknown>[]) || [];
-      const instDocs = (instData.documents as Record<string, unknown>[]) || [];
+      const catDocs = (catData.categories as Record<string, unknown>[]) || (catData.documents as Record<string, unknown>[]) || [];
+      const instDocs = (instData.instructors as Record<string, unknown>[]) || (instData.documents as Record<string, unknown>[]) || [];
+      const subDocs = (subData.subjects as Record<string, unknown>[]) || (subData.documents as Record<string, unknown>[]) || [];
       setCategories(
         catDocs.map((d) => ({ id: String(d.id), name: String(d.name ?? 'Unknown') })),
       );
       setInstructors(
         instDocs.map((d) => ({ id: String(d.id), name: String(d.name ?? 'Unknown') })),
+      );
+      setSubjects(
+        subDocs.map((d) => ({ id: String(d.id), name: String(d.name ?? 'Unknown') })),
       );
     } catch {
       // silent — dropdowns can be empty
@@ -225,8 +234,9 @@ export default function CoursesTable() {
       title: '',
       slug: '',
       description: '',
-      categoryId: '',
-      instructorId: '',
+      categoryIds: [] as string[],
+      instructorIds: [] as string[],
+      subjectIds: [] as string[],
       technologyId: '',
       level: 'beginner',
       language: 'bangla',
@@ -247,8 +257,9 @@ export default function CoursesTable() {
       title: course.title,
       slug: course.slug,
       description: course.description ?? '',
-      categoryId: course.categoryId ?? '',
-      instructorId: course.instructorId ?? '',
+      categoryIds: course.categoryId ? [course.categoryId] : ([] as string[]),
+      instructorIds: course.instructorId ? [course.instructorId] : ([] as string[]),
+      subjectIds: [] as string[],
       technologyId: course.technologyId ? String(course.technologyId) : '',
       level: course.level,
       language: course.language,
@@ -272,7 +283,7 @@ export default function CoursesTable() {
         try {
           const fd = new FormData();
           fd.append('file', form.thumbnailFile);
-          fd.append('folder', 'course-thumbnails');
+          fd.append('bucket', 'thumbnails');
           const uploadResult = (await apiUpload('/upload', fd)) as Record<string, unknown>;
           thumbnailUrl = String(uploadResult.url || uploadResult.key || '');
         } catch {
@@ -281,20 +292,24 @@ export default function CoursesTable() {
       }
 
       const slug = form.slug || slugify(form.title);
+      // Map camelCase form fields to snake_case for D1 columns
       const payload: Record<string, unknown> = {
         title: form.title,
         slug,
         description: form.description || undefined,
-        thumbnailUrl: thumbnailUrl || undefined,
-        categoryId: form.categoryId || undefined,
-        instructorId: form.instructorId || undefined,
-        technologyId: form.technologyId ? Number(form.technologyId) : undefined,
+        thumbnail_url: thumbnailUrl || undefined,
+        category_id: form.categoryIds[0] || undefined,
+        instructor_id: form.instructorIds[0] || undefined,
+        category_ids: form.categoryIds.length > 0 ? JSON.stringify(form.categoryIds) : undefined,
+        instructor_ids: form.instructorIds.length > 0 ? JSON.stringify(form.instructorIds) : undefined,
+        subject_ids: form.subjectIds.length > 0 ? JSON.stringify(form.subjectIds) : undefined,
+        technology_id: form.technologyId ? Number(form.technologyId) : undefined,
         level: form.level,
         language: form.language,
         duration: form.duration,
         price: form.price,
-        isFeatured: form.isFeatured,
-        isPublished: form.isPublished,
+        is_featured: form.isFeatured,
+        is_published: form.isPublished,
         tags: form.tags || undefined,
       };
 
@@ -304,10 +319,10 @@ export default function CoursesTable() {
       } else {
         await apiPost('/courses', {
           ...payload,
-          totalVideos: 0,
+          total_videos: 0,
           rating: 0,
-          totalReviews: 0,
-          totalStudents: 0,
+          total_reviews: 0,
+          total_students: 0,
         });
         toast({ title: 'Success', description: 'Course created successfully' });
       }
@@ -338,7 +353,7 @@ export default function CoursesTable() {
 
   const togglePublished = async (course: Course) => {
     try {
-      await apiPut('/courses', { courseId: course.id, isPublished: !course.isPublished });
+      await apiPut('/courses', { courseId: course.id, is_published: !course.isPublished });
       toast({
         title: 'Success',
         description: `Course ${!course.isPublished ? 'published' : 'unpublished'}`,
@@ -975,44 +990,163 @@ export default function CoursesTable() {
               </div>
             </div>
 
-            {/* Category + Instructor */}
+            {/* Categories + Instructors + Subjects */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label className="text-muted-foreground">Category</Label>
-                <Select
-                  value={form.categoryId}
-                  onValueChange={(v) => setForm({ ...form, categoryId: v })}
-                >
-                  <SelectTrigger className="bg-white/[0.04] border-white/[0.08]">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-muted-foreground">Categories</Label>
+                <div className="max-h-40 overflow-y-auto rounded-md border border-white/[0.08] bg-white/[0.04] p-2 space-y-1">
+                  {categories.map((cat) => (
+                    <div key={cat.id} className="flex items-center gap-2 px-2 py-1 hover:bg-white/[0.04] rounded">
+                      <Checkbox
+                        checked={form.categoryIds.includes(cat.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setForm({ ...form, categoryIds: [...form.categoryIds, cat.id] });
+                          } else {
+                            setForm({ ...form, categoryIds: form.categoryIds.filter(id => id !== cat.id) });
+                          }
+                        }}
+                      />
+                      <span className="text-sm text-foreground">{cat.name}</span>
+                    </div>
+                  ))}
+                  {categories.length === 0 && (
+                    <p className="text-xs text-muted-foreground/50 px-2 py-1">No categories available</p>
+                  )}
+                </div>
+                {form.categoryIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {form.categoryIds.map(id => {
+                      const cat = categories.find(c => c.id === id);
+                      return cat ? (
+                        <Badge key={id} variant="secondary" className="bg-dakkho-blue/15 text-dakkho-blue text-xs">
+                          {cat.name}
+                          <button onClick={() => setForm({...form, categoryIds: form.categoryIds.filter(i => i !== id)})} className="ml-1 hover:text-white">×</button>
+                        </Badge>
+                      ) : null;
+                    })}
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
-                <Label className="text-muted-foreground">Instructor</Label>
-                <Select
-                  value={form.instructorId}
-                  onValueChange={(v) => setForm({ ...form, instructorId: v })}
-                >
-                  <SelectTrigger className="bg-white/[0.04] border-white/[0.08]">
-                    <SelectValue placeholder="Select instructor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {instructors.map((inst) => (
-                      <SelectItem key={inst.id} value={inst.id}>
-                        {inst.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-muted-foreground">Instructors</Label>
+                <div className="max-h-40 overflow-y-auto rounded-md border border-white/[0.08] bg-white/[0.04] p-2 space-y-1">
+                  {instructors.map((inst) => (
+                    <div key={inst.id} className="flex items-center gap-2 px-2 py-1 hover:bg-white/[0.04] rounded">
+                      <Checkbox
+                        checked={form.instructorIds.includes(inst.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setForm({ ...form, instructorIds: [...form.instructorIds, inst.id] });
+                          } else {
+                            setForm({ ...form, instructorIds: form.instructorIds.filter(id => id !== inst.id) });
+                          }
+                        }}
+                      />
+                      <span className="text-sm text-foreground">{inst.name}</span>
+                    </div>
+                  ))}
+                  {instructors.length === 0 && (
+                    <p className="text-xs text-muted-foreground/50 px-2 py-1">No instructors available</p>
+                  )}
+                </div>
+                {form.instructorIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {form.instructorIds.map(id => {
+                      const inst = instructors.find(i => i.id === id);
+                      return inst ? (
+                        <Badge key={id} variant="secondary" className="bg-dakkho-blue/15 text-dakkho-blue text-xs">
+                          {inst.name}
+                          <button onClick={() => setForm({...form, instructorIds: form.instructorIds.filter(i => i !== id)})} className="ml-1 hover:text-white">×</button>
+                        </Badge>
+                      ) : null;
+                    })}
+                  </div>
+                )}
               </div>
+            </div>
+
+            {/* Subjects */}
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">Subjects</Label>
+              <div className="max-h-40 overflow-y-auto rounded-md border border-white/[0.08] bg-white/[0.04] p-2 space-y-1">
+                {subjects.map((sub) => (
+                  <div key={sub.id} className="flex items-center gap-2 px-2 py-1 hover:bg-white/[0.04] rounded">
+                    <Checkbox
+                      checked={form.subjectIds.includes(sub.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setForm({ ...form, subjectIds: [...form.subjectIds, sub.id] });
+                        } else {
+                          setForm({ ...form, subjectIds: form.subjectIds.filter(id => id !== sub.id) });
+                        }
+                      }}
+                    />
+                    <span className="text-sm text-foreground">{sub.name}</span>
+                  </div>
+                ))}
+                {subjects.length === 0 && (
+                  <p className="text-xs text-muted-foreground/50 px-2 py-1">No subjects available</p>
+                )}
+              </div>
+              {/* Inline create subject */}
+              <div className="flex gap-2">
+                <Input
+                  value={newSubjectName}
+                  onChange={(e) => setNewSubjectName(e.target.value)}
+                  className="bg-white/[0.04] border-white/[0.08] h-8 text-xs flex-1"
+                  placeholder="Create new subject..."
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter' && newSubjectName.trim()) {
+                      e.preventDefault();
+                      try {
+                        const result = await apiPost('/subjects', { name: newSubjectName.trim() }) as Record<string, unknown>;
+                        const newSub = { id: String(result.document?.id || result.id || ''), name: newSubjectName.trim() };
+                        setSubjects(prev => [...prev, newSub]);
+                        setForm(prev => ({ ...prev, subjectIds: [...prev.subjectIds, newSub.id] }));
+                        setNewSubjectName('');
+                        toast({ title: 'Subject Created', description: `"${newSub.name}" added` });
+                      } catch {
+                        toast({ title: 'Error', description: 'Failed to create subject', variant: 'destructive' });
+                      }
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-white/[0.08] bg-white/[0.04] h-8 text-xs"
+                  onClick={async () => {
+                    if (!newSubjectName.trim()) return;
+                    try {
+                      const result = await apiPost('/subjects', { name: newSubjectName.trim() }) as Record<string, unknown>;
+                      const newSub = { id: String(result.document?.id || result.id || ''), name: newSubjectName.trim() };
+                      setSubjects(prev => [...prev, newSub]);
+                      setForm(prev => ({ ...prev, subjectIds: [...prev.subjectIds, newSub.id] }));
+                      setNewSubjectName('');
+                      toast({ title: 'Subject Created', description: `"${newSub.name}" added` });
+                    } catch {
+                      toast({ title: 'Error', description: 'Failed to create subject', variant: 'destructive' });
+                    }
+                  }}
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+              {form.subjectIds.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {form.subjectIds.map(id => {
+                    const sub = subjects.find(s => s.id === id);
+                    return sub ? (
+                      <Badge key={id} variant="secondary" className="bg-dakkho-purple/15 text-dakkho-purple text-xs">
+                        {sub.name}
+                        <button onClick={() => setForm({...form, subjectIds: form.subjectIds.filter(i => i !== id)})} className="ml-1 hover:text-white">×</button>
+                      </Badge>
+                    ) : null;
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Level + Language */}

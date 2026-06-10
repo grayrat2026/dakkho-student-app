@@ -197,13 +197,14 @@ CREATE TABLE IF NOT EXISTS notifications (
   title TEXT NOT NULL,
   message TEXT NOT NULL,
   type TEXT DEFAULT 'info',
-  is_read INTEGER DEFAULT 0,
+  category TEXT DEFAULT '',
+  read INTEGER DEFAULT 0,
   action_url TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, read);
 
 -- ============================================================
 -- INSTITUTES TABLE
@@ -245,6 +246,65 @@ CREATE TABLE IF NOT EXISTS technologies (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_technologies_short_code ON technologies(short_code);
+
+-- ============================================================
+-- SUBJECTS TABLE
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS subjects (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  description TEXT,
+  icon TEXT,
+  color TEXT,
+  technology_id INTEGER,
+  sort_order INTEGER DEFAULT 0,
+  course_count INTEGER DEFAULT 0,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subjects_slug ON subjects(slug);
+CREATE INDEX IF NOT EXISTS idx_subjects_technology ON subjects(technology_id);
+CREATE INDEX IF NOT EXISTS idx_subjects_active ON subjects(is_active);
+
+-- ============================================================
+-- COURSE JUNCTION TABLES (many-to-many)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS course_subjects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course_id TEXT NOT NULL,
+  subject_id TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(course_id, subject_id)
+);
+CREATE INDEX IF NOT EXISTS idx_course_subjects_course ON course_subjects(course_id);
+CREATE INDEX IF NOT EXISTS idx_course_subjects_subject ON course_subjects(subject_id);
+
+CREATE TABLE IF NOT EXISTS course_categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course_id TEXT NOT NULL,
+  category_id TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(course_id, category_id)
+);
+CREATE INDEX IF NOT EXISTS idx_course_categories_course ON course_categories(course_id);
+CREATE INDEX IF NOT EXISTS idx_course_categories_category ON course_categories(category_id);
+
+CREATE TABLE IF NOT EXISTS course_instructors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course_id TEXT NOT NULL,
+  instructor_id TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(course_id, instructor_id)
+);
+CREATE INDEX IF NOT EXISTS idx_course_instructors_course ON course_instructors(course_id);
+CREATE INDEX IF NOT EXISTS idx_course_instructors_instructor ON course_instructors(instructor_id);
 
 -- ============================================================
 -- INSTITUTE_REQUESTS TABLE
@@ -543,6 +603,7 @@ CREATE TABLE IF NOT EXISTS notification_preferences (
   push_enabled INTEGER DEFAULT 1,
   email_enabled INTEGER DEFAULT 1,
   sms_enabled INTEGER DEFAULT 0,
+  quiet_hours_enabled INTEGER DEFAULT 0,
   quiet_hours_start TEXT DEFAULT '22:00',
   quiet_hours_end TEXT DEFAULT '08:00',
   course_updates_push INTEGER DEFAULT 1,
@@ -713,8 +774,132 @@ INSERT OR IGNORE INTO achievement_definitions (slug, name, name_bn, description,
   ('early-bird', 'Early Bird', 'প্রাথমিক পাখি', 'Join DAKKHO in first month', 'প্রথম মাসে DAKKHO-তে যোগ দিন', 'special', 'sunrise', 25, 'early_joiner', '1'),
   ('certified', 'Certified Learner', 'প্রত্যয়িত শিক্ষার্থী', 'Earn your first certificate', 'প্রথম সার্টিফিকেট অর্জন করুন', 'learning', 'award', 100, 'certificate_count', '1');
 
+-- ============================================================
+-- ABOUT PAGE TABLES (Admin-managed content)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS about_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT NOT NULL,
+  value TEXT NOT NULL,
+  icon TEXT DEFAULT 'book-open',
+  sort_order INTEGER DEFAULT 0,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_about_stats_active ON about_stats(is_active);
+CREATE INDEX IF NOT EXISTS idx_about_stats_order ON about_stats(sort_order);
+
+CREATE TABLE IF NOT EXISTS about_team (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  avatar_url TEXT,
+  icon TEXT DEFAULT 'users',
+  sort_order INTEGER DEFAULT 0,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_about_team_active ON about_team(is_active);
+CREATE INDEX IF NOT EXISTS idx_about_team_order ON about_team(sort_order);
+
+CREATE TABLE IF NOT EXISTS about_faq (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_about_faq_active ON about_faq(is_active);
+CREATE INDEX IF NOT EXISTS idx_about_faq_order ON about_faq(sort_order);
+
 -- Seed default admin users
 -- Hash computed with SHA-256
 INSERT OR IGNORE INTO users (id, email, full_name, role, password_hash, is_active, email_verified) VALUES
   ('admin-001', 'admin@dakkho.pro.bd', 'DAKKHO Admin', 'admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 1, 1),
-  ('admin-002', 'himadrient@proton.me', 'DAKKHO Super Admin', 'admin', '1e93e5062e163f49c088f163cf93b702948533c8f905c8dcf24bf9156c0dfe03', 1, 1);
+  ('admin-002', 'himadrient@proton.me', 'DAKKHO Super Admin', 'super_admin', '1e93e5062e163f49c088f163cf93b702948533c8f905c8dcf24bf9156c0dfe03', 1, 1);
+
+-- ============================================================
+-- ABOUT PAGE SEED DATA
+-- ============================================================
+
+-- Seed about content (text, mission, contact)
+INSERT OR IGNORE INTO app_config (key, value, description) VALUES
+  ('about_content', '{"aboutText":"DAKKHO is Bangladesh''s premier online learning platform built exclusively for polytechnic students. We provide high-quality video courses aligned with the BTEB curriculum, covering all major technologies from Web Development and Electronics to Civil Engineering and Architecture. Our platform connects students with expert instructors from across the country, making quality technical education accessible regardless of location or financial background.","missionText":"To democratize technical education in Bangladesh by providing world-class learning experiences to every polytechnic student. We believe that geographical boundaries or financial constraints should never be barriers to quality education. Through technology, community, and dedicated instructors, we are building the future skilled workforce of Bangladesh.","contactEmail":"support@dakkho.com.bd","contactPhone1":"+8809638113227","contactPhone2":"+8801632373707","contactAddress":"Radhaballav Road near DPHE, Rangpur","missionValues":["Accessible Education","Quality Content","Student First","Innovation"]}', 'About page content (text, mission, contact)');
+
+-- Seed about stats
+INSERT OR IGNORE INTO about_stats (label, value, icon, sort_order, is_active) VALUES
+  ('Courses', '50+', 'book-open', 1, 1),
+  ('Students', '10K+', 'graduation-cap', 2, 1),
+  ('Instructors', '50+', 'users', 3, 1),
+  ('Institutes', '58', 'building-2', 4, 1);
+
+-- Seed about team
+INSERT OR IGNORE INTO about_team (name, role, icon, sort_order, is_active) VALUES
+  ('Engr. Aminul Islam', 'Founder & CEO', 'graduation-cap', 1, 1),
+  ('Dr. Nadia Rahman', 'Chief Academic Officer', 'book-open', 2, 1),
+  ('Fahim Shahriar', 'Lead Developer', 'globe', 3, 1),
+  ('Sumaiya Khan', 'Head of Content', 'sparkles', 4, 1);
+
+-- Seed about FAQ
+INSERT OR IGNORE INTO about_faq (question, answer, sort_order, is_active) VALUES
+  ('What is DAKKHO?', 'DAKKHO is a comprehensive online learning platform designed specifically for polytechnic students in Bangladesh. We offer video courses, live sessions, assignments, and certifications aligned with the BTEB curriculum.', 1, 1),
+  ('Is DAKKHO free to use?', 'Many courses on DAKKHO are completely free. Premium courses are available at affordable prices with financial aid options for deserving students. We believe quality education should be accessible to everyone.', 2, 1),
+  ('How do I earn certificates?', 'Complete a course and pass all assignments with the required grade to earn a certificate. Certificates are digital and can be downloaded or shared directly from your profile.', 3, 1),
+  ('Can I access courses offline?', 'Yes! You can download courses for offline viewing through our Downloads feature. Downloaded content is available without an internet connection for up to 30 days.', 4, 1),
+  ('Who are the instructors?', 'Our instructors are experienced educators and industry professionals from polytechnic institutes across Bangladesh. They are vetted and trained to deliver high-quality, engaging content.', 5, 1),
+  ('How do I get help if I am stuck?', 'Use the Discussion section to ask questions, join live Q&A sessions with instructors, or reach out to our support team via email or phone. We are here to help you succeed.', 6, 1);
+
+-- ============================================================
+-- SUPPORT TICKETS TABLES
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_id TEXT UNIQUE NOT NULL,
+  user_id TEXT,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  category TEXT NOT NULL,
+  sub_category TEXT,
+  priority TEXT DEFAULT 'medium',
+  subject TEXT NOT NULL,
+  description TEXT NOT NULL,
+  attachments TEXT,
+  detected_issue TEXT,
+  status TEXT DEFAULT 'open',
+  assigned_to TEXT,
+  resolved_content TEXT,
+  resolved_at TEXT,
+  resolved_by TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_ticket_id ON support_tickets(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_created ON support_tickets(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS support_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_id TEXT NOT NULL,
+  sender_type TEXT NOT NULL,
+  sender_id TEXT,
+  sender_name TEXT,
+  message TEXT NOT NULL,
+  attachments TEXT,
+  source TEXT DEFAULT 'app',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_support_messages_ticket_id ON support_messages(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_support_messages_created ON support_messages(created_at ASC);
+
+-- Seed support config
+INSERT OR IGNORE INTO app_config (key, value, description) VALUES
+  ('telegram_bot_token', 'SET_VIA_CLOUDFLARE_SECRET_OR_D1', 'Telegram bot token for support notifications'),
+  ('telegram_chat_ids', '[]', 'Telegram chat IDs for support notifications (set via Admin Panel)'),
+  ('support_email', 'support@dakkho.pro.bd', 'Support email address');

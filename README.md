@@ -1,376 +1,737 @@
-<p align="center">
-  <img src="public/dakkho-logo.png" alt="DAKKHO Logo" width="120" />
-</p>
+<div align="center">
 
-<h1 align="center">DAKKHO Admin Panel</h1>
+<img src="public/dakkho-logo.png" alt="DAKKHO Logo" width="140" />
 
-<p align="center">
-  <strong>Next.js 16 Admin Dashboard for the DAKKHO Student Streaming Platform</strong>
-</p>
+# 🎓 DAKKHO — Student Streaming Platform
 
-<p align="center">
-  <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js 16" /></a>
-  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript" alt="TypeScript" /></a>
-  <a href="https://tailwindcss.com/"><img src="https://img.shields.io/badge/Tailwind_CSS-4-38bdf8?logo=tailwindcss" alt="Tailwind CSS 4" /></a>
-  <a href="https://ui.shadcn.com/"><img src="https://img.shields.io/badge/shadcn%2Fui-latest-000?logo=shadcnui" alt="shadcn/ui" /></a>
-  <a href="https://appwrite.io/"><img src="https://img.shields.io/badge/Appwrite-SDK-fd366e?logo=appwrite" alt="Appwrite" /></a>
-  <a href="https://www.cloudflare.com/r2/"><img src="https://img.shields.io/badge/Cloudflare_R2-S3-orange?logo=cloudflare" alt="Cloudflare R2" /></a>
-  <a href="https://supabase.com/"><img src="https://img.shields.io/badge/Supabase-Edge-3ecf8e?logo=supabase" alt="Supabase" /></a>
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
-</p>
+**Full-Stack EdTech Platform · Admin Dashboard + Student App + Cloudflare Worker API**
+
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![TypeScript 5](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Hono 4](https://img.shields.io/badge/Hono-4-E36002?style=for-the-badge&logo=hono&logoColor=white)](https://hono.dev/)
+[![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-latest-18181B?style=for-the-badge&logo=shadcnui&logoColor=white)](https://ui.shadcn.com/)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](https://www.cloudflare.com/)
+[![MIT License](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
+
+</div>
 
 ---
 
-## Table of Contents
+## 📑 Table of Contents
 
-- [Overview](#overview)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Quick Start](#quick-start)
-- [Environment Variables](#environment-variables)
-- [API Documentation](#api-documentation)
-- [Deployment](#deployment)
-- [Project Structure](#project-structure)
-- [Contributing](#contributing)
-- [License](#license)
-
----
-
-## Overview
-
-**DAKKHO Admin Panel** is a full-featured, single-page admin dashboard built with Next.js 16 App Router for managing the DAKKHO student streaming platform. It provides 12 dedicated admin panels for managing users, courses, videos, instructors, and more — all wrapped in a sleek dark glassmorphism UI theme.
-
-The panel integrates with **Appwrite** for authentication and database operations, **Cloudflare R2** for media storage, **Supabase** for edge functions and realtime, **Resend** for email delivery, and **HiveMQ Cloud MQTT** for real-time configuration broadcast to mobile clients.
+- [🆕 Recent Updates](#-recent-updates)
+- [📖 Overview](#-overview)
+- [🏗️ Architecture](#-architecture)
+- [📦 Apps](#-apps)
+  - [⚡ Worker API (Backend)](#-worker-api-backend)
+  - [🖥️ Admin App (Dashboard)](#-admin-app-dashboard)
+  - [📱 Student App (Frontend)](#-student-app-frontend)
+- [🧰 Tech Stack](#-tech-stack)
+- [🚀 Quick Start](#-quick-start)
+- [🔐 Environment Variables](#-environment-variables)
+- [📡 API Documentation](#-api-documentation)
+- [🗄️ Database Schema](#-database-schema)
+- [🚢 Deployment](#-deployment)
+- [📁 Project Structure](#-project-structure)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
 
 ---
 
-## Features
+## 🆕 Recent Updates
 
-### 12 Admin Panels
+| # | Update | Details |
+|---|--------|---------|
+| 1 | **Subjects management system** | New dedicated admin page for managing subjects with CRUD, search, filtering, and technology association |
+| 2 | **Multiple categories & instructors per course** | New junction tables (`course_subjects`, `course_categories`, `course_instructors`) enable many-to-many relationships |
+| 3 | **Course thumbnail upload fix** | Resolved issue with thumbnail uploads for course management |
+| 4 | **D1 schema migration for missing columns** | Migration endpoint now handles creating missing tables, columns, and indexes automatically |
+
+---
+
+## 📖 Overview
+
+**DAKKHO** is a full-featured EdTech streaming platform built for polytechnic students in Bangladesh. It delivers video courses, live classes, study materials, and community features through a modern cloud-native architecture running entirely on **Cloudflare's edge network** — Workers for compute, D1 for database, KV for caching, and R2 for media storage.
+
+The platform consists of three tightly integrated applications in a single monorepo:
+
+| App | Description |
+|-----|-------------|
+| ⚡ **Worker API** | A Hono-based Cloudflare Worker serving as the entire backend — authentication, CRUD operations, file uploads, push notifications, email delivery, and payment processing |
+| 🖥️ **Admin App** | A Next.js 16 SPA dashboard with **25 admin panels** for managing every aspect of the platform — courses, videos, instructors, subjects, users, payments, coupons, events, and more |
+| 📱 **Student App** | A Next.js 16 SPA with 80+ pages and components providing a Netflix-like streaming experience for students — course catalogs, video playback, progress tracking, bookmarks, achievements, and social features |
+
+---
+
+## 🏗️ Architecture
+
+```
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                     ☁️  Cloudflare Edge                         │
+  │                                                                 │
+  │   🖥️ Admin App       📱 Student App       ⚡ Worker API       │
+  │   ┌───────────┐      ┌───────────┐       ┌───────────┐       │
+  │   │ Next.js   │      │ Next.js   │       │  Hono +   │       │
+  │   │ SPA       │      │ SPA       │       │  D1       │       │
+  │   │ (Pages)   │      │ (Pages)   │       │ (Workers) │       │
+  │   └─────┬─────┘      └─────┬─────┘       └─────┬─────┘       │
+  │         │                  │                    │               │
+  │         └────────┬─────────┘                    │               │
+  │                  │  /admin/* & /api/*            │               │
+  │                  ▼                              │               │
+  │          ┌──────────────────┐                   │               │
+  │          │   ⚡ Hono Router │ ◄─────────────────┘               │
+  │          └──┬───┬───┬───┬──┘                                   │
+  │             │   │   │   │                                        │
+  │             ▼   ▼   ▼   ▼                                        │
+  │          ┌────┐┌────┐┌────┐┌─────────┐┌──────────┐             │
+  │          │ 🗄️ ││ ⚡ ││ 📦 ││  📧    ││  🔔     │             │
+  │          │ D1 ││ KV ││ R2 ││ Resend ││OneSignal │             │
+  │          │ DB ││Cache││Store││ Email ││  Push    │             │
+  │          └────┘└────┘└────┘└───────┘└──────────┘             │
+  │                                                                 │
+  └─────────────────────────────────────────────────────────────────┘
+```
+
+**Key architectural decisions:**
+
+- 🌍 **Edge-first** — Everything runs on Cloudflare's global network for sub-100ms response times worldwide
+- 🗄️ **D1 (SQLite) as primary database** — 30+ tables handling users, courses, enrollments, payments, notifications, and more. D1 provides transactional consistency with automatic read replication
+- ⚡ **KV as response cache** — Server configuration and frequently accessed API responses are cached in KV with 300-second TTLs, reducing D1 load significantly
+- 📦 **R2 for media storage** — Videos, thumbnails, avatars, and resources are stored in R2 buckets and served via public dev URLs with 7-day browser cache headers
+- 🎯 **Static SPA deployment** — Both Admin and Student apps use `output: "export"` for zero-cost static hosting on Cloudflare Pages, with client-side routing via Zustand stores
+
+---
+
+## 📦 Apps
+
+### ⚡ Worker API (Backend)
+
+The Worker is the backbone of the entire platform, built with [Hono](https://hono.dev/) — a fast, lightweight web framework optimized for Cloudflare Workers. It handles all server-side logic including authentication, database queries, file uploads, email delivery, push notifications, and payment processing.
+
+**Location:** `worker/`
+
+**Key features:**
+
+| Feature | Description |
+|---------|-------------|
+| 🔐 **Dual authentication** | Admin auth (7-day sessions) and Student auth (30-day sessions) with separate session tables, both using Bearer tokens and SHA-256 password hashing |
+| 🎛️ **Server-driven UI** | The `/api/config` endpoint serves a `ServerConfig` object controlling features, home page sections, sidebar items, bottom navigation, content protection, and card styling — all configurable without an app update |
+| ⚡ **KV-cached config** | Server config cached in KV with 300-second TTL; cache auto-invalidated on admin updates |
+| 📤 **R2 file serving** | Files uploaded directly to R2 buckets and served via public dev URLs or Worker proxy with 7-day cache headers |
+| 🔔 **OneSignal push** | Push token registration, notification sending, and delivery logging via OneSignal REST API |
+| 💳 **Payment integration** | Manual payment (bKash/Nagad), SSLCommerz, and bKash API gateways with admin-configurable activation |
+| 📧 **Email via Resend** | OTP verification, password reset, and admin email campaigns |
+| 🗄️ **D1 migration endpoint** | `POST /admin/migrate` creates all missing tables, columns, and indexes, and inserts seed data |
+
+**Worker bindings:**
+
+| Binding | Type | Resource |
+|---------|------|----------|
+| `DB` | D1 Database | `dakkho-admin-db` |
+| `KV_CONFIG` | KV Namespace | Server config cache |
+| `R2_VIDEOS` | R2 Bucket | `dakkho-videos` |
+| `R2_THUMBNAILS` | R2 Bucket | `dakkho-thumbnails` |
+| `R2_AVATARS` | R2 Bucket | `dakkho-avatars` |
+| `R2_RESOURCES` | R2 Bucket | `dakkho-resources` |
+
+---
+
+### 🖥️ Admin App (Dashboard)
+
+A single-page admin dashboard built with Next.js 16 App Router, featuring a dark glassmorphism UI theme. All **25 admin panels** communicate exclusively with the Worker API through a unified API client.
+
+**Location:** `src/`
+
+**Admin Panels:**
 
 | # | Panel | Description |
 |---|-------|-------------|
-| 1 | **Dashboard** | System overview, live metrics, service health status |
-| 2 | **Users** | User management with Appwrite Auth integration |
-| 3 | **Categories** | Course categories CRUD operations |
-| 4 | **Instructors** | Instructor profile management |
-| 5 | **Courses** | Course management with chapter organization |
-| 6 | **Videos** | Video management with R2 storage upload |
-| 7 | **Institutes** | Educational institute management |
-| 8 | **Config** | App configuration with MQTT broadcast to clients |
-| 9 | **Notifications** | Push notification management and delivery |
-| 10 | **Analytics** | Charts and data visualization with Recharts |
-| 11 | **Email** | Email composition and delivery via Resend |
-| 12 | **Settings** | Service health monitoring and API key management |
+| 1 | 📊 **Dashboard** | System overview, live metrics, service health status |
+| 2 | 👥 **Users** | User management with role-based access |
+| 3 | 🏷️ **Categories** | Course categories with hierarchy support |
+| 4 | 🎓 **Instructors** | Instructor profile management with R2 avatar upload |
+| 5 | 📚 **Courses** | Course management with chapter and video organization |
+| 6 | 🎬 **Videos** | Video management with R2 upload and streaming URLs |
+| 7 | 🏛️ **Institutes** | Polytechnic institute directory management |
+| 8 | ⚙️ **Config** | Server-driven UI configuration with KV broadcast |
+| 9 | 🔔 **Notifications** | Push notification management and delivery via OneSignal |
+| 10 | 📈 **Analytics** | Charts and data visualization with Recharts |
+| 11 | 📧 **Email** | Email composition and delivery via Resend |
+| 12 | 🔑 **Settings** | Service health monitoring and API key management |
+| 13 | 🛡️ **Admins** | Admin user management and session control |
+| 14 | 🎟️ **Coupons** | Discount coupon CRUD |
+| 15 | 💰 **Discounts** | Automatic discount rules |
+| 16 | 📅 **Events** | Events, holidays, and exam calendar |
+| 17 | 🔴 **Live Classes** | Live class schedule management |
+| 18 | 💳 **Payments** | Payment records and verification |
+| 19 | 🏫 **Institute Requests** | Student-submitted institute requests |
+| 20 | 📲 **Push** | Push notification token and delivery management |
+| 21 | 🔧 **Technologies** | Engineering technology/department directory |
+| 22 | 📦 **Packages** | Course pricing packages |
+| 23 | ✅ **Enrollments** | User enrollment management |
+| 24 | 🏆 **Achievements** | Achievement definitions and student achievements |
+| 25 | 📖 **Subjects** | Subject management with technology association and course linking |
 
-### Key Highlights
+**API Client** (`src/lib/api-client.ts`):
 
-- **Dark Glassmorphism Theme** — A premium, modern UI with frosted-glass effects throughout
-- **Real-time Config Broadcast** — Push configuration changes to mobile apps instantly via MQTT
-- **S3-Compatible Storage** — Upload and manage videos, thumbnails, avatars, and resources on Cloudflare R2
-- **Server-Side Auth** — Appwrite Server SDK for secure admin authentication
-- **Local Fallback DB** — Prisma + SQLite for config, audit logs, and email logs
-- **Form Validation** — Zod schemas with React Hook Form for all inputs
-- **State Management** — Zustand for lightweight, reactive client state
+- Routes all requests to `NEXT_PUBLIC_API_BASE_URL` (falls back to local `/api/admin/` if unset)
+- Auto-transforms D1 `snake_case` columns to `camelCase` for frontend conventions
+- Attaches Bearer token from `localStorage`
+- Provides typed helpers: `apiGet`, `apiPost`, `apiPut`, `apiDelete`, `apiUpload`, `apiRaw`
 
 ---
 
-## Tech Stack
+### 📱 Student App (Frontend)
+
+A Netflix-like streaming application for students, built with Next.js 16 as a static SPA. It provides course browsing, video playback, progress tracking, bookmarks, achievements, social features, and 20+ polytechnic department pages.
+
+**Location:** `dakkho-student-app/`
+
+**Key sections:**
+
+| Section | Features |
+|---------|----------|
+| 🔐 **Auth** | Login, Signup, Forgot Password, OTP verification |
+| 🏠 **Home** | Hero section, continue watching, trending courses, featured instructors, category pills |
+| 📚 **Courses** | My Courses, Course Detail, Curriculum, Reviews, Q&A, Resources, Notes, Quizzes, Progress, Announcements |
+| 🎬 **Video** | Video player with progress tracking, downloads |
+| 🎓 **Instructors** | Directory, profiles, courses, reviews, schedule, contact |
+| 👤 **Profile** | Edit profile, change password, learning stats, subscription, referral, delete account |
+| ⚙️ **Settings** | Account, notifications, privacy, language, theme, downloads, content protection, sessions, video quality, network data |
+| 🌐 **Social** | Leaderboard, study groups, peer connections, community, feedback, roadmap |
+| 📝 **Exam** | Prep, schedule, results, practice, tips |
+| 🏛️ **Departments** | 20 polytechnic department pages (CSE, EEE, ME, CE, CST, etc.) |
+| 📆 **Semesters** | Semester 1–8 pages |
+| 🔍 **Other** | Search, bookmarks, watch history, live sessions, achievements, discussion, certificates, about, help (FAQ, terms, privacy, refund, contact), pricing, changelog |
+
+**Zustand Stores:**
+
+| Store | Purpose |
+|-------|---------|
+| `useNavigationStore` | SPA routing (page ↔ URL sync via History API) |
+| `useAuthStore` | Auth state, login/signup/logout/OTP/profile |
+| `useThemeStore` | Light/dark/system theme |
+| `useWatchProgressStore` | Video watch progress (localStorage) |
+| `useBookmarkStore` | Course bookmarks (localStorage) |
+| `useNotificationStore` | In-app notifications (localStorage) |
+| `useSearchStore` | Search queries + recent searches |
+| `useContentProtectionStore` | Content protection toggles |
+| `useServerConfigStore` | Server-driven UI config (fetched from Worker `/api/config`) |
+
+---
+
+## 🧰 Tech Stack
 
 | Category | Technology |
 |----------|------------|
-| **Framework** | Next.js 16 (App Router, Turbopack) |
-| **Language** | TypeScript 5 |
-| **Styling** | Tailwind CSS 4 + shadcn/ui |
-| **Auth & Database** | Appwrite Server SDK |
-| **Object Storage** | Cloudflare R2 (S3-compatible) |
-| **Edge Functions & Realtime** | Supabase |
-| **Email** | Resend |
-| **Real-time Messaging** | HiveMQ Cloud MQTT |
-| **Local Database** | Prisma + SQLite |
+| **Framework** | ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js) App Router, Turbopack, Static Export |
+| **Backend** | ![Hono](https://img.shields.io/badge/Hono-4-E36002?logo=hono) on Cloudflare Workers |
+| **Database** | ![D1](https://img.shields.io/badge/D1-SQLite-F38020?logo=cloudflare) Edge-replicated |
+| **Cache** | ![KV](https://img.shields.io/badge/KV-Cache-F38020?logo=cloudflare) Global key-value |
+| **Storage** | ![R2](https://img.shields.io/badge/R2-Storage-F38020?logo=cloudflare) S3-compatible |
+| **Language** | ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript) |
+| **Styling** | ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss) + shadcn/ui (40+ Radix components) |
 | **State Management** | Zustand |
-| **Animations** | Framer Motion |
+| **Data Fetching** | TanStack React Query |
 | **Charts** | Recharts |
 | **Forms** | React Hook Form + Zod |
-| **Table** | TanStack React Table |
-| **Data Fetching** | TanStack React Query |
+| **Tables** | TanStack React Table |
+| **Animations** | Framer Motion |
+| **Push Notifications** | OneSignal |
+| **Email** | Resend |
+| **Payments** | SSLCommerz, bKash API, Manual (bKash/Nagad) |
+| **Hosting** | Cloudflare Pages (CDN) + Workers (Edge) |
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
 - **Node.js** ≥ 18 or **Bun** runtime
-- An **Appwrite** project with a database and API key
-- A **Cloudflare R2** bucket for media storage
-- A **Supabase** project (for edge functions / realtime)
-- A **Resend** account (for email delivery)
-- A **HiveMQ Cloud** instance (for MQTT config broadcast)
+- A **Cloudflare** account with Workers, D1, KV, and R2 enabled
+- **Wrangler CLI** installed (`npm install -g wrangler`)
+- A **Resend** account for email delivery
+- A **OneSignal** account for push notifications
 
 ### Installation
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-org/dakkho-admin.git
+git clone https://github.com/grayrat2026/dakkho-admin.git
 cd dakkho-admin
 
-# 2. Install dependencies
+# 2. Install dependencies for all apps
 npm install
-# or: bun install
+cd worker && npm install && cd ..
+cd dakkho-student-app && npm install && cd ..
 
-# 3. Create your environment file
-cp .env.example .env
-# Then edit .env with your actual credentials
+# 3. Set up Worker secrets
+cd worker
+wrangler login
+wrangler secret put ADMIN_SECRET_KEY
+wrangler secret put RESEND_API_KEY
+wrangler secret put ONE_SIGNAL_APP_ID
+wrangler secret put ONE_SIGNAL_REST_API_KEY
 
-# 4. Set up the local database
-npx prisma db push
+# 4. Deploy the Worker
+wrangler deploy --config wrangler.toml
 
-# 5. Start the development server
+# 5. Run D1 migration (creates all tables + seed data)
+curl -X POST https://dakkho-admin-api.dakkho-admin.workers.dev/admin/migrate \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
+
+# 6. Start Admin App development server
 npm run dev
-# or: bun run dev
 
-# 6. Open http://localhost:3000
+# 7. Start Student App development server
+cd dakkho-student-app && npm run dev
 ```
 
-### Default Login
+### Default Admin Login
 
-The admin panel uses Appwrite authentication. Create an admin user in your Appwrite project to log in.
+After running the migration, two default admin accounts are created:
 
----
+| Email | Role |
+|-------|------|
+| `admin@dakkho.pro.bd` | Super Admin |
+| `himadrient@proton.me` | Admin |
 
-## Environment Variables
-
-Copy `.env.example` to `.env` and fill in your credentials. All variables are documented below:
-
-### Database
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | Prisma SQLite connection string | `file:./dev.db` |
-
-### Appwrite
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `NEXT_PUBLIC_APPWRITE_ENDPOINT` | Appwrite server endpoint | `https://cloud.appwrite.io/v1` |
-| `NEXT_PUBLIC_APPWRITE_PROJECT_ID` | Appwrite project ID | `your-project-id` |
-| `APPWRITE_DATABASE_ID` | Appwrite database ID | `your-database-id` |
-| `APPWRITE_API_KEY` | Appwrite server API key (secret) | `your-appwrite-api-key` |
-
-### Cloudflare R2
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `R2_ACCESS_KEY_ID` | R2 access key | `your-r2-access-key` |
-| `R2_SECRET_ACCESS_KEY` | R2 secret key | `your-r2-secret-key` |
-| `R2_ENDPOINT` | R2 S3-compatible endpoint | `https://your-account-id.r2.cloudflarestorage.com` |
-| `R2_ACCOUNT_ID` | Cloudflare account ID | `your-account-id` |
-| `R2_API_TOKEN` | R2 API token | `your-r2-api-token` |
-| `R2_BUCKET_VIDEOS` | Videos bucket name | `dakkho-videos` |
-| `R2_BUCKET_THUMBNAILS` | Thumbnails bucket name | `dakkho-thumbnails` |
-| `R2_BUCKET_AVATARS` | Avatars bucket name | `dakkho-avatars` |
-| `R2_BUCKET_RESOURCES` | Resources bucket name | `dakkho-resources` |
-
-### Supabase
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | `https://your-project.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key | `your-anon-key` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (secret) | `your-service-role-key` |
-
-### Resend
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `RESEND_API_KEY` | Resend API key (secret) | `your-resend-api-key` |
-| `RESEND_FROM_EMAIL` | Default sender email | `noreply@yourdomain.com` |
-| `RESEND_SUPPORT_EMAIL` | Support email address | `support@yourdomain.com` |
-
-### HiveMQ MQTT
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `MQTT_BROKER_URL` | MQTT WebSocket broker URL | `wss://your-broker.hivemq.cloud:8884/mqtt` |
-| `MQTT_USERNAME` | MQTT username | `your-mqtt-username` |
-| `MQTT_PASSWORD` | MQTT password (secret) | `your-mqtt-password` |
-
-### App
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `NEXT_PUBLIC_APP_URL` | Public app URL | `https://yourdomain.com` |
-| `NEXT_PUBLIC_API_BASE_URL` | Supabase edge functions base URL | `https://your-project.supabase.co/functions/v1` |
+Set your admin password by updating the `users` table in D1, or use the migration seed defaults.
 
 ---
 
-## API Documentation
+## 🔐 Environment Variables
 
-All API routes are prefixed with `/api/admin/` and require authentication.
+### Worker (set via `wrangler secret put`)
 
-### Authentication
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ADMIN_SECRET_KEY` | ✅ Yes | Secret key for admin token generation |
+| `RESEND_API_KEY` | ✅ Yes | Resend API key for email delivery |
+| `ONE_SIGNAL_APP_ID` | ✅ Yes | OneSignal app ID for push notifications |
+| `ONE_SIGNAL_REST_API_KEY` | ✅ Yes | OneSignal REST API key |
+| `SSLCOMMERZ_STORE_ID` | ❌ No | SSLCommerz payment gateway store ID |
+| `SSLCOMMERZ_STORE_PASSWORD` | ❌ No | SSLCommerz payment gateway password |
+| `BKASH_USERNAME` | ❌ No | bKash API username |
+| `BKASH_PASSWORD` | ❌ No | bKash API password |
+| `BKASH_APP_KEY` | ❌ No | bKash API app key |
+| `BKASH_APP_SECRET` | ❌ No | bKash API app secret |
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/admin/auth` | Admin login (email + password) |
-| `GET` | `/api/admin/auth/check` | Verify current auth session |
+### Worker (set in wrangler.toml)
 
-### System
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RESEND_FROM_EMAIL` | `noreply@dakkho.pro.bd` | Default sender email |
+| `RESEND_SUPPORT_EMAIL` | `support@dakkho.pro.bd` | Support email address |
+| `ENVIRONMENT` | `production` | Runtime environment |
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/admin/system/status` | System health check (all services) |
-| `GET/POST` | `/api/admin/system/api-key` | API key management |
+### Admin App
 
-### Resources
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_API_BASE_URL` | ✅ Yes | Worker API URL (e.g., `https://dakkho-admin-api.dakkho-admin.workers.dev`) |
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET/POST` | `/api/admin/users` | List / Create users |
-| `GET/POST` | `/api/admin/categories` | List / Create categories |
-| `GET/POST` | `/api/admin/instructors` | List / Create instructors |
-| `GET/POST` | `/api/admin/courses` | List / Create courses |
-| `GET/POST` | `/api/admin/videos` | List / Create videos |
-| `GET/POST` | `/api/admin/institutes` | List / Create institutes |
-| `GET/POST` | `/api/admin/config` | Read / Update app configuration |
-| `GET/POST` | `/api/admin/notifications` | List / Send notifications |
-| `GET` | `/api/admin/analytics` | Analytics data for charts |
-| `POST` | `/api/admin/upload` | Upload file to Cloudflare R2 |
+### Student App
 
-> Individual resource routes also support `PUT` and `DELETE` with an `id` query parameter for update and delete operations.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_API_BASE_URL` | ❌ No | Worker API URL (defaults to `https://dakkho-admin-api.dakkho-admin.workers.dev`) |
 
 ---
 
-## Deployment
+## 📡 API Documentation
 
-### Option 1: GitHub Pages + Supabase Edge Functions
+The Worker API serves two route groups: **Admin routes** (require Bearer token auth) and **Student routes** (public or student auth).
 
-Deploy the frontend as a static site on GitHub Pages, with API logic moved to Supabase Edge Functions.
+### 🔒 Admin Routes
+
+All admin routes are prefixed with `/admin/` and require a valid `Authorization: Bearer <token>` header.
+
+#### Authentication
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/admin/auth` | Admin login (email + password) |
+| `GET` | `/admin/auth/check` | Verify current auth session |
+| `POST` | `/admin/auth/logout` | Logout and invalidate session |
+| `POST` | `/admin/auth/clear-sessions` | Clear all sessions for current admin |
+
+#### System
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/admin/system/status` | System health check (D1, KV, R2) |
+| `GET/POST` | `/admin/system/api-key` | API key management |
+
+#### Resources (CRUD)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET/POST` | `/admin/users` | List / Create users |
+| `GET/POST` | `/admin/categories` | List / Create categories |
+| `GET/POST` | `/admin/instructors` | List / Create instructors |
+| `GET/POST` | `/admin/courses` | List / Create courses |
+| `GET/POST` | `/admin/videos` | List / Create videos |
+| `GET/POST` | `/admin/institutes` | List / Create institutes |
+| `GET/POST` | `/admin/admin` | List / Create admin users |
+| `GET/POST` | `/admin/technologies` | List / Create technologies |
+| `GET/POST` | `/admin/subjects` | List / Create subjects |
+| `GET/POST` | `/admin/coupons` | List / Create coupons |
+| `GET/POST` | `/admin/discounts` | List / Create discounts |
+| `GET/POST` | `/admin/events` | List / Create events |
+| `GET/POST` | `/admin/live-classes` | List / Create live class schedules |
+| `GET/POST` | `/admin/packages` | List / Create course packages |
+| `GET/POST` | `/admin/enrollments` | List / Create enrollments |
+| `GET/POST` | `/admin/achievements` | List / Create achievements |
+| `GET/POST` | `/admin/institute-requests` | List / Review institute requests |
+| `GET/POST` | `/admin/payments` | List / Manage payments |
+
+> Individual resource routes support `PUT` and `DELETE` with an `id` query parameter.
+
+#### Other Admin Routes
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET/POST` | `/admin/config` | Read / Update server configuration |
+| `GET/POST` | `/admin/notifications` | List / Send notifications |
+| `GET/POST` | `/admin/push` | Push notification management |
+| `GET` | `/admin/analytics` | Analytics data for charts |
+| `POST` | `/admin/upload` | Upload file to Cloudflare R2 |
+| `GET/POST` | `/admin/email` | Email composition and delivery |
+| `POST` | `/admin/migrate` | Run D1 database migration |
+
+### 🌐 Student Routes
+
+Student routes are prefixed with `/api/` and may or may not require authentication.
+
+#### Public Routes
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/config` | Get server config (feature flags, UI settings) |
+| `GET` | `/api/config/payment` | Get active payment gateway config |
+| `GET` | `/api/courses` | Published course catalog |
+| `GET` | `/api/instructors` | Instructor list |
+| `GET` | `/api/institutes` | Institute list |
+| `GET` | `/api/technologies` | Technology/department list |
+| `GET` | `/api/events` | Events list |
+| `GET` | `/api/live-classes` | Live class schedule |
+| `POST` | `/api/coupons/validate` | Validate a coupon code |
+| `GET` | `/api/course-packages` | Get packages for a course |
+
+#### Auth Routes
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/auth/signup` | Student signup |
+| `POST` | `/api/auth/login` | Student login |
+| `POST` | `/api/auth/logout` | Student logout |
+| `GET` | `/api/auth/me` | Current student profile |
+| `POST` | `/api/auth/verify-otp` | Verify email with OTP |
+| `POST` | `/api/auth/forgot-password` | Request password reset |
+| `POST` | `/api/auth/reset-password` | Reset password with OTP |
+| `POST` | `/api/auth/resend-otp` | Resend verification OTP |
+| `PUT` | `/api/auth/profile` | Update student profile |
+
+#### Authenticated Routes
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/courses/:id/videos` | Videos for enrolled course |
+| `POST` | `/api/video/stream-url` | Get R2 stream URL |
+| `POST` | `/api/push/register` | Register push token |
+| `POST` | `/api/push/unregister` | Unregister push token |
+| `POST` | `/api/payments/submit` | Submit payment |
+| `GET` | `/api/packages/mine` | User's active packages |
+| `POST` | `/api/institutes/requests` | Request new institute |
+
+### File Serving
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/upload/:bucketType/:key` | Serve R2 files (7-day cache) |
+
+Bucket types: `videos`, `thumbnails`, `avatars`, `resources`
+
+---
+
+## 🗄️ Database Schema
+
+The D1 database (`dakkho-admin-db`) contains 30+ tables. Key tables include:
+
+### Core Tables
+
+| Table | Primary Key | Description |
+|-------|------------|-------------|
+| `users` | id TEXT | All users (students + admins) |
+| `admin_sessions` | id TEXT | Admin auth sessions (7-day expiry) |
+| `student_sessions` | id TEXT | Student auth sessions (30-day expiry) |
+| `courses` | id TEXT | Course catalog |
+| `videos` | id TEXT | Video records per course |
+| `instructors` | id TEXT | Instructor profiles |
+| `categories` | id TEXT | Course categories (with parent_id hierarchy) |
+| `subjects` | id TEXT | Subjects with technology association, slug, and color |
+| `enrollments` | id TEXT | User-to-course enrollment (unique user+course) |
+
+### Course Junction Tables (Many-to-Many)
+
+| Table | Primary Key | Description |
+|-------|------------|-------------|
+| `course_subjects` | id INTEGER AUTO | Links courses ↔ subjects (unique course+subject) |
+| `course_categories` | id INTEGER AUTO | Links courses ↔ categories (unique course+category) |
+| `course_instructors` | id INTEGER AUTO | Links courses ↔ instructors (unique course+instructor) |
+
+### Institute & Technology Tables
+
+| Table | Primary Key | Description |
+|-------|------------|-------------|
+| `institutes` | id INTEGER AUTO | Polytechnic institutes |
+| `technologies` | id INTEGER AUTO | Engineering departments (CST, Civil, etc.) |
+| `institute_requests` | id INTEGER AUTO | Student institute requests |
+
+### Package & Payment Tables
+
+| Table | Primary Key | Description |
+|-------|------------|-------------|
+| `course_packages` | id INTEGER AUTO | Course pricing packages |
+| `user_packages` | id INTEGER AUTO | User active packages |
+| `coupons` | id INTEGER AUTO | Discount coupons |
+| `discounts` | id INTEGER AUTO | Automatic discount rules |
+| `payments` | id INTEGER AUTO | Payment records |
+| `payment_config` | id INTEGER AUTO | Payment gateway settings |
+
+### Notification & Communication Tables
+
+| Table | Primary Key | Description |
+|-------|------------|-------------|
+| `notifications` | id TEXT | In-app notifications |
+| `notification_logs` | id INTEGER AUTO | Sent notification logs |
+| `user_push_tokens` | id INTEGER AUTO | OneSignal push tokens |
+
+### Config & System Tables
+
+| Table | Primary Key | Description |
+|-------|------------|-------------|
+| `app_config` | key TEXT | Key-value app configuration |
+| `audit_logs` | id TEXT | Admin action audit trail |
+| `events` | id INTEGER AUTO | Events, holidays, exams |
+| `live_class_schedules` | id INTEGER AUTO | Live class scheduling |
+
+### User Features Tables
+
+| Table | Primary Key | Description |
+|-------|------------|-------------|
+| `achievement_definitions` | id INTEGER AUTO | Achievement templates |
+| `student_achievements` | id INTEGER AUTO | Unlocked achievements |
+| `student_activity` | id INTEGER AUTO | Student activity log |
+| `password_reset_otps` | id INTEGER AUTO | OTPs for email verification + password reset |
+| `user_preferences` | user_id TEXT | Theme, privacy, content protection |
+| `notification_preferences` | id INTEGER AUTO | Per-user notification settings |
+| `user_2fa` | id INTEGER AUTO | 2FA settings (TOTP) |
+
+Full schema with indexes and seed data is available in `worker/schema.sql`.
+
+---
+
+## 🚢 Deployment
+
+### ⚡ Worker API
+
+```bash
+cd worker
+
+# Deploy to Cloudflare Workers
+wrangler deploy --config wrangler.toml
+
+# Set secrets (first time only)
+wrangler secret put ADMIN_SECRET_KEY
+wrangler secret put RESEND_API_KEY
+wrangler secret put ONE_SIGNAL_APP_ID
+wrangler secret put ONE_SIGNAL_REST_API_KEY
+
+# Run D1 migration (first time or after schema changes)
+curl -X POST https://dakkho-admin-api.dakkho-admin.workers.dev/admin/migrate \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
+```
+
+### 🖥️ Admin App (Cloudflare Pages)
 
 ```bash
 # Build static export
 npm run build
 
-# Deploy the out/ directory to GitHub Pages
-# Deploy edge functions to Supabase
-supabase functions deploy
+# Option A: Deploy via Wrangler
+npx wrangler pages deploy out --project-name=dakkho-admin
+
+# Option B: Connect GitHub repo to Cloudflare Pages for auto-deploy
 ```
 
-Set `NEXT_PUBLIC_API_BASE_URL` to point to your Supabase edge functions URL.
-
-### Option 2: Vercel (Full-stack)
-
-The simplest deployment path — Vercel handles both the Next.js frontend and serverless API routes.
+### 📱 Student App (Cloudflare Pages)
 
 ```bash
-# Install Vercel CLI
-npm i -g vercel
+cd dakkho-student-app
 
-# Deploy
-vercel
+# Build static export
+npm run build
+
+# Deploy via Wrangler
+npx wrangler pages deploy out --project-name=dakkho-student
 ```
 
-All API routes work out of the box. No additional configuration needed beyond environment variables.
+### Clearing KV Cache
 
-### Option 3: Docker (Self-hosted)
-
-```dockerfile
-FROM oven/bun:1 AS base
-WORKDIR /app
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
-COPY . .
-RUN bun run build
-EXPOSE 3000
-CMD ["bun", ".next/standalone/server.js"]
-```
+After config changes, clear the KV cache so students see updates immediately:
 
 ```bash
-# Build and run
-docker build -t dakkho-admin .
-docker run -p 3000:3000 --env-file .env dakkho-admin
+wrangler kv key delete --namespace-id=<YOUR_KV_NAMESPACE_ID> --key=server_config
 ```
-
-A `Caddyfile` is included in the repository for reverse proxy setup with automatic HTTPS.
 
 ---
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 dakkho-admin/
-├── prisma/
-│   └── schema.prisma              # Prisma schema (AppConfig, AuditLog, EmailLog, AdminSession)
-├── public/
-│   ├── dakkho-logo.png            # DAKKHO brand logo
-│   ├── logo.svg                   # SVG logo
-│   └── robots.txt                 # Search engine directives
-├── src/
+├── worker/                              # ⚡ Cloudflare Worker API (Backend)
+│   ├── src/
+│   │   ├── index.ts                     # Hono app entry point + route registration
+│   │   ├── env.ts                       # Cloudflare bindings type interface
+│   │   ├── routes/                      # Route modules
+│   │   │   ├── auth.ts                  # Admin authentication
+│   │   │   ├── student-auth.ts          # Student authentication
+│   │   │   ├── courses.ts              # Course CRUD
+│   │   │   ├── videos.ts               # Video CRUD + streaming
+│   │   │   ├── instructors.ts          # Instructor CRUD
+│   │   │   ├── categories.ts           # Category CRUD
+│   │   │   ├── subjects.ts             # Subject CRUD + technology filter
+│   │   │   ├── config.ts               # Server config (D1 + KV cache)
+│   │   │   ├── upload.ts               # R2 file upload
+│   │   │   ├── notifications.ts        # Notification management
+│   │   │   ├── push.ts                 # OneSignal push
+│   │   │   ├── email.ts                # Resend email delivery
+│   │   │   ├── payments.ts             # Payment management
+│   │   │   ├── coupons.ts              # Coupon CRUD
+│   │   │   ├── discounts.ts            # Discount CRUD
+│   │   │   ├── events.ts               # Event CRUD
+│   │   │   ├── live-classes.ts         # Live class scheduling
+│   │   │   ├── packages.ts             # Course package CRUD
+│   │   │   ├── enrollments.ts          # Enrollment management
+│   │   │   ├── achievements.ts         # Achievement definitions
+│   │   │   ├── technologies.ts         # Technology/department CRUD
+│   │   │   ├── institute-requests.ts   # Institute request review
+│   │   │   ├── migrate.ts              # D1 migration endpoint
+│   │   │   └── ...                     # System, admin, analytics, etc.
+│   │   └── lib/                         # Shared library modules
+│   │       ├── auth.ts                  # Auth middleware + password hashing
+│   │       ├── r2.ts                    # R2 client + public URL helpers
+│   │       ├── kv-cache.ts             # KV cache read/write/invalidation
+│   │       ├── d1-helpers.ts            # D1 query utilities
+│   │       ├── email.ts                 # Resend email templates
+│   │       ├── push.ts                  # OneSignal push helpers
+│   │       ├── cors.ts                  # CORS middleware
+│   │       ├── transform.ts             # Response transformation (snake→camel)
+│   │       └── ...                     # Error handling, validation, etc.
+│   ├── schema.sql                       # Full D1 schema + seed data
+│   ├── seed-polytechnics.sql            # Institute seed data
+│   ├── seed-technologies.sql            # Technology seed data
+│   ├── wrangler.toml                    # Worker + D1 + KV + R2 config
+│   └── package.json
+│
+├── src/                                 # 🖥️ Admin App (Next.js 16 SPA)
 │   ├── app/
-│   │   ├── api/
-│   │   │   └── admin/
-│   │   │       ├── auth/          # Authentication routes
-│   │   │       ├── analytics/     # Analytics data endpoint
-│   │   │       ├── categories/    # Category CRUD
-│   │   │       ├── config/        # App configuration
-│   │   │       ├── courses/       # Course CRUD
-│   │   │       ├── institutes/    # Institute CRUD
-│   │   │       ├── instructors/   # Instructor CRUD
-│   │   │       ├── notifications/ # Notification management
-│   │   │       ├── system/        # System status & API key
-│   │   │       ├── upload/        # R2 file upload
-│   │   │       ├── users/         # User CRUD
-│   │   │       └── videos/        # Video CRUD
-│   │   ├── globals.css            # Global styles & glassmorphism theme
-│   │   ├── layout.tsx             # Root layout with dark mode
-│   │   └── page.tsx               # SPA entry with Zustand routing
+│   │   ├── layout.tsx                   # Root layout with dark mode
+│   │   ├── not-found.tsx               # 404 page
+│   │   ├── globals.css                  # Glassmorphism theme styles
+│   │   └── [[...slug]]/
+│   │       ├── page.tsx                # SPA catch-all entry
+│   │       └── error.tsx               # Error boundary
 │   ├── components/
-│   │   ├── admin/
-│   │   │   ├── analytics-panel.tsx
-│   │   │   ├── categories-table.tsx
-│   │   │   ├── config-panel.tsx
-│   │   │   ├── courses-table.tsx
+│   │   ├── admin/                       # 25 admin panel components
 │   │   │   ├── dashboard.tsx
-│   │   │   ├── email-panel.tsx
 │   │   │   ├── header.tsx
-│   │   │   ├── institutes-table.tsx
-│   │   │   ├── instructors-table.tsx
-│   │   │   ├── login-form.tsx
-│   │   │   ├── notifications-panel.tsx
-│   │   │   ├── settings-panel.tsx
 │   │   │   ├── sidebar.tsx
+│   │   │   ├── login-form.tsx
 │   │   │   ├── users-table.tsx
-│   │   │   └── videos-table.tsx
-│   │   └── ui/                    # shadcn/ui component library
+│   │   │   ├── courses-table.tsx
+│   │   │   ├── videos-table.tsx
+│   │   │   ├── instructors-table.tsx
+│   │   │   ├── categories-table.tsx
+│   │   │   ├── subjects-table.tsx       # Subject management panel
+│   │   │   ├── config-panel.tsx
+│   │   │   ├── notifications-panel.tsx
+│   │   │   ├── analytics-panel.tsx
+│   │   │   ├── email-panel.tsx
+│   │   │   ├── settings-panel.tsx
+│   │   │   └── ...                     # 10 more panels
+│   │   └── ui/                          # 40+ shadcn/ui components
 │   ├── hooks/
 │   │   ├── use-toast.ts
 │   │   └── use-mobile.ts
 │   └── lib/
-│       ├── appwrite-server.ts     # Appwrite Server SDK client
-│       ├── audit.ts               # Audit logging utilities
-│       ├── constants.ts           # App-wide constants
-│       ├── db.ts                  # Prisma client instance
-│       ├── mqtt.ts                # HiveMQ MQTT client
-│       ├── r2.ts                  # Cloudflare R2 S3 client
-│       ├── resend.ts              # Resend email client
-│       ├── store.ts               # Zustand global store
-│       ├── supabase.ts            # Supabase client
-│       ├── types.ts               # Shared TypeScript types
-│       └── utils.ts               # Utility functions
-├── .env.example                   # Environment variable template
-├── Caddyfile                      # Caddy reverse proxy config
-├── components.json                # shadcn/ui configuration
-├── next.config.ts                 # Next.js configuration
-├── package.json                   # Dependencies & scripts
-├── postcss.config.mjs             # PostCSS configuration
-├── tailwind.config.ts             # Tailwind CSS configuration
-└── tsconfig.json                  # TypeScript configuration
+│       ├── api-client.ts                # Unified Worker API client
+│       ├── store.ts                     # Zustand global store
+│       ├── constants.ts                 # App-wide constants
+│       ├── types.ts                     # Shared TypeScript types
+│       └── utils.ts                     # Utility functions
+│
+├── dakkho-student-app/                  # 📱 Student App (Next.js 16 SPA)
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── layout.tsx              # Root layout
+│   │   │   ├── page.tsx               # SPA entry
+│   │   │   └── globals.css             # Student theme styles
+│   │   ├── components/
+│   │   │   ├── dakkho/                 # 80+ student pages & shared components
+│   │   │   │   ├── auth/              # Login, Signup, OTP, Forgot Password
+│   │   │   │   ├── home/              # Hero, Trending, Categories
+│   │   │   │   ├── courses/           # Detail, Curriculum, Reviews, Progress
+│   │   │   │   ├── video/             # Player, Downloads
+│   │   │   │   ├── instructors/       # List, Profile, Schedule
+│   │   │   │   ├── profile/           # Edit, Stats, Subscription
+│   │   │   │   ├── settings/          # Account, Theme, Privacy
+│   │   │   │   ├── social/            # Leaderboard, Community
+│   │   │   │   ├── exam/              # Prep, Results, Practice
+│   │   │   │   ├── departments/       # 20 polytechnic departments
+│   │   │   │   └── ...               # Search, Bookmarks, Help, etc.
+│   │   │   └── ui/                    # 40+ shadcn/ui components
+│   │   ├── hooks/
+│   │   └── lib/
+│   │       ├── api-client.ts           # Student API client
+│   │       ├── store.ts               # Zustand stores (9 stores)
+│   │       ├── constants.ts
+│   │       └── types.ts
+│   ├── public/
+│   │   ├── _headers                    # Cloudflare Pages security headers
+│   │   ├── _redirects                  # SPA fallback routing
+│   │   └── _routes.json               # Pages route exclusion
+│   ├── next.config.ts                  # Static export config
+│   └── package.json
+│
+├── public/                              # Admin App public assets
+│   ├── dakkho-logo.png                 # DAKKHO brand logo
+│   ├── logo.svg                        # SVG logo
+│   ├── _headers                        # CF Pages security headers
+│   ├── _redirects                       # SPA fallback
+│   └── robots.txt                      # Search engine directives
+│
+├── prisma/
+│   └── schema.prisma                   # Legacy (AdminSession only, unused)
+│
+├── next.config.ts                       # Admin App: static export + API URL
+├── wrangler.jsonc                       # Admin App CF Pages deployment
+├── Caddyfile                           # Local reverse proxy config
+├── components.json                     # shadcn/ui configuration
+├── tailwind.config.ts                  # Tailwind CSS configuration
+├── tsconfig.json                       # TypeScript configuration
+└── package.json                        # Admin App dependencies
 ```
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Please follow these steps:
 
@@ -382,20 +743,23 @@ Contributions are welcome! Please follow these steps:
 
 ### Development Guidelines
 
-- Follow the existing TypeScript and Tailwind CSS conventions
-- Use **Zod** schemas for all form validation
-- Maintain the dark glassmorphism theme consistency
-- Add proper error handling for all API routes
-- Keep components modular and reusable
+- ✅ Follow the existing TypeScript and Tailwind CSS conventions
+- ✅ Use **Zod** schemas for all form validation
+- ✅ Maintain the dark glassmorphism theme consistency in the Admin App
+- ✅ Add proper error handling for all Worker API routes
+- ✅ Keep components modular and reusable
+- ✅ Test Worker changes locally with `wrangler dev` before deploying
 
 ---
 
-## License
+## 📄 License
 
 This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
 ---
 
-<p align="center">
-  Built with ❤️ for the DAKKHO Student Streaming Platform
-</p>
+<div align="center">
+
+**Built for the DAKKHO Student Streaming Platform** 🎓
+
+</div>

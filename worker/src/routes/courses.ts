@@ -8,7 +8,7 @@ import type { Env } from '../env';
 import type { AuthVariables } from '../lib/auth';
 import { adminAuthMiddleware } from '../lib/auth';
 import { logAudit } from '../lib/audit';
-import { getErrorMessage } from '../lib/utils';
+import { getErrorMessage, normalizeKeys } from '../lib/utils';
 
 const courseRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -61,7 +61,22 @@ courseRoutes.get('/', async (c) => {
       `SELECT * FROM courses ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
     ).bind(...params, limit, offset).all();
 
-    return c.json({ documents: result.results, total });
+    // Enrich courses with junction table data
+    const enrichedResults = await Promise.all(result.results.map(async (course: any) => {
+      const [cats, insts, subs] = await Promise.all([
+        c.env.DB.prepare('SELECT category_id FROM course_categories WHERE course_id = ? ORDER BY sort_order').bind(course.id).all(),
+        c.env.DB.prepare('SELECT instructor_id FROM course_instructors WHERE course_id = ? ORDER BY sort_order').bind(course.id).all(),
+        c.env.DB.prepare('SELECT subject_id FROM course_subjects WHERE course_id = ? ORDER BY sort_order').bind(course.id).all(),
+      ]);
+      return {
+        ...course,
+        category_ids: cats.results.map((r: any) => r.category_id),
+        instructor_ids: insts.results.map((r: any) => r.instructor_id),
+        subject_ids: subs.results.map((r: any) => r.subject_id),
+      };
+    }));
+
+    return c.json({ documents: enrichedResults, total });
   } catch (error) {
     const message = getErrorMessage(error);
     return c.json({ error: message }, 500);
@@ -71,7 +86,9 @@ courseRoutes.get('/', async (c) => {
 // POST / — Create course
 courseRoutes.post('/', async (c) => {
   try {
-    const data = await c.req.json<Record<string, unknown>>();
+    const rawData = await c.req.json<Record<string, unknown>>();
+    const allowedFields = ['title', 'slug', 'description', 'thumbnail_url', 'preview_video_url', 'category_id', 'instructor_id', 'technology_id', 'level', 'language', 'duration', 'total_videos', 'rating', 'total_reviews', 'total_students', 'price', 'is_featured', 'is_published', 'tags'];
+    const data = normalizeKeys(rawData, allowedFields);
     const id = crypto.randomUUID();
     const slug = (data.slug as string) || slugify(data.title as string);
 
@@ -101,6 +118,35 @@ courseRoutes.post('/', async (c) => {
       data.tags || null
     ).run();
 
+    // Save junction table entries for multiple categories, instructors, subjects
+    const categoryIds = rawData.category_ids ? JSON.parse(String(rawData.category_ids)) : (rawData.category_id ? [rawData.category_id] : []);
+    const instructorIds = rawData.instructor_ids ? JSON.parse(String(rawData.instructor_ids)) : (rawData.instructor_id ? [rawData.instructor_id] : []);
+    const subjectIds = rawData.subject_ids ? JSON.parse(String(rawData.subject_ids)) : [];
+
+    // Clear existing and save category associations
+    if (categoryIds.length > 0) {
+      await c.env.DB.prepare('DELETE FROM course_categories WHERE course_id = ?').bind(id).run();
+      for (let i = 0; i < categoryIds.length; i++) {
+        await c.env.DB.prepare('INSERT OR IGNORE INTO course_categories (course_id, category_id, sort_order) VALUES (?, ?, ?)').bind(id, String(categoryIds[i]), i).run();
+      }
+    }
+
+    // Clear existing and save instructor associations
+    if (instructorIds.length > 0) {
+      await c.env.DB.prepare('DELETE FROM course_instructors WHERE course_id = ?').bind(id).run();
+      for (let i = 0; i < instructorIds.length; i++) {
+        await c.env.DB.prepare('INSERT OR IGNORE INTO course_instructors (course_id, instructor_id, sort_order) VALUES (?, ?, ?)').bind(id, String(instructorIds[i]), i).run();
+      }
+    }
+
+    // Clear existing and save subject associations
+    if (subjectIds.length > 0) {
+      await c.env.DB.prepare('DELETE FROM course_subjects WHERE course_id = ?').bind(id).run();
+      for (let i = 0; i < subjectIds.length; i++) {
+        await c.env.DB.prepare('INSERT OR IGNORE INTO course_subjects (course_id, subject_id, sort_order) VALUES (?, ?, ?)').bind(id, String(subjectIds[i]), i).run();
+      }
+    }
+
     const created = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(id).first();
 
     const user = c.get('user');
@@ -116,14 +162,16 @@ courseRoutes.post('/', async (c) => {
 // PUT / — Update course
 courseRoutes.put('/', async (c) => {
   try {
-    const data = await c.req.json<Record<string, unknown>>();
-    const { courseId, ...updates } = data;
+    const rawData = await c.req.json<Record<string, unknown>>();
+    const { courseId, ...rawUpdates } = rawData;
 
     if (!courseId) {
       return c.json({ error: 'Course ID required' }, 400);
     }
 
     const allowedFields = ['title', 'slug', 'description', 'thumbnail_url', 'preview_video_url', 'category_id', 'instructor_id', 'technology_id', 'level', 'language', 'duration', 'total_videos', 'rating', 'total_reviews', 'total_students', 'price', 'is_featured', 'is_published', 'tags'];
+    // Normalize camelCase keys from admin panel to snake_case for D1
+    const updates = normalizeKeys(rawUpdates, allowedFields);
     const setClauses: string[] = [];
     const setValues: unknown[] = [];
 
@@ -150,6 +198,35 @@ courseRoutes.put('/', async (c) => {
     await c.env.DB.prepare(
       `UPDATE courses SET ${setClauses.join(', ')} WHERE id = ?`
     ).bind(...setValues).run();
+
+    // Save junction table entries for multiple categories, instructors, subjects
+    const categoryIds = rawData.category_ids ? JSON.parse(String(rawData.category_ids)) : (rawData.category_id ? [rawData.category_id] : []);
+    const instructorIds = rawData.instructor_ids ? JSON.parse(String(rawData.instructor_ids)) : (rawData.instructor_id ? [rawData.instructor_id] : []);
+    const subjectIds = rawData.subject_ids ? JSON.parse(String(rawData.subject_ids)) : [];
+
+    // Clear existing and save category associations
+    if (categoryIds.length > 0) {
+      await c.env.DB.prepare('DELETE FROM course_categories WHERE course_id = ?').bind(String(courseId)).run();
+      for (let i = 0; i < categoryIds.length; i++) {
+        await c.env.DB.prepare('INSERT OR IGNORE INTO course_categories (course_id, category_id, sort_order) VALUES (?, ?, ?)').bind(String(courseId), String(categoryIds[i]), i).run();
+      }
+    }
+
+    // Clear existing and save instructor associations
+    if (instructorIds.length > 0) {
+      await c.env.DB.prepare('DELETE FROM course_instructors WHERE course_id = ?').bind(String(courseId)).run();
+      for (let i = 0; i < instructorIds.length; i++) {
+        await c.env.DB.prepare('INSERT OR IGNORE INTO course_instructors (course_id, instructor_id, sort_order) VALUES (?, ?, ?)').bind(String(courseId), String(instructorIds[i]), i).run();
+      }
+    }
+
+    // Clear existing and save subject associations
+    if (subjectIds.length > 0) {
+      await c.env.DB.prepare('DELETE FROM course_subjects WHERE course_id = ?').bind(String(courseId)).run();
+      for (let i = 0; i < subjectIds.length; i++) {
+        await c.env.DB.prepare('INSERT OR IGNORE INTO course_subjects (course_id, subject_id, sort_order) VALUES (?, ?, ?)').bind(String(courseId), String(subjectIds[i]), i).run();
+      }
+    }
 
     const updated = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(String(courseId)).first();
 

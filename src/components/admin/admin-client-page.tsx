@@ -17,6 +17,7 @@ import InstructorsTable from '@/components/admin/instructors-table';
 import CategoriesTable from '@/components/admin/categories-table';
 import InstitutesTable from '@/components/admin/institutes-table';
 import TechnologiesTable from '@/components/admin/technologies-table';
+import SubjectsTable from '@/components/admin/subjects-table';
 import InstituteRequests from '@/components/admin/institute-requests';
 import CouponsPanel from '@/components/admin/coupons-panel';
 import DiscountsPanel from '@/components/admin/discounts-panel';
@@ -29,6 +30,8 @@ import AchievementsPanel from '@/components/admin/achievements-panel';
 import PushPanel from '@/components/admin/push-panel';
 import NotificationsPanel from '@/components/admin/notifications-panel';
 import ConfigPanel from '@/components/admin/config-panel';
+import AboutPanel from '@/components/admin/about-panel';
+import SupportPanel from '@/components/admin/support-panel';
 import EmailPanel from '@/components/admin/email-panel';
 import AnalyticsPanel from '@/components/admin/analytics-panel';
 import SettingsPanel from '@/components/admin/settings-panel';
@@ -42,6 +45,7 @@ const pageComponents: Record<string, React.ComponentType> = {
   categories: CategoriesTable,
   institutes: InstitutesTable,
   technologies: TechnologiesTable,
+  subjects: SubjectsTable,
   'institute-requests': InstituteRequests,
   coupons: CouponsPanel,
   discounts: DiscountsPanel,
@@ -54,6 +58,8 @@ const pageComponents: Record<string, React.ComponentType> = {
   push: PushPanel,
   notifications: NotificationsPanel,
   config: ConfigPanel,
+  about: AboutPanel,
+  support: SupportPanel,
   email: EmailPanel,
   analytics: AnalyticsPanel,
   settings: SettingsPanel,

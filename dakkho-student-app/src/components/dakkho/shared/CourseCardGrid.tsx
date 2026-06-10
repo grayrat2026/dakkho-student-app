@@ -2,25 +2,25 @@
 
 import { motion } from 'framer-motion';
 import { Star, Users, Clock, Play, BookOpen } from 'lucide-react';
-import { getInstructor, getCategory, formatDuration, getLevelColor } from '@/lib/mock-data';
+import { type Course, type Instructor, type Category } from '@/lib/api-client';
+import { formatDuration, getLevelColor } from '@/lib/utils';
 import { useNavigationStore, useBookmarkStore } from '@/lib/store';
 import { GlassCard } from './GlassCard';
 import { ProgressBar } from './ProgressBar';
 import { Heart } from 'lucide-react';
-import type { Course } from '@/lib/mock-data';
 
 interface CourseCardProps {
   course: Course;
+  instructor?: Instructor;
+  category?: Category;
   showProgress?: boolean;
   progress?: number;
   index?: number;
 }
 
-export function CourseCard({ course, showProgress = false, progress = 0, index = 0 }: CourseCardProps) {
+export function CourseCard({ course, instructor, category, showProgress = false, progress = 0, index = 0 }: CourseCardProps) {
   const navigate = useNavigationStore((s) => s.navigate);
   const { isBookmarked, toggleBookmark } = useBookmarkStore();
-  const instructor = getInstructor(course.instructorId);
-  const category = getCategory(course.categoryId);
   const bookmarked = isBookmarked(course.id);
 
   const thumbnailColors = [
@@ -126,17 +126,21 @@ export function CourseCard({ course, showProgress = false, progress = 0, index =
 
 interface CourseCardGridProps {
   courses: Course[];
+  instructors?: Record<string, Instructor>;
+  categories?: Record<string, Category>;
   showProgress?: boolean;
   getProgress?: (courseId: string) => number;
 }
 
-export function CourseCardGrid({ courses, showProgress = false, getProgress }: CourseCardGridProps) {
+export function CourseCardGrid({ courses, instructors, categories, showProgress = false, getProgress }: CourseCardGridProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {courses.map((course, i) => (
         <CourseCard
           key={course.id}
           course={course}
+          instructor={instructors?.[course.instructorId]}
+          category={categories?.[course.categoryId]}
           showProgress={showProgress}
           progress={getProgress ? getProgress(course.id) : 0}
           index={i}

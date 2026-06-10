@@ -1,26 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Filter, SlidersHorizontal } from 'lucide-react';
-import { CATEGORIES, COURSES, getCategory } from '@/lib/mock-data';
+import { type Course, type Category, courseApi, categoryApi } from '@/lib/api-client';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
-import type { Course } from '@/lib/mock-data';
 
 export function ExplorePage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedLevel, setSelectedLevel] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  useEffect(() => {
+    courseApi.list().then((res) => setCourses(res.courses)).catch(() => {});
+    categoryApi.list().then((res) => setCategories(res.categories)).catch(() => {});
+  }, []);
 
   const levels = ['beginner', 'intermediate', 'advanced', 'expert'];
 
-  const filteredCourses = COURSES.filter((c) => {
-    const matchesCategory = !selectedCategory || c.categoryId === selectedCategory;
+  const filteredCourses = courses.filter((c) => {
+    const matchesCategory = !selectedCategory || c.categoryId === selectedCategory || c.instructorId === selectedCategory;
     const matchesLevel = !selectedLevel || c.level === selectedLevel;
     const matchesSearch = !searchQuery || 
       c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
+      c.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.tags && c.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase())));
     return matchesCategory && matchesLevel && matchesSearch;
   });
 
@@ -78,7 +85,7 @@ export function ExplorePage() {
           >
             All
           </motion.button>
-          {CATEGORIES.map((cat) => (
+          {categories.map((cat) => (
             <motion.button
               key={cat.id}
               className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition-all ${

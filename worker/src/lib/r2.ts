@@ -95,6 +95,9 @@ export function getBucketForType(type: string, env: Env): R2Bucket {
     case 'documents':
     case 'document':
       return env.R2_RESOURCES;
+    case 'support-attachments':
+    case 'support':
+      return env.R2_SUPPORT_ATTACHMENTS;
     default:
       return env.R2_RESOURCES;
   }

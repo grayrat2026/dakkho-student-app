@@ -7,7 +7,7 @@ import {
   Calendar, ChevronRight, Zap, Star, CheckCircle2, BarChart3
 } from 'lucide-react';
 import { useNavigationStore, useAuthStore } from '@/lib/store';
-import { COURSES, getInstructor } from '@/lib/mock-data';
+import { type Course, type Instructor, courseApi, instructorApi } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedCounter } from '../shared/AnimatedCounter';
 
@@ -40,6 +40,9 @@ export function EnrolledHero() {
   const user = useAuthStore((s) => s.user);
   const [currentTime, setCurrentTime] = useState('');
 
+  const [coursesMap, setCoursesMap] = useState<Record<string, Course>>({});
+  const [instructorsMap, setInstructorsMap] = useState<Record<string, Instructor>>({});
+
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -55,6 +58,34 @@ export function EnrolledHero() {
     return () => clearInterval(interval);
   }, []);
 
+  // Fetch courses for enrolled course IDs
+  useEffect(() => {
+    const enrolledIds = ENROLLED_COURSES.map((e) => e.id);
+    courseApi.list({ limit: 50 })
+      .then((res) => {
+        const map: Record<string, Course> = {};
+        res.courses.forEach((c) => {
+          if (enrolledIds.includes(c.id)) {
+            map[c.id] = c;
+          }
+        });
+        setCoursesMap(map);
+
+        // Fetch instructors for the matched courses
+        const instructorIds = [...new Set(Object.values(map).map((c) => c.instructorId).filter(Boolean))];
+        Promise.all(
+          instructorIds.map((id) => instructorApi.get(id).then((r) => r.instructor).catch(() => null))
+        ).then((instructors) => {
+          const iMap: Record<string, Instructor> = {};
+          instructors.forEach((inst) => {
+            if (inst) iMap[inst.id] = inst;
+          });
+          setInstructorsMap(iMap);
+        });
+      })
+      .catch(() => {});
+  }, []);
+
   const firstName = user?.fullName?.split(' ')[0] || 'Student';
   const completedGoals = DAILY_GOALS.filter((g) => g.done).length;
   const totalGoals = DAILY_GOALS.length;
@@ -62,8 +93,8 @@ export function EnrolledHero() {
 
   // Get the most pressing "continue watching" course
   const primaryCourse = ENROLLED_COURSES[0];
-  const courseData = primaryCourse ? COURSES.find((c) => c.id === primaryCourse.id) : null;
-  const instructor = courseData ? getInstructor(courseData.instructorId) : null;
+  const courseData = primaryCourse ? coursesMap[primaryCourse.id] : null;
+  const instructor = courseData ? instructorsMap[courseData.instructorId] : null;
 
   return (
     <div className="mb-8 space-y-4">
@@ -311,9 +342,9 @@ export function EnrolledHero() {
 
           <div className="space-y-2.5">
             {ENROLLED_COURSES.map((enrolled, i) => {
-              const course = COURSES.find((c) => c.id === enrolled.id);
+              const course = coursesMap[enrolled.id];
               if (!course) return null;
-              const inst = getInstructor(course.instructorId);
+              const inst = instructorsMap[course.instructorId];
               return (
                 <motion.div
                   key={enrolled.id}

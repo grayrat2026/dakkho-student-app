@@ -30,6 +30,9 @@ import {
   Radio,
   PanelLeftClose,
   PanelLeft,
+  Info,
+  Headphones,
+  BookMarked,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -67,6 +70,7 @@ const navSections: NavSection[] = [
       { id: 'videos', label: 'Videos', icon: Video },
       { id: 'instructors', label: 'Instructors', icon: School },
       { id: 'categories', label: 'Categories', icon: Tags },
+      { id: 'about', label: 'About Page', icon: Info },
     ],
   },
   {
@@ -75,6 +79,7 @@ const navSections: NavSection[] = [
       { id: 'users', label: 'Users', icon: Users },
       { id: 'institutes', label: 'Institutes', icon: Building2 },
       { id: 'technologies', label: 'Technologies', icon: Cpu },
+      { id: 'subjects', label: 'Subjects', icon: BookMarked },
       { id: 'institute-requests', label: 'Inst. Requests', icon: FileQuestion },
     ],
   },
@@ -93,6 +98,7 @@ const navSections: NavSection[] = [
     items: [
       { id: 'events', label: 'Events', icon: Calendar },
       { id: 'live-classes', label: 'Live Classes', icon: VideoIcon },
+      { id: 'support', label: 'Support', icon: Headphones },
       { id: 'push', label: 'Push Notify', icon: Send },
       { id: 'notifications', label: 'Notifications', icon: Bell },
       { id: 'achievements', label: 'Achievements', icon: Award },

@@ -62,7 +62,7 @@ export default function DiscountsPanel() {
     setError(null);
     try {
       const data = (await apiGet('/discounts?page=1&limit=100')) as any;
-      setDiscounts(data.discounts || []);
+      setDiscounts(data.discounts || data.documents || []);
       setTotal(data.total || 0);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch discounts';

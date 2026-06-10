@@ -65,7 +65,7 @@ export default function TechnologiesTable() {
     setLoading(true);
     try {
       const data = await apiGet('/technologies') as Record<string, unknown>;
-      setTechnologies((data.documents || data.technologies || []) as Technology[]);
+      setTechnologies(((data.technologies || data.documents) || []) as Technology[]);
     } catch {
       toast({ title: 'Error loading technologies', variant: 'destructive' });
     } finally {

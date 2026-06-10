@@ -1,10 +1,11 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Play, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { useNavigationStore, useWatchProgressStore } from '@/lib/store';
-import { COURSES, VIDEOS, getInstructor, formatDuration } from '@/lib/mock-data';
+import { type Course, type Video, type Instructor, courseApi, instructorApi } from '@/lib/api-client';
+import { formatDuration } from '@/lib/utils';
 import { ProgressBar } from '../shared/ProgressBar';
 import { GlassCard } from '../shared/GlassCard';
 
@@ -13,18 +14,59 @@ export function ContinueWatching() {
   const progressStore = useWatchProgressStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const [coursesMap, setCoursesMap] = useState<Record<string, Course>>({});
+  const [videosMap, setVideosMap] = useState<Record<string, Video>>({});
+  const [instructorsMap, setInstructorsMap] = useState<Record<string, Instructor>>({});
+
   // Get videos with watch progress
   const continueWatching = Object.values(progressStore.progress)
     .filter((p) => p.progress > 0 && !p.completed)
     .sort((a, b) => b.lastWatched - a.lastWatched)
     .slice(0, 10)
     .map((p) => {
-      const video = VIDEOS.find((v) => v.id === p.videoId);
-      const course = video ? COURSES.find((c) => c.id === video.courseId) : undefined;
-      const instructor = course ? getInstructor(course.instructorId) : undefined;
+      const video = videosMap[p.videoId];
+      const course = video ? coursesMap[video.courseId] : undefined;
+      const instructor = course ? instructorsMap[course.instructorId] : undefined;
       return { ...p, video, course, instructor };
     })
     .filter((item) => item.video && item.course);
+
+  // Fetch courses and videos data from API for progress items
+  useEffect(() => {
+    const progressItems = Object.values(progressStore.progress)
+      .filter((p) => p.progress > 0 && !p.completed);
+
+    if (progressItems.length === 0) return;
+
+    // Fetch all courses and map them
+    courseApi.list({ limit: 100 })
+      .then((res) => {
+        const cMap: Record<string, Course> = {};
+        res.courses.forEach((c) => { cMap[c.id] = c; });
+        setCoursesMap(cMap);
+
+        // Fetch videos for each course that has progress
+        const courseIds = [...new Set(res.courses.map((c) => c.id))];
+        Promise.all(
+          courseIds.map((id) => courseApi.videos(id).then((r) => r.videos).catch(() => []))
+        ).then((allVideos) => {
+          const vMap: Record<string, Video> = {};
+          allVideos.flat().forEach((v) => { vMap[v.id] = v; });
+          setVideosMap(vMap);
+
+          // Fetch instructors for courses
+          const instructorIds = [...new Set(res.courses.map((c) => c.instructorId).filter(Boolean))];
+          Promise.all(
+            instructorIds.map((id) => instructorApi.get(id).then((r) => r.instructor).catch(() => null))
+          ).then((instructors) => {
+            const iMap: Record<string, Instructor> = {};
+            instructors.forEach((inst) => { if (inst) iMap[inst.id] = inst; });
+            setInstructorsMap(iMap);
+          });
+        });
+      })
+      .catch(() => {});
+  }, []);
 
   if (continueWatching.length === 0) return null;
 

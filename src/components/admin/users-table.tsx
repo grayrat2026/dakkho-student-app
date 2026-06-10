@@ -144,7 +144,7 @@ export default function UsersTable() {
       if (roleFilter !== 'all') params.set('role', roleFilter);
 
       const data = (await apiGet(`/users?${params}`)) as Record<string, unknown>;
-      const docs = (data.documents as Record<string, unknown>[]) || [];
+      const docs = (data.users as Record<string, unknown>[]) || (data.documents as Record<string, unknown>[]) || [];
       setUsers(docs.map(mapUser));
       setTotal((data.total as number) || 0);
     } catch (err) {
@@ -159,7 +159,7 @@ export default function UsersTable() {
   const fetchInstitutes = useCallback(async () => {
     try {
       const data = (await apiGet('/institutes?limit=200')) as Record<string, unknown>;
-      const docs = (data.documents as Record<string, unknown>[]) || [];
+      const docs = (data.institutes as Record<string, unknown>[]) || (data.documents as Record<string, unknown>[]) || [];
       setInstitutes(
         docs.map((d) => ({ id: Number(d.id), name: String(d.name ?? 'Unknown') })),
       );
@@ -171,7 +171,7 @@ export default function UsersTable() {
   const fetchTechnologies = useCallback(async () => {
     try {
       const data = await apiGet('/technologies') as Record<string, unknown>;
-      const techs = ((data.documents || data.technologies || []) as Record<string, unknown>[]);
+      const techs = (((data.technologies || data.documents) || []) as Record<string, unknown>[]);
       setTechnologies(
         techs.map((d) => ({ id: Number(d.id), name: String(d.name ?? 'Unknown') })),
       );

@@ -1,21 +1,41 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { BookOpen, Clock, CheckCircle } from 'lucide-react';
-import { COURSES } from '@/lib/mock-data';
+import { type Course, courseApi } from '@/lib/api-client';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
+import { LoadingSkeleton } from '../shared/LoadingSkeleton';
 
 export function MyCoursesPage() {
   const [activeTab, setActiveTab] = useState<'in-progress' | 'completed' | 'all'>('all');
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock enrolled courses
-  const enrolledCourses = COURSES.slice(0, 8);
-  const inProgress = enrolledCourses.slice(0, 5);
-  const completed = enrolledCourses.slice(5, 8);
+  useEffect(() => {
+    courseApi.list({ limit: 20 })
+      .then((res) => setCourses(res.courses))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  // For now, split courses into in-progress and completed for demo purposes
+  const enrolledCourses = courses;
+  const inProgress = enrolledCourses.slice(0, Math.ceil(enrolledCourses.length * 0.6));
+  const completed = enrolledCourses.slice(Math.ceil(enrolledCourses.length * 0.6));
 
   const displayCourses = activeTab === 'in-progress' ? inProgress :
     activeTab === 'completed' ? completed : enrolledCourses;
+
+  if (loading) {
+    return (
+      <div>
+        <h1 className="text-2xl font-extrabold text-foreground mb-2">My Courses</h1>
+        <p className="text-sm text-muted-foreground mb-6">Track your learning progress</p>
+        <LoadingSkeleton type="card" count={4} />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -58,7 +78,7 @@ export function MyCoursesPage() {
           const idx = enrolledCourses.findIndex((c) => c.id === courseId);
           if (activeTab === 'completed') return 100;
           if (activeTab === 'in-progress') return Math.floor(Math.random() * 80) + 10;
-          return idx < 5 ? Math.floor(Math.random() * 80) + 10 : 100;
+          return idx < inProgress.length ? Math.floor(Math.random() * 80) + 10 : 100;
         }}
       />
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   User, Camera, Mail, Phone, MapPin, Building, BookOpen,
@@ -8,33 +8,11 @@ import {
   Upload, Shield, GraduationCap,
 } from 'lucide-react';
 import { useNavigationStore, useAuthStore } from '@/lib/store';
-import { POLYTECHNIC_INSTITUTES } from '@/lib/mock-data';
+import { type Institute, instituteApi, type Technology, technologyApi } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
 
-const TECHNOLOGIES = [
-  'Computer Science & Technology (CSE)',
-  'Electronics & Telecommunication (ETE)',
-  'Electrical Engineering (EEE)',
-  'Mechanical Engineering (ME)',
-  'Civil Engineering (CE)',
-  'Architecture & Interior Design',
-  'Textile Engineering',
-  'Chemical Engineering',
-  'Automobile Engineering',
-  'Refrigeration & Air Conditioning',
-  'Glass & Ceramic Engineering',
-  'Printing Engineering',
-  'Surveying Engineering',
-  'Mechatronics Engineering',
-  'Mining Engineering',
-  'Metallurgical Engineering',
-  'Power Engineering',
-  'Instrumentation & Process Control',
-  'Food Engineering',
-  'Leather Engineering',
-];
 
 export function EditProfilePage() {
   const { goBack, navigate } = useNavigationStore();
@@ -51,6 +29,18 @@ export function EditProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const [institutes, setInstitutes] = useState<Institute[]>([]);
+  const [technologies, setTechnologies] = useState<Technology[]>([]);
+
+  useEffect(() => {
+    instituteApi.list({ limit: 100 })
+      .then((res) => setInstitutes(res.institutes))
+      .catch(() => {});
+    technologyApi.list()
+      .then((res) => setTechnologies(res.technologies))
+      .catch(() => {});
+  }, []);
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -199,8 +189,8 @@ export function EditProfilePage() {
                   }`}
                 >
                   <option value="">Select your institute</option>
-                  {POLYTECHNIC_INSTITUTES.map((inst) => (
-                    <option key={inst} value={inst}>{inst}</option>
+                  {institutes.map((inst) => (
+                    <option key={inst.id} value={inst.name}>{inst.name}</option>
                   ))}
                 </select>
               </div>
@@ -222,8 +212,8 @@ export function EditProfilePage() {
                   }`}
                 >
                   <option value="">Select your technology</option>
-                  {TECHNOLOGIES.map((tech) => (
-                    <option key={tech} value={tech}>{tech}</option>
+                  {technologies.map((tech) => (
+                    <option key={tech.id} value={tech.name}>{tech.name}</option>
                   ))}
                 </select>
               </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   BarChart3, TrendingUp, Clock, BookOpen, Award, Target,
@@ -8,7 +8,8 @@ import {
   ChevronLeft, PieChart, Activity,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getCourse, getCourseVideos, formatDuration } from '@/lib/mock-data';
+import { type Course, type Video, courseApi } from '@/lib/api-client';
+import { formatDuration } from '@/lib/utils';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -45,8 +46,18 @@ const DAILY_STREAK = [
 export function CourseProgressPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const courseId = pageParams.courseId as string;
-  const course = getCourse(courseId);
-  const videos = getCourseVideos(courseId);
+  const [course, setCourse] = useState<Course | null>(null);
+  const [videos, setVideos] = useState<Video[]>([]);
+
+  useEffect(() => {
+    if (!courseId) return;
+    courseApi.get(courseId)
+      .then((res) => setCourse(res.course))
+      .catch(() => setCourse(null));
+    courseApi.videos(courseId)
+      .then((res) => setVideos(res.videos))
+      .catch(() => {});
+  }, [courseId]);
 
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week');
 

@@ -38,7 +38,7 @@ export default function EnrollmentsPanel() {
     setError(null);
     try {
       const data = await apiGet('/enrollments?page=1&limit=100') as any;
-      setEnrollments(data.enrollments || []);
+      setEnrollments(data.enrollments || data.documents || []);
       setTotal(data.total || 0);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load enrollments');
@@ -51,7 +51,7 @@ export default function EnrollmentsPanel() {
   const fetchCourses = useCallback(async () => {
     try {
       const data = await apiGet('/courses?page=1&limit=500') as any;
-      setCourses(data.documents || []);
+      setCourses(data.courses || data.documents || []);
     } catch {
       // silently fail
     }

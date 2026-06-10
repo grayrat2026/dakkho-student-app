@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Play, Radio, Trophy, Flame, Clock, Star, Users } from 'lucide-react';
 import { HeroSection } from './HeroSection';
@@ -9,7 +9,8 @@ import { ContinueWatching } from './ContinueWatching';
 import { TrendingCourses } from './TrendingCourses';
 import { CategoryPills } from './CategoryPills';
 import { FeaturedInstructors } from './FeaturedInstructors';
-import { COURSES, getInstructor, formatDuration } from '@/lib/mock-data';
+import { type Course, type Instructor, courseApi } from '@/lib/api-client';
+import { formatDuration } from '@/lib/utils';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedCounter } from '../shared/AnimatedCounter';
@@ -18,7 +19,23 @@ import { useNavigationStore, useServerConfigStore, useAuthStore } from '@/lib/st
 function NewReleases() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigationStore((s) => s.navigate);
-  const newReleases = COURSES.filter((c) => c.isFeatured).slice(0, 8);
+  const [newReleases, setNewReleases] = useState<Course[]>([]);
+  const [instructors, setInstructors] = useState<Record<string, Instructor>>({});
+
+  useEffect(() => {
+    courseApi.list({ limit: 20 }).then((res) => {
+      const featured = res.courses.filter((c) => c.isFeatured).slice(0, 8);
+      setNewReleases(featured);
+      // Build instructor lookup
+      const instMap: Record<string, Instructor> = {};
+      featured.forEach((c) => {
+        if (c.instructorId && !instMap[c.instructorId]) {
+          // The API may include instructor data inline or we'll show a placeholder
+        }
+      });
+      setInstructors(instMap);
+    }).catch(() => {});
+  }, []);
 
   const scroll = (dir: 'left' | 'right') => {
     if (!scrollRef.current) return;
@@ -63,7 +80,7 @@ function NewReleases() {
         style={{ scrollbarWidth: 'none' }}
       >
         {newReleases.map((course, i) => {
-          const instructor = getInstructor(course.instructorId);
+          const instructor = instructors[course.instructorId];
           const colorClass = thumbnailColors[i % thumbnailColors.length];
           return (
             <motion.div
@@ -369,9 +386,15 @@ function useHasEnrolledCourses(): boolean {
 }
 
 export function HomePage() {
-  const recommended = COURSES.slice(0, 8);
+  const [recommended, setRecommended] = useState<Course[]>([]);
   const isHomeSectionVisible = useServerConfigStore((s) => s.isHomeSectionVisible);
   const hasEnrolled = useHasEnrolledCourses();
+
+  useEffect(() => {
+    courseApi.list({ limit: 10 }).then((res) => {
+      setRecommended(res.courses.slice(0, 8));
+    }).catch(() => {});
+  }, []);
 
   return (
     <div>

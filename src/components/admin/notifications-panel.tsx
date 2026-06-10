@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Send, Bell, Users, Building2, User, RefreshCw, Search, Cpu, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Send, Bell, Users, Building2, User, RefreshCw, Search, Cpu, CheckCircle2, XCircle, Clock, Tag, Volume2, VolumeX } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -41,6 +41,7 @@ interface NotifHistoryItem {
   title: string;
   message: string;
   type: string;
+  category: string;
   targetType: string;
   targetId: string;
   sentCount: number;
@@ -53,6 +54,23 @@ interface NotifHistoryItem {
 
 type TargetMode = 'all' | 'user' | 'institute' | 'technology';
 
+// Notification categories that map to user preference columns
+const NOTIFICATION_CATEGORIES = [
+  { value: 'info', label: 'Info', description: 'General info → Course Updates' },
+  { value: 'success', label: 'Success', description: 'Success alerts → Course Updates' },
+  { value: 'course-update', label: 'Course Update', description: 'New videos & materials' },
+  { value: 'grades', label: 'Grades', description: 'Exam results & grades' },
+  { value: 'schedule', label: 'Schedule', description: 'Schedule changes' },
+  { value: 'payment', label: 'Payment', description: 'Payment & billing' },
+  { value: 'announcement', label: 'Announcement', description: 'Announcements → Promotions' },
+  { value: 'promotions', label: 'Promotions', description: 'Offers & discounts' },
+  { value: 'social', label: 'Social', description: 'Community & comments' },
+  { value: 'system', label: 'System', description: 'Maintenance & alerts' },
+  { value: 'warning', label: 'Warning', description: 'Warnings → System' },
+  { value: 'error', label: 'Error', description: 'Errors → System' },
+  { value: 'support', label: 'Support', description: 'Support replies → System' },
+];
+
 // ============================================================
 // Component
 // ============================================================
@@ -61,6 +79,7 @@ export default function NotificationsPanel() {
     title: '',
     message: '',
     type: 'info',
+    category: 'info',
     targetAll: false,
     targetUserId: '',
     targetInstitute: '',
@@ -73,13 +92,20 @@ export default function NotificationsPanel() {
   const [totalHistory, setTotalHistory] = useState(0);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sendResult, setSendResult] = useState<{
+    sent: number;
+    skipped: number;
+    silent: number;
+    push: number;
+    failed: number;
+  } | null>(null);
   const { toast } = useToast();
 
   const fetchHistory = useCallback(async () => {
     setLoadingHistory(true);
     try {
       const data = await apiGet('/notifications?limit=50') as Record<string, unknown>;
-      setHistory((data.documents as NotifHistoryItem[]) || []);
+      setHistory((data.notifications || data.documents as NotifHistoryItem[]) || []);
       setTotalHistory(Number(data.total) || 0);
     } catch {
       toast({ title: 'Error loading history', variant: 'destructive' });
@@ -99,6 +125,7 @@ export default function NotificationsPanel() {
         n.title?.toLowerCase().includes(q) ||
         n.message?.toLowerCase().includes(q) ||
         n.type?.toLowerCase().includes(q) ||
+        n.category?.toLowerCase().includes(q) ||
         n.targetType?.toLowerCase().includes(q)
     );
   }, [history, searchQuery]);
@@ -125,20 +152,30 @@ export default function NotificationsPanel() {
     }
 
     setSending(true);
+    setSendResult(null);
     try {
       const data = await apiPost('/notifications', form) as Record<string, unknown>;
       const count = Number(data.count) || 0;
+      const skipped = Number(data.skippedByPref) || 0;
+      const silent = Number(data.silentDelivery) || 0;
+      const push = Number(data.pushDelivery) || 0;
+      const failed = Number(data.failedCount) || 0;
+
+      setSendResult({ sent: count, skipped, silent, push, failed });
 
       if (count === 0 && targetMode === 'all') {
         toast({
           title: 'Notification Logged',
-          description: 'No registered users found yet, but the notification has been logged to history. It will be delivered when users register.',
+          description: 'No registered users found yet, but the notification has been logged to history.',
         });
       } else {
-        toast({ title: 'Success', description: `Sent ${count} notification(s)` });
+        toast({
+          title: 'Success',
+          description: `Delivered ${count} notification(s) — ${push} with push, ${silent} silent, ${skipped} skipped by user prefs`,
+        });
       }
 
-      setForm({ title: '', message: '', type: 'info', targetAll: false, targetUserId: '', targetInstitute: '', targetTechnology: '', actionUrl: '' });
+      setForm({ title: '', message: '', type: 'info', category: 'info', targetAll: false, targetUserId: '', targetInstitute: '', targetTechnology: '', actionUrl: '' });
       setTargetMode('all');
       fetchHistory();
     } catch (error) {
@@ -210,7 +247,7 @@ export default function NotificationsPanel() {
             </div>
             Notifications
           </h1>
-          <p className="page-description">Send in-app notifications and view delivery history</p>
+          <p className="page-description">Send notifications with category-based delivery — respects user preferences and quiet hours</p>
         </div>
       </motion.div>
 
@@ -228,10 +265,10 @@ export default function NotificationsPanel() {
           <motion.div variants={itemVariants}>
             <Card className="glass-card border-0 rounded-xl">
               <CardHeader>
-                <CardTitle className="text-lg">Send In-App Notification</CardTitle>
+                <CardTitle className="text-lg">Send Notification</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                {/* Title & Type */}
+                {/* Title & Category */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Title</Label>
@@ -243,18 +280,22 @@ export default function NotificationsPanel() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Type</Label>
-                    <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+                    <Label className="flex items-center gap-2">
+                      <Tag className="h-3.5 w-3.5" /> Category
+                    </Label>
+                    <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v, type: v })}>
                       <SelectTrigger className="bg-white/[0.04] border-white/[0.08]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-[#141428] border-white/[0.08]">
-                        <SelectItem value="info">Info</SelectItem>
-                        <SelectItem value="success">Success</SelectItem>
-                        <SelectItem value="warning">Warning</SelectItem>
-                        <SelectItem value="error">Error</SelectItem>
-                        <SelectItem value="announcement">Announcement</SelectItem>
-                        <SelectItem value="course-update">Course Update</SelectItem>
+                        {NOTIFICATION_CATEGORIES.map((cat) => (
+                          <SelectItem key={cat.value} value={cat.value}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{cat.label}</span>
+                              <span className="text-[10px] text-muted-foreground">{cat.description}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -281,6 +322,18 @@ export default function NotificationsPanel() {
                     className="bg-white/[0.04] border-white/[0.08] focus:border-dakkho-blue/50"
                     placeholder="https://..."
                   />
+                </div>
+
+                {/* Category Info Banner */}
+                <div className="p-3 rounded-lg bg-dakkho-blue/5 border border-dakkho-blue/10">
+                  <p className="text-xs text-muted-foreground flex items-center gap-2">
+                    <Tag className="h-3.5 w-3.5 text-dakkho-blue" />
+                    <span>
+                      Category determines which users receive this notification based on their preferences.
+                      Users who have this category OFF will not see it at all.
+                      Users in quiet hours will get it silently in their notification tray.
+                    </span>
+                  </p>
                 </div>
 
                 {/* Target Audience */}
@@ -370,6 +423,37 @@ export default function NotificationsPanel() {
                   )}
                 </div>
 
+                {/* Send Result Summary */}
+                {sendResult && (
+                  <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06] space-y-2">
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400" /> Delivery Summary
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="text-center p-2 rounded bg-emerald-500/10">
+                        <p className="text-lg font-bold text-emerald-400">{sendResult.push}</p>
+                        <p className="text-[10px] text-muted-foreground flex items-center justify-center gap-1">
+                          <Volume2 className="h-3 w-3" /> Push + Sound
+                        </p>
+                      </div>
+                      <div className="text-center p-2 rounded bg-blue-500/10">
+                        <p className="text-lg font-bold text-blue-400">{sendResult.silent}</p>
+                        <p className="text-[10px] text-muted-foreground flex items-center justify-center gap-1">
+                          <VolumeX className="h-3 w-3" /> Silent (Quiet Hrs)
+                        </p>
+                      </div>
+                      <div className="text-center p-2 rounded bg-amber-500/10">
+                        <p className="text-lg font-bold text-amber-400">{sendResult.skipped}</p>
+                        <p className="text-[10px] text-muted-foreground">Skipped (Off)</p>
+                      </div>
+                      <div className="text-center p-2 rounded bg-red-500/10">
+                        <p className="text-lg font-bold text-red-400">{sendResult.failed}</p>
+                        <p className="text-[10px] text-muted-foreground">Failed</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Send Button */}
                 <Button onClick={handleSend} disabled={sending} className="w-full gradient-primary text-white font-medium">
                   {sending ? 'Sending...' : <><Send className="h-4 w-4 mr-2" /> Send Notification</>}
@@ -422,7 +506,7 @@ export default function NotificationsPanel() {
                       <thead>
                         <tr>
                           <th>Title</th>
-                          <th>Type</th>
+                          <th>Category</th>
                           <th>Target</th>
                           <th>Status</th>
                           <th>Date</th>
@@ -438,8 +522,8 @@ export default function NotificationsPanel() {
                               </div>
                             </td>
                             <td>
-                              <Badge className={`${typeColors[notif.type] || typeColors.info} text-[10px]`}>
-                                {notif.type || 'info'}
+                              <Badge className={`${typeColors[notif.category || notif.type] || typeColors.info} text-[10px]`}>
+                                {notif.category || notif.type || 'info'}
                               </Badge>
                             </td>
                             <td>

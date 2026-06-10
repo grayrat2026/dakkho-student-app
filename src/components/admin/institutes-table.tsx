@@ -54,7 +54,7 @@ export default function InstitutesTable() {
     setLoading(true);
     try {
       const data = await apiGet(`/institutes?page=${page}&limit=20${searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : ''}`);
-      setInstitutes((data.institutes as Institute[]) || []);
+      setInstitutes(((data.institutes || data.documents) as Institute[]) || []);
       setTotal((data.total as number) || 0);
     } catch {
       toast({ title: 'Error loading institutes', variant: 'destructive' });

@@ -70,3 +70,38 @@ export function getSessionExpiry(days: number = 7): string {
   expiresAt.setDate(expiresAt.getDate() + days);
   return expiresAt.toISOString();
 }
+
+/**
+ * Convert a camelCase string to snake_case.
+ * e.g. "thumbnailUrl" → "thumbnail_url", "isPublished" → "is_published"
+ */
+export function camelToSnake(str: string): string {
+  return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+/**
+ * Normalize an object's keys from camelCase to snake_case.
+ * This allows the admin panel (which sends camelCase) to work with
+ * D1 column names (which are snake_case).
+ * Only transforms keys that exist in the provided `allowedFields` set.
+ */
+export function normalizeKeys(
+  data: Record<string, unknown>,
+  allowedFields: string[]
+): Record<string, unknown> {
+  const allowedSet = new Set(allowedFields);
+  const result: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    const snakeKey = camelToSnake(key);
+    // Use the snake_case key if it's in allowedFields; otherwise try original key
+    if (allowedSet.has(snakeKey)) {
+      result[snakeKey] = value;
+    } else if (allowedSet.has(key)) {
+      result[key] = value;
+    }
+    // Skip keys that don't match any allowed field (camelCase or snake_case)
+  }
+
+  return result;
+}

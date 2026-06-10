@@ -238,11 +238,36 @@ export default function VideosTable() {
       if (courseFilter !== 'all') params.set('courseId', courseFilter);
 
       const data = await apiGet(`/videos?${params}`) as Record<string, unknown>;
-      const docs = (data.documents ?? data.data ?? []) as VideoType[];
-      setVideos(docs);
-      setTotal((data.total as number) || docs.length);
-    } catch {
-      setError('Failed to load videos');
+
+      // Handle multiple possible response shapes from the Worker API:
+      // { videos: [...] } or { documents: [...] } or { data: [...] } or just an array at top level
+      let docs: VideoType[];
+      if (Array.isArray(data)) {
+        docs = data as VideoType[];
+      } else if (Array.isArray(data.videos)) {
+        docs = data.videos as VideoType[];
+      } else if (Array.isArray(data.documents)) {
+        docs = data.documents as VideoType[];
+      } else if (Array.isArray(data.data)) {
+        docs = data.data as VideoType[];
+      } else {
+        docs = [];
+      }
+
+      // Normalize D1 boolean fields (0/1 → true/false) and null numerics
+      const normalized = docs.map((v) => ({
+        ...v,
+        isPreview: Boolean(v.isPreview),
+        isPublished: Boolean(v.isPublished),
+        duration: Number(v.duration ?? 0),
+        order: Number(v.order ?? 0),
+      })) as VideoType[];
+
+      setVideos(normalized);
+      setTotal((data.total as number) || (data.count as number) || normalized.length);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to load videos';
+      setError(message);
       toast({ title: 'Error', description: 'Failed to fetch videos', variant: 'destructive' });
     } finally {
       setLoading(false);
@@ -253,7 +278,19 @@ export default function VideosTable() {
   const fetchCourses = useCallback(async () => {
     try {
       const data = await apiGet('/courses?limit=100') as Record<string, unknown>;
-      const docs = (data.documents ?? data.data ?? []) as Course[];
+      // Handle multiple possible response shapes
+      let docs: Course[];
+      if (Array.isArray(data)) {
+        docs = data as Course[];
+      } else if (Array.isArray(data.courses)) {
+        docs = data.courses as Course[];
+      } else if (Array.isArray(data.documents)) {
+        docs = data.documents as Course[];
+      } else if (Array.isArray(data.data)) {
+        docs = data.data as Course[];
+      } else {
+        docs = [];
+      }
       setCourses(docs);
     } catch {
       // Silently fail — dropdown will just be empty
@@ -305,7 +342,19 @@ export default function VideosTable() {
     setSaving(true);
     try {
       const slug = form.slug || slugify(form.title);
-      const payload = { ...form, slug };
+      // Map camelCase form fields to snake_case for D1 columns
+      const payload = {
+        title: form.title,
+        slug,
+        description: form.description || undefined,
+        course_id: form.courseId || undefined,
+        video_url: form.videoUrl || undefined,
+        thumbnail_url: form.thumbnailUrl || undefined,
+        duration: form.duration,
+        sort_order: form.order,
+        is_preview: form.isPreview,
+        is_published: form.isPublished,
+      };
 
       if (editVideo) {
         await apiPut('/videos', { videoId: editVideo.id, ...payload });
@@ -473,7 +522,7 @@ export default function VideosTable() {
                 ) : (
                   <>
                     {videos.map((video) => (
-                      <tr
+                      <TableRow
                         key={video.id}
                         className="border-white/[0.06] hover:bg-white/[0.03] transition-colors"
                       >
@@ -544,7 +593,7 @@ export default function VideosTable() {
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
-                      </tr>
+                      </TableRow>
                     ))}
                   </>
                 )}

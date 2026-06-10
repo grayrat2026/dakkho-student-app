@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Monitor, Cpu, Zap, Wrench, Building2, Ruler, Scissors, FlaskConical, Car, Snowflake,
@@ -9,7 +9,8 @@ import {
   CheckCircle, Play, ArrowRight, Search, Filter, BarChart3,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { COURSES, getInstructor, formatDuration } from '@/lib/mock-data';
+import { type Course, type Instructor, courseApi, instructorApi } from '@/lib/api-client';
+import { formatDuration } from '@/lib/utils';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -81,9 +82,37 @@ export function DepartmentPageTemplate({ departmentKey }: { departmentKey: strin
   const department = DEPARTMENTS[departmentKey];
   const featuredInstructor = FEATURED_INSTRUCTORS[departmentKey] || FEATURED_INSTRUCTORS['default'];
 
-  const departmentCourses = useMemo(() => {
+  const [departmentCourses, setDepartmentCourses] = useState<Course[]>([]);
+  const [instructorsMap, setInstructorsMap] = useState<Record<string, Instructor>>({});
+  const [loadingCourses, setLoadingCourses] = useState(true);
+
+  // Fetch department courses from API
+  useEffect(() => {
+    if (!department) return;
+    setLoadingCourses(true);
+    courseApi.list({ technology: department.categoryId, limit: 50 })
+      .then((res) => setDepartmentCourses(res.courses))
+      .catch(() => setDepartmentCourses([]))
+      .finally(() => setLoadingCourses(false));
+  }, [department]);
+
+  // Fetch instructors for department courses
+  useEffect(() => {
+    if (departmentCourses.length === 0) return;
+    const instructorIds = [...new Set(departmentCourses.map((c) => c.instructorId).filter(Boolean))];
+    Promise.all(
+      instructorIds.map((id) => instructorApi.get(id).then((r) => r.instructor).catch(() => null))
+    ).then((instructors) => {
+      const map: Record<string, Instructor> = {};
+      instructors.forEach((inst) => { if (inst) map[inst.id] = inst; });
+      setInstructorsMap(map);
+    });
+  }, [departmentCourses]);
+
+  // Client-side filter on fetched courses
+  const filteredCourses = useMemo(() => {
     if (!department) return [];
-    let filtered = COURSES.filter((c) => c.categoryId === department.categoryId);
+    let filtered = departmentCourses;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
@@ -94,12 +123,12 @@ export function DepartmentPageTemplate({ departmentKey }: { departmentKey: strin
       filtered = filtered.filter((c) => c.level === selectedLevel);
     }
     return filtered;
-  }, [department, searchQuery, selectedLevel]);
+  }, [department, departmentCourses, searchQuery, selectedLevel]);
 
-  const totalStudents = departmentCourses.reduce((sum, c) => sum + c.totalStudents, 0);
-  const totalHours = departmentCourses.reduce((sum, c) => sum + c.duration, 0);
-  const avgRating = departmentCourses.length > 0
-    ? (departmentCourses.reduce((sum, c) => sum + c.rating, 0) / departmentCourses.length).toFixed(1)
+  const totalStudents = filteredCourses.reduce((sum, c) => sum + c.totalStudents, 0);
+  const totalHours = filteredCourses.reduce((sum, c) => sum + c.duration, 0);
+  const avgRating = filteredCourses.length > 0
+    ? (filteredCourses.reduce((sum, c) => sum + c.rating, 0) / filteredCourses.length).toFixed(1)
     : '4.5';
 
   const IconComponent = department ? ICON_MAP[department.icon] || Monitor : Monitor;
@@ -245,13 +274,13 @@ export function DepartmentPageTemplate({ departmentKey }: { departmentKey: strin
             <h2 className="text-lg font-extrabold text-foreground mb-4 flex items-center gap-2">
               <GraduationCap className="w-5 h-5 text-sky-500" />
               Available Courses
-              <span className="text-sm font-normal text-muted-foreground">({departmentCourses.length})</span>
+              <span className="text-sm font-normal text-muted-foreground">({filteredCourses.length})</span>
             </h2>
 
-            {departmentCourses.length > 0 ? (
+            {filteredCourses.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                {departmentCourses.map((course, i) => {
-                  const instructor = getInstructor(course.instructorId);
+                {filteredCourses.map((course, i) => {
+                  const instructor = instructorsMap[course.instructorId];
                   const levelColors: Record<string, string> = {
                     beginner: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400',
                     intermediate: 'bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400',

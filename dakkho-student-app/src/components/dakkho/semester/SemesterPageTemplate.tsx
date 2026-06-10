@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   BookOpen, Clock, ChevronLeft, GraduationCap, Target, Lightbulb,
@@ -8,7 +8,8 @@ import {
   Play, Award, Users, Zap, BookMarked, ArrowRight,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { COURSES, getInstructor, formatDuration } from '@/lib/mock-data';
+import { type Course, type Instructor, courseApi, instructorApi } from '@/lib/api-client';
+import { formatDuration } from '@/lib/utils';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -128,17 +129,44 @@ export function SemesterPageTemplate({ semester }: { semester: number }) {
   const data = SEMESTER_DATA[semester];
   const tips = SEMESTER_TIPS[semester];
 
-  // Find related courses based on subjects
-  const relatedCourses = useMemo(() => {
-    if (!data) return [];
+  const [relatedCourses, setRelatedCourses] = useState<Course[]>([]);
+  const [instructorsMap, setInstructorsMap] = useState<Record<string, Instructor>>({});
+
+  // Fetch related courses based on subjects and their mapped categories
+  useEffect(() => {
+    if (!data) return;
     const matchedCategoryIds = new Set<string>();
     data.subjects.forEach((subject) => {
       const cats = SUBJECT_CATEGORY_MAP[subject.name];
       if (cats) cats.forEach((c) => matchedCategoryIds.add(c));
     });
-    if (matchedCategoryIds.size === 0) return COURSES.slice(0, 4);
-    return COURSES.filter((c) => matchedCategoryIds.has(c.categoryId)).slice(0, 6);
+
+    if (matchedCategoryIds.size === 0) {
+      // No category mapping, just get some courses
+      courseApi.list({ limit: 4 })
+        .then((res) => setRelatedCourses(res.courses))
+        .catch(() => {});
+    } else {
+      // Fetch courses for the first matching category
+      const firstCat = Array.from(matchedCategoryIds)[0];
+      courseApi.list({ technology: firstCat, limit: 6 })
+        .then((res) => setRelatedCourses(res.courses.filter((c) => matchedCategoryIds.has(c.categoryId)).slice(0, 6)))
+        .catch(() => {});
+    }
   }, [data]);
+
+  // Fetch instructors for related courses
+  useEffect(() => {
+    if (relatedCourses.length === 0) return;
+    const instructorIds = [...new Set(relatedCourses.map((c) => c.instructorId).filter(Boolean))];
+    Promise.all(
+      instructorIds.map((id) => instructorApi.get(id).then((r) => r.instructor).catch(() => null))
+    ).then((instructors) => {
+      const map: Record<string, Instructor> = {};
+      instructors.forEach((inst) => { if (inst) map[inst.id] = inst; });
+      setInstructorsMap(map);
+    });
+  }, [relatedCourses]);
 
   const totalCredits = data ? data.subjects.reduce((sum, s) => sum + s.credits, 0) : 0;
   const totalSubjects = data ? data.subjects.length : 0;
@@ -329,7 +357,7 @@ export function SemesterPageTemplate({ semester }: { semester: number }) {
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
                   {relatedCourses.map((course, i) => {
-                    const instructor = getInstructor(course.instructorId);
+                    const instructor = instructorsMap[course.instructorId];
                     return (
                       <motion.div
                         key={course.id}

@@ -32,7 +32,7 @@ export type Page =
   | 'settings-language' | 'settings-theme' | 'settings-downloads' | 'settings-content-protection' | 'settings-sessions'
   | 'settings-video-quality' | 'settings-download-settings' | 'settings-network-data'
   // Help sub-pages
-  | 'faq' | 'contact-support' | 'report-issue' | 'terms-of-service' | 'privacy-policy' | 'refund-policy'
+  | 'faq' | 'contact-support' | 'ticket-detail' | 'report-issue' | 'terms-of-service' | 'privacy-policy' | 'refund-policy'
   // Exam pages
   | 'exam-prep' | 'exam-schedule' | 'exam-results' | 'exam-practice' | 'exam-tips'
   // Social/Community pages
@@ -41,6 +41,8 @@ export type Page =
   | 'category'
   // Misc pages
   | 'pricing' | 'changelog' | 'maintenance' | 'terms' | 'privacy'
+  // Notification detail
+  | 'notification-detail'
   // Error pages
   | 'error-404' | 'error-500';
 
@@ -130,6 +132,7 @@ const pageToPath: Record<string, string> = {
   'settings-sessions': '/settings/sessions',
   'faq': '/help/faq',
   'contact-support': '/help/contact-support',
+  'ticket-detail': '/help/contact-support',
   'report-issue': '/help/report-issue',
   'terms-of-service': '/help/terms-of-service',
   'privacy-policy': '/help/privacy-policy',
@@ -151,6 +154,7 @@ const pageToPath: Record<string, string> = {
   'maintenance': '/maintenance',
   'terms': '/terms',
   'privacy': '/privacy',
+  'notification-detail': '/notifications',
   'error-404': '/error/404',
   'error-500': '/error/500',
 };
@@ -172,7 +176,14 @@ export function pageToUrl(page: string, params?: Record<string, unknown>): strin
     if (params.videoId) extraSegments.push(String(params.videoId));
     if (params.instructorId) extraSegments.push(String(params.instructorId));
     if (params.query) extraSegments.push(encodeURIComponent(String(params.query)));
-    if (params.userId) extraSegments.push(String(params.userId));
+    if (params.userId && params.notificationId) {
+      // Notification detail: /notifications/{userId}/{notificationId}[/slug]
+      extraSegments.push(String(params.userId));
+      extraSegments.push(String(params.notificationId));
+      if (params.notificationSlug) extraSegments.push(String(params.notificationSlug));
+    } else if (params.userId) {
+      extraSegments.push(String(params.userId));
+    }
     if (extraSegments.length > 0) {
       path += '/' + extraSegments.join('/');
     }
@@ -213,6 +224,10 @@ export function urlToPage(urlPath: string): { page: string; params: Record<strin
       else if (match === 'instructor-profile' && extraSegments[0]) params.instructorId = extraSegments[0];
       else if (match === 'search' && extraSegments[0]) params.query = decodeURIComponent(extraSegments[0]);
       else if (match === 'profile' && extraSegments[0]) params.userId = extraSegments[0];
+      else if (match === 'notifications' && extraSegments.length >= 2) {
+        // /notifications/{userId}/{notificationId}[/slug] → notification-detail page
+        return { page: 'notification-detail' as Page, params: { userId: extraSegments[0], notificationId: extraSegments[1], ...(extraSegments.length > 2 ? { notificationSlug: extraSegments.slice(2).join('/') } : {}) } };
+      }
       else {
         // Generic: store as param0, param1, etc.
         extraSegments.forEach((seg, idx) => {
@@ -294,7 +309,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
 }));
 
 // ============ AUTH STORE ============
-import { authApi, setAuthToken, clearAuthToken, getAuthToken } from './api-client';
+import { authApi, setAuthToken, clearAuthToken, getAuthToken, setPendingVerificationToken, clearPendingVerificationToken, getPendingVerificationToken } from './api-client';
 import { technologyApi, instituteApi } from './api-client';
 
 export interface User {
@@ -314,6 +329,8 @@ export interface User {
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
+  needsVerification: boolean;  // true after signup, before OTP verification
+  pendingVerificationEmail: string | null;  // email of the user pending verification
   isHydrated: boolean;  // true once we've read localStorage on the client
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -323,6 +340,7 @@ interface AuthState {
   resetPassword: (email: string, otp: string, newPassword: string) => Promise<boolean>;
   verifyOTP: (email: string, otp: string) => Promise<boolean>;
   resendOTP: (email: string) => Promise<void>;
+  updateProfile: (data: { fullName?: string; instituteId?: number; technology?: string; bio?: string; phone?: string; semester?: string; avatarUrl?: string }) => Promise<void>;
   setUser: (user: User | null) => void;
   hydrateAuth: () => void;  // read localStorage and set isHydrated
   refreshUser: () => Promise<void>;
@@ -330,22 +348,31 @@ interface AuthState {
 
 // ============ AUTH PERSISTENCE ============
 const AUTH_STORAGE_KEY = 'dakkho-auth-session';
+const PENDING_VERIFICATION_KEY = 'dakkho-pending-verification';
 
-const loadAuthSession = (): { user: User | null; isAuthenticated: boolean } => {
-  if (typeof window === 'undefined') return { user: null, isAuthenticated: false };
+const loadAuthSession = (): { user: User | null; isAuthenticated: boolean; needsVerification: boolean; pendingVerificationEmail: string | null } => {
+  if (typeof window === 'undefined') return { user: null, isAuthenticated: false, needsVerification: false, pendingVerificationEmail: null };
   try {
+    // Check for pending verification state first
+    const pendingStored = localStorage.getItem(PENDING_VERIFICATION_KEY);
+    const pendingToken = getPendingVerificationToken();
+    if (pendingStored && pendingToken) {
+      const parsed = JSON.parse(pendingStored);
+      return { user: parsed.user, isAuthenticated: false, needsVerification: true, pendingVerificationEmail: parsed.user?.email || null };
+    }
+
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
     const token = localStorage.getItem('dakkho_student_token');
     if (stored && token) {
       const parsed = JSON.parse(stored);
       if (parsed.expiresAt && Date.now() < parsed.expiresAt) {
-        return { user: parsed.user, isAuthenticated: parsed.isAuthenticated };
+        return { user: parsed.user, isAuthenticated: parsed.isAuthenticated, needsVerification: false, pendingVerificationEmail: null };
       }
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem('dakkho_student_token');
     }
   } catch {}
-  return { user: null, isAuthenticated: false };
+  return { user: null, isAuthenticated: false, needsVerification: false, pendingVerificationEmail: null };
 };
 
 const saveAuthSession = (user: User | null, isAuthenticated: boolean) => {
@@ -360,6 +387,22 @@ const saveAuthSession = (user: User | null, isAuthenticated: boolean) => {
   } catch {}
 };
 
+const savePendingVerification = (user: User, token: string) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(PENDING_VERIFICATION_KEY, JSON.stringify({ user }));
+    setPendingVerificationToken(token);
+  } catch {}
+};
+
+const clearPendingVerification = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(PENDING_VERIFICATION_KEY);
+    clearPendingVerificationToken();
+  } catch {}
+};
+
 // IMPORTANT: Always initialise as unauthenticated so that the first
 // client render matches the server render (SSR always renders as
 // unauthenticated).  The real session is loaded in a useEffect via
@@ -367,6 +410,8 @@ const saveAuthSession = (user: User | null, isAuthenticated: boolean) => {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
+  needsVerification: false,
+  pendingVerificationEmail: null,
   isHydrated: false,
   isLoading: false,
   login: async (email, password) => {
@@ -389,6 +434,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         };
         set({ user, isAuthenticated: true, isLoading: false });
         saveAuthSession(user, true);
+        // Initialize web push notifications after successful login
+        try {
+          const { initPushNotifications } = await import('./web-push');
+          await initPushNotifications();
+        } catch (e) {
+          // Non-critical — don't fail login
+        }
       } else {
         throw new Error(res.message || 'Login failed');
       }
@@ -408,7 +460,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         technology: data.technology,
       });
       if (res.success && res.token) {
-        setAuthToken(res.token);
         const user: User = {
           id: res.userId || '',
           fullName: data.fullName,
@@ -421,8 +472,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           emailVerified: false,
           enrolledCourseIds: [],
         };
-        set({ user, isAuthenticated: true, isLoading: false });
-        saveAuthSession(user, true);
+        // Do NOT set isAuthenticated — user must verify OTP first.
+        // Store the token in the pending key so API calls (like verify-otp) work,
+        // but the user is NOT considered authenticated until OTP is verified.
+        savePendingVerification(user, res.token);
+        set({ user, isAuthenticated: false, needsVerification: true, pendingVerificationEmail: data.email, isLoading: false });
         return { token: res.token, userId: res.userId || '' };
       } else {
         throw new Error(res.message || 'Signup failed');
@@ -437,7 +491,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await authApi.logout();
     } catch {}
     clearAuthToken();
-    set({ user: null, isAuthenticated: false });
+    clearPendingVerification();
+    set({ user: null, isAuthenticated: false, needsVerification: false, pendingVerificationEmail: null });
     saveAuthSession(null, false);
   },
   forgotPassword: async (email) => {
@@ -471,7 +526,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const user = get().user;
         if (user) {
           const updatedUser = { ...user, emailVerified: true };
-          set({ user: updatedUser });
+          // OTP verified — user is now fully authenticated.
+          // Move the pending token to the main auth token key.
+          const pendingToken = getPendingVerificationToken();
+          if (pendingToken) {
+            setAuthToken(pendingToken);
+            clearPendingVerificationToken();
+          }
+          clearPendingVerification();
+          set({ user: updatedUser, isAuthenticated: true, needsVerification: false, pendingVerificationEmail: null });
           saveAuthSession(updatedUser, true);
         }
         return true;
@@ -486,8 +549,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await authApi.resendOTP({ email });
     } catch {}
   },
+  updateProfile: async (data) => {
+    try {
+      const res = await authApi.updateProfile(data);
+      if (res.success && res.user) {
+        const updatedUser: User = {
+          ...get().user!,
+          fullName: res.user.name || get().user?.fullName || '',
+          instituteId: res.user.instituteId || undefined,
+          technology: res.user.technology || undefined,
+        };
+        set({ user: updatedUser });
+        saveAuthSession(updatedUser, true);
+      }
+    } catch (err: any) {
+      throw new Error(err.message || 'Profile update failed');
+    }
+  },
   setUser: (user) => {
-    set({ user, isAuthenticated: !!user });
+    set({ user, isAuthenticated: !!user, needsVerification: false, pendingVerificationEmail: null });
     saveAuthSession(user, !!user);
   },
   hydrateAuth: () => {
@@ -495,6 +575,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({
       user: session.user,
       isAuthenticated: session.isAuthenticated,
+      needsVerification: session.needsVerification,
+      pendingVerificationEmail: session.pendingVerificationEmail,
       isHydrated: true,
     });
   },
@@ -665,10 +747,11 @@ export interface AppNotification {
   id: string;
   title: string;
   message: string;
-  type: 'info' | 'success' | 'warning' | 'error' | 'announcement';
+  type: 'info' | 'success' | 'warning' | 'error' | 'announcement' | 'support';
   isRead: boolean;
   createdAt: string;
   actionUrl?: string;
+  category?: string;
 }
 
 // ── localStorage persistence helpers ──
@@ -931,7 +1014,20 @@ export const useServerConfigStore = create<ServerConfigState>((set, get) => ({
       const res = await fetch(`${API_BASE}/api/config`);
       if (!res.ok) throw new Error('Failed to fetch config');
       const data = await res.json();
-      set({ config: data.config || data, isLoading: false });
+      const rawConfig = data.config || data;
+      // Deep merge with defaults so partial API responses don't crash
+      const mergedConfig: ServerConfig = {
+        contentProtection: { ...DEFAULT_CONFIG.contentProtection, ...(rawConfig?.contentProtection || {}) },
+        features: { ...DEFAULT_CONFIG.features, ...(rawConfig?.features || {}) },
+        ui: {
+          homeSections: rawConfig?.ui?.homeSections || DEFAULT_CONFIG.ui.homeSections,
+          sidebarSections: { ...DEFAULT_CONFIG.ui.sidebarSections, ...(rawConfig?.ui?.sidebarSections || {}) },
+          bottomNavTabs: rawConfig?.ui?.bottomNavTabs || DEFAULT_CONFIG.ui.bottomNavTabs,
+          topBarElements: { ...DEFAULT_CONFIG.ui.topBarElements, ...(rawConfig?.ui?.topBarElements || {}) },
+          cardStyle: rawConfig?.ui?.cardStyle || DEFAULT_CONFIG.ui.cardStyle,
+        },
+      };
+      set({ config: mergedConfig, isLoading: false });
     } catch (error: any) {
       console.error('Failed to fetch server config:', error);
       set({ config: DEFAULT_CONFIG, isLoading: false, error: error.message });
@@ -939,27 +1035,32 @@ export const useServerConfigStore = create<ServerConfigState>((set, get) => ({
   },
 
   isFeatureEnabled: (feature: string) => {
-    const config = get().config || DEFAULT_CONFIG;
-    return (config.features as Record<string, boolean>)[feature] ?? true;
+    const config = get().config;
+    const features = config?.features || DEFAULT_CONFIG.features;
+    return (features as Record<string, boolean>)[feature] ?? true;
   },
 
   isHomeSectionVisible: (section: string) => {
-    const config = get().config || DEFAULT_CONFIG;
-    return config.ui.homeSections.includes(section);
+    const config = get().config;
+    const sections = config?.ui?.homeSections || DEFAULT_CONFIG.ui.homeSections;
+    return sections.includes(section);
   },
 
   isSidebarSectionVisible: (section: string) => {
-    const config = get().config || DEFAULT_CONFIG;
-    return config.ui.sidebarSections[section] ?? true;
+    const config = get().config;
+    const sidebarSections = config?.ui?.sidebarSections || DEFAULT_CONFIG.ui.sidebarSections;
+    return sidebarSections[section] ?? true;
   },
 
   isBottomNavTabVisible: (tab: string) => {
-    const config = get().config || DEFAULT_CONFIG;
-    return config.ui.bottomNavTabs.includes(tab);
+    const config = get().config;
+    const tabs = config?.ui?.bottomNavTabs || DEFAULT_CONFIG.ui.bottomNavTabs;
+    return tabs.includes(tab);
   },
 
   isTopBarElementVisible: (element: string) => {
-    const config = get().config || DEFAULT_CONFIG;
-    return (config.ui.topBarElements as Record<string, boolean>)[element] ?? true;
+    const config = get().config;
+    const topBarElements = config?.ui?.topBarElements || DEFAULT_CONFIG.ui.topBarElements;
+    return (topBarElements as Record<string, boolean>)[element] ?? true;
   },
 }));

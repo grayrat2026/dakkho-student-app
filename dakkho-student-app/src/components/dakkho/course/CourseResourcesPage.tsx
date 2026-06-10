@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Download, FileText, File, Image, Archive, FileCode,
@@ -8,7 +8,8 @@ import {
   FolderOpen, Eye, CheckCircle,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getCourse, getInstructor, formatDuration } from '@/lib/mock-data';
+import { type Course, courseApi } from '@/lib/api-client';
+import { formatDuration } from '@/lib/utils';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -48,7 +49,14 @@ const TYPE_ICONS = {
 export function CourseResourcesPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const courseId = pageParams.courseId as string;
-  const course = getCourse(courseId);
+  const [course, setCourse] = useState<Course | null>(null);
+
+  useEffect(() => {
+    if (!courseId) return;
+    courseApi.get(courseId)
+      .then((res) => setCourse(res.course))
+      .catch(() => setCourse(null));
+  }, [courseId]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');

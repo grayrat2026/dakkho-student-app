@@ -51,7 +51,7 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap"
           rel="stylesheet"
         />
-        {/* OneSignal Push Notifications */}
+        {/* OneSignal Push Notifications — widget hidden, permission requested naturally from UI */}
         <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
         <script
           dangerouslySetInnerHTML={{
@@ -61,7 +61,25 @@ export default function RootLayout({
                 OneSignal.init({
                   appId: "ba6c42b2-d564-4254-b422-a2bed67d8b0f",
                   safari_web_id: "web.onesignal.auto.028d9952-ba2c-477b-babc-6aee5c5ba0de",
-                  notifyButton: { enable: true },
+                  notifyButton: { enable: false },
+                  serviceWorkerParam: { scope: "/" },
+                  serviceWorkerPath: "/OneSignalSDKWorker.js",
+                  promptOptions: {
+                    slidedown: {
+                      prompts: [
+                        {
+                          type: "push",
+                          autoPrompt: false,
+                          text: {
+                            actionMessage: "Stay updated with course notifications and announcements!",
+                            acceptButton: "Allow",
+                            cancelButton: "Not Now"
+                          },
+                          delay: { pageViews: 3, timeDelay: 30 }
+                        }
+                      ]
+                    }
+                  }
                 });
               });
             `,

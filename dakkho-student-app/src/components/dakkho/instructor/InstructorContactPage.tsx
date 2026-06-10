@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Mail, Phone, MessageSquare, Send, Clock, MapPin,
@@ -8,7 +8,7 @@ import {
   Calendar, BookOpen, User,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getInstructor } from '@/lib/mock-data';
+import { type Instructor, instructorApi } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -25,7 +25,14 @@ const CONTACT_REASONS = [
 export function InstructorContactPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const instructorId = pageParams.instructorId as string;
-  const instructor = getInstructor(instructorId);
+  const [instructor, setInstructor] = useState<Instructor | null>(null);
+
+  useEffect(() => {
+    if (!instructorId) return;
+    instructorApi.get(instructorId)
+      .then((res) => setInstructor(res.instructor))
+      .catch(() => setInstructor(null));
+  }, [instructorId]);
 
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');

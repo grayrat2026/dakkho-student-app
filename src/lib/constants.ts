@@ -48,3 +48,13 @@ export const BANGLADESH_DIVISIONS = [
   'Rangpur',
   'Mymensingh',
 ] as const;
+
+// Legacy Appwrite collection IDs (kept for backward compatibility with old route files)
+export const APPWRITE_COLLECTIONS = {
+  USERS: 'users',
+  COURSES: 'courses',
+  VIDEOS: 'videos',
+  INSTRUCTORS: 'instructors',
+  CATEGORIES: 'categories',
+  NOTIFICATIONS: 'notifications',
+};

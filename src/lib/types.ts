@@ -142,6 +142,22 @@ export interface Enrollment {
   updatedAt: string;
 }
 
+// ---- Subject Types ----
+export interface Subject {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  technologyId?: number;
+  sortOrder: number;
+  courseCount: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ---- Category Types ----
 export interface Category {
   id: string;

@@ -22,6 +22,14 @@ export interface Env {
   ONE_SIGNAL_APP_ID: string;
   ONE_SIGNAL_REST_API_KEY: string;
 
+  // VAPID Web Push (RFC 8291 / RFC 8292)
+  VAPID_PRIVATE_KEY: string;
+  VAPID_PUBLIC_KEY: string;
+  VAPID_SUBJECT: string;
+
+  // R2 Support Attachments
+  R2_SUPPORT_ATTACHMENTS: R2Bucket;
+
   // SSLCommerz (optional - plug & play)
   SSLCOMMERZ_STORE_ID?: string;
   SSLCOMMERZ_STORE_PASSWORD?: string;

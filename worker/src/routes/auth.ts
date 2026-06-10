@@ -50,8 +50,8 @@ authRoutes.post('/login', async (c) => {
       return c.json({ error: 'Invalid email or password' }, 401);
     }
 
-    // Step 3: Check admin role
-    if (user.role !== 'admin') {
+    // Step 3: Check admin role (admin or super_admin)
+    if (user.role !== 'admin' && user.role !== 'super_admin') {
       return c.json(
         { error: 'Access denied. Admin role required. Your account does not have admin privileges.' },
         403
@@ -69,13 +69,14 @@ authRoutes.post('/login', async (c) => {
 
     await c.env.DB.prepare(
       `INSERT INTO admin_sessions (id, user_id, email, name, role, ip_address, user_agent, expires_at, is_active)
-       VALUES (?, ?, ?, ?, 'admin', ?, ?, ?, 1)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
     )
       .bind(
         sessionId,
         user.id,
         user.email,
         user.full_name,
+        user.role,
         c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown',
         c.req.header('user-agent') || 'unknown',
         expiresAt
@@ -86,7 +87,7 @@ authRoutes.post('/login', async (c) => {
     return c.json({
       success: true,
       token: sessionId,
-      user: { id: user.id, email: user.email, name: user.full_name, role: 'admin' },
+      user: { id: user.id, email: user.email, name: user.full_name, role: user.role },
     });
   } catch (error) {
     const message = getErrorMessage(error);

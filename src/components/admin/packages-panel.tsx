@@ -49,7 +49,7 @@ export default function PackagesPanel() {
     setError(null);
     try {
       const data = await apiGet('/packages?page=1&limit=100') as any;
-      setPackages(data.packages || []);
+      setPackages(data.packages || data.documents || []);
       setTotal(data.total || 0);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load packages');
@@ -62,7 +62,7 @@ export default function PackagesPanel() {
   const fetchCourses = useCallback(async () => {
     try {
       const data = await apiGet('/courses?page=1&limit=500') as any;
-      setCourses(data.courses || []);
+      setCourses(data.courses || data.documents || []);
     } catch {
       // silently fail — course select will just be empty
     }

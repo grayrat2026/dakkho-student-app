@@ -8,7 +8,7 @@ import type { Env } from '../env';
 import type { AuthVariables } from '../lib/auth';
 import { adminAuthMiddleware } from '../lib/auth';
 import { logAudit } from '../lib/audit';
-import { getErrorMessage } from '../lib/utils';
+import { getErrorMessage, normalizeKeys } from '../lib/utils';
 
 const instructorRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -50,7 +50,9 @@ instructorRoutes.get('/', async (c) => {
 // POST / — Create instructor
 instructorRoutes.post('/', async (c) => {
   try {
-    const data = await c.req.json<Record<string, unknown>>();
+    const rawData = await c.req.json<Record<string, unknown>>();
+    const allowedFields = ['name', 'email', 'bio', 'avatar_url', 'cover_url', 'specialization', 'rating', 'total_students', 'total_courses', 'social_links', 'is_active'];
+    const data = normalizeKeys(rawData, allowedFields);
     const id = crypto.randomUUID();
 
     await c.env.DB.prepare(`
@@ -86,14 +88,16 @@ instructorRoutes.post('/', async (c) => {
 // PUT / — Update instructor
 instructorRoutes.put('/', async (c) => {
   try {
-    const data = await c.req.json<Record<string, unknown>>();
-    const { instructorId, ...updates } = data;
+    const rawData = await c.req.json<Record<string, unknown>>();
+    const { instructorId, ...rawUpdates } = rawData;
 
     if (!instructorId) {
       return c.json({ error: 'Instructor ID required' }, 400);
     }
 
     const allowedFields = ['name', 'email', 'bio', 'avatar_url', 'cover_url', 'specialization', 'rating', 'total_students', 'total_courses', 'social_links', 'is_active'];
+    // Normalize camelCase keys from admin panel to snake_case for D1
+    const updates = normalizeKeys(rawUpdates, allowedFields);
     const setClauses: string[] = [];
     const setValues: unknown[] = [];
 

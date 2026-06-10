@@ -1,10 +1,10 @@
 'use client';
 
-import { useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Star, Users, BookOpen, ArrowRight } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { INSTRUCTORS } from '@/lib/mock-data';
+import { type Instructor, instructorApi } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 
 const AVATAR_GRADIENTS = [
@@ -19,7 +19,13 @@ const AVATAR_GRADIENTS = [
 export function FeaturedInstructors() {
   const navigate = useNavigationStore((s) => s.navigate);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const featured = INSTRUCTORS.slice(0, 6);
+  const [featured, setFeatured] = useState<Instructor[]>([]);
+
+  useEffect(() => {
+    instructorApi.list({ limit: 6 }).then((res) => {
+      setFeatured(res.instructors.slice(0, 6));
+    }).catch(() => {});
+  }, []);
 
   const scroll = (dir: 'left' | 'right') => {
     if (!scrollRef.current) return;

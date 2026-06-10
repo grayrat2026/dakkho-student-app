@@ -1,14 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Star, Users, Clock, BookOpen, Play, ChevronLeft, Heart, Share2, Award, CheckCircle, ChevronDown, User } from 'lucide-react';
 import { useNavigationStore, useBookmarkStore } from '@/lib/store';
-import { getCourse, getInstructor, getCategory, getCourseVideos, formatDuration, getLevelColor, COURSES } from '@/lib/mock-data';
+import { type Course, type Instructor, type Video, courseApi, instructorApi, categoryApi } from '@/lib/api-client';
+import { formatDuration, getLevelColor } from '@/lib/utils';
 import { GlassCard } from '../shared/GlassCard';
 import { GradientButton } from '../shared/GradientButton';
 import { ProgressBar } from '../shared/ProgressBar';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
+import { LoadingSkeleton } from '../shared/LoadingSkeleton';
 
 export function CourseDetailPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
@@ -17,16 +19,49 @@ export function CourseDetailPage() {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ 'section-1': true });
 
   const courseId = pageParams.courseId as string;
-  const course = getCourse(courseId);
-  const instructor = course ? getInstructor(course.instructorId) : undefined;
-  const category = course ? getCategory(course.categoryId) : undefined;
-  const videos = course ? getCourseVideos(course.id) : [];
-  const bookmarked = course ? isBookmarked(course.id) : false;
 
-  // Related courses - same category, different course
-  const relatedCourses = course
-    ? COURSES.filter((c) => c.categoryId === course.categoryId && c.id !== course.id).slice(0, 4)
-    : [];
+  const [course, setCourse] = useState<Course | null>(null);
+  const [instructor, setInstructor] = useState<Instructor | undefined>(undefined);
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [relatedCourses, setRelatedCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!courseId) { setLoading(false); return; }
+
+    setLoading(true);
+    // Fetch course details
+    courseApi.get(courseId)
+      .then((res) => {
+        const c = res.course;
+        setCourse(c);
+
+        // Fetch instructor if we have an ID
+        if (c.instructorId) {
+          instructorApi.get(c.instructorId)
+            .then((instRes) => setInstructor(instRes.instructor))
+            .catch(() => {});
+        }
+
+        // Fetch videos for this course
+        courseApi.videos(courseId)
+          .then((vidRes) => setVideos(vidRes.videos))
+          .catch(() => {});
+
+        // Fetch related courses (same technology/category)
+        if (c.categoryId) {
+          courseApi.list({ technology: c.categoryId, limit: 5 })
+            .then((courseRes) => {
+              setRelatedCourses(courseRes.courses.filter((rc) => rc.id !== c.id).slice(0, 4));
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => setCourse(null))
+      .finally(() => setLoading(false));
+  }, [courseId]);
+
+  const bookmarked = course ? isBookmarked(course.id) : false;
 
   // What You'll Learn items (derived from tags and course content)
   const learnings = course ? [
@@ -49,6 +84,16 @@ export function CourseDetailPage() {
         })
       )
     : [];
+
+  if (loading) {
+    return (
+      <div className="pb-20 lg:pb-0">
+        <LoadingSkeleton type="video" className="mb-6" />
+        <LoadingSkeleton type="line" count={3} className="mb-4" />
+        <LoadingSkeleton type="card" count={2} />
+      </div>
+    );
+  }
 
   if (!course) {
     return (
@@ -101,9 +146,6 @@ export function CourseDetailPage() {
           </div>
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
-            {category && (
-              <span className="text-xs font-bold uppercase tracking-wider text-white/70 mb-2 block">{category.name}</span>
-            )}
             <h1 className="text-xl md:text-2xl font-extrabold mb-2">{course.title}</h1>
             <div className="flex flex-wrap items-center gap-4 text-sm">
               {instructor && <span>by {instructor.name}</span>}

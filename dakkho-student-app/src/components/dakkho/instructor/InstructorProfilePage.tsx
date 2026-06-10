@@ -1,19 +1,40 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Star, Users, BookOpen, Globe, Youtube, Linkedin, ChevronLeft } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getInstructor, getInstructorCourses, formatDuration } from '@/lib/mock-data';
+import { type Instructor, type Course, instructorApi } from '@/lib/api-client';
+import { formatDuration } from '@/lib/utils';
 import { GlassCard } from '../shared/GlassCard';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
 import { AnimatedCounter } from '../shared/AnimatedCounter';
 import { GradientButton } from '../shared/GradientButton';
+import { LoadingSkeleton } from '../shared/LoadingSkeleton';
 
 export function InstructorProfilePage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const instructorId = pageParams.instructorId as string;
-  const instructor = getInstructor(instructorId);
-  const courses = instructor ? getInstructorCourses(instructor.id) : [];
+
+  const [instructor, setInstructor] = useState<Instructor | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!instructorId) { setLoading(false); return; }
+    instructorApi.get(instructorId)
+      .then((res) => {
+        setInstructor(res.instructor);
+        return instructorApi.courses(instructorId);
+      })
+      .then((res) => setCourses(res.courses))
+      .catch(() => setInstructor(null))
+      .finally(() => setLoading(false));
+  }, [instructorId]);
+
+  if (loading) {
+    return <LoadingSkeleton type="card" count={3} />;
+  }
 
   if (!instructor) {
     return (

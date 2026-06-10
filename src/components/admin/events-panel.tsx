@@ -68,7 +68,7 @@ export default function EventsPanel() {
     setError(null);
     try {
       const data = (await apiGet('/events?page=1&limit=100')) as any;
-      setEvents(data.events || []);
+      setEvents(data.events || data.documents || []);
       setTotal(data.total || 0);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch events';

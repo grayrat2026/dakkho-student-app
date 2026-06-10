@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Star, ThumbsUp, ThumbsDown, ChevronLeft, Send, User,
   MessageCircle, Filter, TrendingUp, AlertCircle,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getCourse } from '@/lib/mock-data';
+import { type Course, courseApi } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -25,7 +25,14 @@ const MOCK_REVIEWS = [
 export function CourseReviewsPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const courseId = pageParams.courseId as string;
-  const course = getCourse(courseId);
+  const [course, setCourse] = useState<Course | null>(null);
+
+  useEffect(() => {
+    if (!courseId) return;
+    courseApi.get(courseId)
+      .then((res) => setCourse(res.course))
+      .catch(() => setCourse(null));
+  }, [courseId]);
 
   const [ratingFilter, setRatingFilter] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<'recent' | 'helpful'>('recent');

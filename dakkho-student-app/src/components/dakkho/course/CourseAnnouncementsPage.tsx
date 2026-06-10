@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Bell, Megaphone, Clock, ChevronLeft, Pin, MessageSquare,
@@ -8,7 +8,7 @@ import {
   Calendar, Tag,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getCourse, getInstructor } from '@/lib/mock-data';
+import { type Course, type Instructor, courseApi, instructorApi } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -57,8 +57,22 @@ const TYPE_CONFIG = {
 export function CourseAnnouncementsPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const courseId = pageParams.courseId as string;
-  const course = getCourse(courseId);
-  const instructor = course ? getInstructor(course.instructorId) : undefined;
+  const [course, setCourse] = useState<Course | null>(null);
+  const [instructor, setInstructor] = useState<Instructor | undefined>(undefined);
+
+  useEffect(() => {
+    if (!courseId) return;
+    courseApi.get(courseId)
+      .then((res) => {
+        setCourse(res.course);
+        if (res.course.instructorId) {
+          instructorApi.get(res.course.instructorId)
+            .then((instRes) => setInstructor(instRes.instructor))
+            .catch(() => {});
+        }
+      })
+      .catch(() => setCourse(null));
+  }, [courseId]);
 
   const [filterType, setFilterType] = useState<string>('all');
   const [readAnnouncements, setReadAnnouncements] = useState<Set<string>>(

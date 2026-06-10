@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, SlidersHorizontal, Star, Users, BookOpen, ArrowRight, Filter } from 'lucide-react';
-import { INSTRUCTORS } from '@/lib/mock-data';
+import { type Instructor, instructorApi } from '@/lib/api-client';
 import { useNavigationStore } from '@/lib/store';
 import { GlassCard } from '../shared/GlassCard';
+import { LoadingSkeleton } from '../shared/LoadingSkeleton';
 
 const AVATAR_GRADIENTS = [
   'from-sky-400 to-blue-600',
@@ -20,8 +21,6 @@ const AVATAR_GRADIENTS = [
   'from-teal-400 to-cyan-600',
 ];
 
-const SPECIALIZATIONS = Array.from(new Set(INSTRUCTORS.map((i) => i.specialization)));
-
 export function InstructorsPage() {
   const navigate = useNavigationStore((s) => s.navigate);
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,7 +28,22 @@ export function InstructorsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  const filteredInstructors = INSTRUCTORS.filter((instructor) => {
+  const [instructors, setInstructors] = useState<Instructor[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    instructorApi.list({ limit: 100 })
+      .then((res) => setInstructors(res.instructors))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const SPECIALIZATIONS = useMemo(
+    () => Array.from(new Set(instructors.map((i) => i.specialization))),
+    [instructors]
+  );
+
+  const filteredInstructors = instructors.filter((instructor) => {
     const matchesSearch = !searchQuery ||
       instructor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       instructor.specialization.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -37,6 +51,16 @@ export function InstructorsPage() {
     const matchesSpec = !selectedSpecialization || instructor.specialization === selectedSpecialization;
     return matchesSearch && matchesSpec;
   });
+
+  if (loading) {
+    return (
+      <div>
+        <h1 className="text-2xl font-extrabold text-foreground mb-2">Instructors</h1>
+        <p className="text-muted-foreground text-sm mb-6">Learn from the best polytechnic instructors across Bangladesh</p>
+        <LoadingSkeleton type="card" count={6} />
+      </div>
+    );
+  }
 
   return (
     <div>

@@ -1,0 +1,19 @@
+-- DAKKHO Admin Panel - Edge Functions Secrets
+-- Run these commands in Supabase Dashboard > Edge Functions > Secrets
+-- OR via CLI: supabase secrets set KEY=VALUE
+
+-- Required secrets for Edge Functions:
+-- APPWRITE_ENDPOINT=https://sgp.cloud.appwrite.io/v1
+-- APPWRITE_PROJECT_ID=dakkho
+-- APPWRITE_DATABASE_ID=dakkho_main
+-- APPWRITE_API_KEY=standard_c465097b...
+-- R2_ACCESS_KEY_ID=46b97c3e80c8932f5885e0b1dafac883
+-- R2_SECRET_ACCESS_KEY=2c27adc14bcd6b20f2413d98dc86212c0475c2dbff524186a5e32dfa270e31c4
+-- R2_ENDPOINT=https://a0d0d176b59cd500e635578e27c20a0f.r2.cloudflarestorage.com
+-- R2_BUCKET_VIDEOS=dakkho-videos
+-- R2_BUCKET_THUMBNAILS=dakkho-thumbnails
+-- R2_BUCKET_AVATARS=dakkho-avatars
+-- R2_BUCKET_RESOURCES=dakkho-resources
+-- RESEND_API_KEY=re_YBYgjXfu_...
+-- RESEND_FROM_EMAIL=noreply@dakkho.pro.bd
+-- ADMIN_SECRET_KEY=dakkho-admin-2026-secret

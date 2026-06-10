@@ -108,11 +108,21 @@ export function SignupPage() {
   const [hoveredTech, setHoveredTech] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { signup, isLoading, verifyOTP, resendOTP } = useAuthStore();
+  const { signup, isLoading, verifyOTP, resendOTP, needsVerification, pendingVerificationEmail } = useAuthStore();
   const navigate = useNavigationStore((s) => s.navigate);
   const [apiInstitutes, setApiInstitutes] = useState<Institute[]>([]);
   const [apiTechnologies, setApiTechnologies] = useState<Technology[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+
+  // Restore step 4 (OTP verification) if user refreshed during pending verification
+  useEffect(() => {
+    if (needsVerification && pendingVerificationEmail) {
+      setStep(4);
+      setDirection(1);
+      setFormData(prev => ({ ...prev, email: pendingVerificationEmail }));
+      setCooldown(OTP_RESEND_COOLDOWN);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch institutes and technologies from Worker API
   useEffect(() => {
@@ -223,6 +233,11 @@ export function SignupPage() {
       setOtpVerified(true);
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 2000);
+      // After OTP is verified, the store sets isAuthenticated=true and
+      // needsVerification=false. DakkhoApp's redirect effect will navigate
+      // to home. We also navigate explicitly after a short delay to ensure
+      // a smooth transition.
+      setTimeout(() => navigate('home'), 1500);
     } else {
       setOtpError('Invalid OTP. Please try again.');
     }

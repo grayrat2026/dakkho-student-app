@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Bell, Mail, MessageSquare, Smartphone, ChevronLeft, Volume2,
   VolumeX, BookOpen, CreditCard, Megaphone, Users, Award,
-  Calendar, AlertTriangle, CheckCircle,
+  Calendar, AlertTriangle, CheckCircle, Loader2,
 } from 'lucide-react';
 import { useNavigationStore, useAuthStore } from '@/lib/store';
+import { notificationApi, type NotificationPreferences } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 import { GradientButton } from '../shared/GradientButton';
 
@@ -38,6 +39,27 @@ interface NotifSetting {
   sms: boolean;
 }
 
+// Map preference keys from the API response to setting IDs
+const categoryMapping: Record<string, string> = {
+  course: 'courseUpdates',
+  grades: 'grades',
+  schedule: 'schedule',
+  payment: 'payment',
+  promo: 'promotions',
+  social: 'social',
+  alerts: 'system',
+};
+
+const defaultSettings: NotifSetting[] = [
+  { id: 'course', label: 'Course Updates', description: 'New videos, assignments, and materials', icon: BookOpen, push: true, email: true, sms: false },
+  { id: 'grades', label: 'Grades & Results', description: 'Exam results and grade postings', icon: Award, push: true, email: true, sms: true },
+  { id: 'schedule', label: 'Schedule Changes', description: 'Class cancellations and room changes', icon: Calendar, push: true, email: false, sms: true },
+  { id: 'payment', label: 'Payment & Billing', description: 'Subscription and payment receipts', icon: CreditCard, push: true, email: true, sms: false },
+  { id: 'promo', label: 'Promotions & Offers', description: 'Special discounts and seasonal offers', icon: Megaphone, push: false, email: true, sms: false },
+  { id: 'social', label: 'Social & Community', description: 'Comments, replies, and mentions', icon: Users, push: true, email: false, sms: false },
+  { id: 'alerts', label: 'System Alerts', description: 'Maintenance and security notifications', icon: AlertTriangle, push: true, email: true, sms: true },
+];
+
 export function NotificationSettingsPage() {
   const { goBack } = useNavigationStore();
   const user = useAuthStore((s) => s.user);
@@ -48,18 +70,58 @@ export function NotificationSettingsPage() {
   const [quietHours, setQuietHours] = useState(false);
   const [quietStart, setQuietStart] = useState('22:00');
   const [quietEnd, setQuietEnd] = useState('08:00');
+  const [settings, setSettings] = useState<NotifSetting[]>(defaultSettings);
   const [saved, setSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [settings, setSettings] = useState<NotifSetting[]>([
-    { id: 'course', label: 'Course Updates', description: 'New videos, assignments, and materials', icon: BookOpen, push: true, email: true, sms: false },
-    { id: 'grades', label: 'Grades & Results', description: 'Exam results and grade postings', icon: Award, push: true, email: true, sms: true },
-    { id: 'schedule', label: 'Schedule Changes', description: 'Class cancellations and room changes', icon: Calendar, push: true, email: false, sms: true },
-    { id: 'payment', label: 'Payment & Billing', description: 'Subscription and payment receipts', icon: CreditCard, push: true, email: true, sms: false },
-    { id: 'promo', label: 'Promotions & Offers', description: 'Special discounts and seasonal offers', icon: Megaphone, push: false, email: true, sms: false },
-    { id: 'social', label: 'Social & Community', description: 'Comments, replies, and mentions', icon: Users, push: true, email: false, sms: false },
-    { id: 'alerts', label: 'System Alerts', description: 'Maintenance and security notifications', icon: AlertTriangle, push: true, email: true, sms: true },
-  ]);
+  // Fetch notification settings from D1 via Worker API
+  const fetchSettings = useCallback(async () => {
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await notificationApi.getSettings();
+      const prefs = data.preferences;
+
+      // Apply fetched preferences to state
+      setMasterPush(prefs.pushEnabled);
+      setMasterEmail(prefs.emailEnabled);
+      setMasterSMS(prefs.smsEnabled);
+      setQuietHours(prefs.quietHoursEnabled);
+      setQuietStart(prefs.quietHoursStart || '22:00');
+      setQuietEnd(prefs.quietHoursEnd || '08:00');
+
+      // Map per-category preferences
+      setSettings((prev) =>
+        prev.map((s) => {
+          const key = categoryMapping[s.id];
+          const catPrefs = prefs[key as keyof NotificationPreferences] as { push: boolean; email: boolean } | undefined;
+          if (catPrefs) {
+            return {
+              ...s,
+              push: catPrefs.push,
+              email: catPrefs.email,
+            };
+          }
+          return s;
+        })
+      );
+    } catch (err) {
+      console.error('Failed to fetch notification settings:', err);
+      setError('Failed to load settings. Using defaults.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   const toggleChannel = (id: string, channel: 'push' | 'email' | 'sms') => {
     setSettings((prev) =>
@@ -68,34 +130,71 @@ export function NotificationSettingsPage() {
   };
 
   const handleSave = async () => {
-    if (!user?.id) { setSaved(true); setTimeout(() => setSaved(false), 3000); return; }
+    if (!user?.id) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      return;
+    }
     setIsSaving(true);
+    setError(null);
     try {
-      await fetch('/api/user/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.id,
-          pushNotifications: masterPush,
-          emailNotifications: masterEmail,
-          smsNotifications: masterSMS,
-          quietHoursEnabled: quietHours,
-          quietHoursStart: quietStart,
-          quietHoursEnd: quietEnd,
-          notifyCourseUpdates: settings[0]?.push,
-          notifyGrades: settings[1]?.push,
-          notifySchedule: settings[2]?.push,
-          notifyPayments: settings[3]?.push,
-          notifyPromotions: settings[4]?.push,
-          notifySocial: settings[5]?.push,
-          notifySystemAlerts: settings[6]?.push,
-        }),
-      });
-    } catch {}
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-    setIsSaving(false);
+      // Build preferences object from current state
+      const prefs: NotificationPreferences = {
+        pushEnabled: masterPush,
+        emailEnabled: masterEmail,
+        smsEnabled: masterSMS,
+        quietHoursEnabled: quietHours,
+        quietHoursStart: quietStart,
+        quietHoursEnd: quietEnd,
+        courseUpdates: {
+          push: settings.find((s) => s.id === 'course')?.push ?? true,
+          email: settings.find((s) => s.id === 'course')?.email ?? true,
+        },
+        grades: {
+          push: settings.find((s) => s.id === 'grades')?.push ?? true,
+          email: settings.find((s) => s.id === 'grades')?.email ?? true,
+        },
+        schedule: {
+          push: settings.find((s) => s.id === 'schedule')?.push ?? true,
+          email: settings.find((s) => s.id === 'schedule')?.email ?? false,
+        },
+        payment: {
+          push: settings.find((s) => s.id === 'payment')?.push ?? true,
+          email: settings.find((s) => s.id === 'payment')?.email ?? true,
+        },
+        promotions: {
+          push: settings.find((s) => s.id === 'promo')?.push ?? false,
+          email: settings.find((s) => s.id === 'promo')?.email ?? false,
+        },
+        social: {
+          push: settings.find((s) => s.id === 'social')?.push ?? true,
+          email: settings.find((s) => s.id === 'social')?.email ?? false,
+        },
+        system: {
+          push: settings.find((s) => s.id === 'alerts')?.push ?? true,
+          email: settings.find((s) => s.id === 'alerts')?.email ?? true,
+        },
+      };
+
+      await notificationApi.updateSettings(prefs);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      console.error('Failed to save notification settings:', err);
+      setError('Failed to save settings. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+        <span className="ml-3 text-sm text-muted-foreground">Loading settings...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-20 lg:pb-0">
@@ -121,6 +220,16 @@ export function NotificationSettingsPage() {
         >
           <CheckCircle className="w-4 h-4 text-emerald-500" />
           <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Preferences saved!</p>
+        </motion.div>
+      )}
+
+      {error && (
+        <motion.div
+          className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center gap-2"
+          initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+        >
+          <AlertTriangle className="w-4 h-4 text-red-500" />
+          <p className="text-sm font-semibold text-red-700 dark:text-red-400">{error}</p>
         </motion.div>
       )}
 
@@ -181,6 +290,9 @@ export function NotificationSettingsPage() {
             </h3>
             <Toggle enabled={quietHours} onToggle={() => setQuietHours(!quietHours)} />
           </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            During quiet hours, notifications are added to your notification tray silently without push alerts or sound.
+          </p>
           {quietHours && (
             <motion.div className="flex items-center gap-3 p-3 rounded-xl bg-muted/20" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
               <div className="flex-1">
@@ -213,6 +325,9 @@ export function NotificationSettingsPage() {
           <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-4">
             <Bell className="w-4 h-4 text-sky-500" /> Notification Types
           </h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            Turn off a category to stop receiving those notifications completely. Turn on to receive them (push if enabled, or silently during quiet hours).
+          </p>
           <div className="space-y-1">
             {/* Column headers */}
             <div className="grid grid-cols-[1fr_50px_50px_50px] gap-2 items-center pb-2 border-b border-white/20 dark:border-white/5">
@@ -267,8 +382,12 @@ export function NotificationSettingsPage() {
             ))}
           </div>
           <div className="mt-4 pt-3 border-t border-white/20 dark:border-white/5">
-            <GradientButton onClick={handleSave} size="sm">
-              <CheckCircle className="w-4 h-4" /> Save Preferences
+            <GradientButton onClick={handleSave} size="sm" disabled={isSaving}>
+              {isSaving ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+              ) : (
+                <><CheckCircle className="w-4 h-4" /> Save Preferences</>
+              )}
             </GradientButton>
           </div>
         </GlassCard>

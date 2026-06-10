@@ -1,12 +1,19 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp } from 'lucide-react';
-import { COURSES } from '@/lib/mock-data';
+import { type Course, courseApi } from '@/lib/api-client';
 import { CourseCardGrid } from '../shared/CourseCardGrid';
 
 export function TrendingCourses() {
-  const trending = COURSES.filter((c) => c.isFeatured).slice(0, 8);
+  const [trending, setTrending] = useState<Course[]>([]);
+
+  useEffect(() => {
+    courseApi.list({ limit: 20 }).then((res) => {
+      setTrending(res.courses.filter((c) => c.isFeatured).slice(0, 8));
+    }).catch(() => {});
+  }, []);
 
   return (
     <div className="mb-8">

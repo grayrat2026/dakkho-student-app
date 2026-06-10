@@ -274,7 +274,7 @@ export interface NotificationRow {
   title: string;
   message: string;
   type: string;
-  is_read: number;
+  read: number;
   action_url: string | null;
   created_at: string;
   updated_at: string;
@@ -578,6 +578,35 @@ export interface NotificationSoundRow {
   file_url: string;
   is_default: number;
   is_active: number;
+  created_at: string;
+}
+
+export interface SupportTicketRow {
+  id: number;
+  ticket_id: string;
+  user_id: string | null;
+  name: string | null;
+  email: string;
+  subject: string;
+  category: string;
+  priority: string;
+  status: string;
+  description: string | null;
+  resolved_content: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupportMessageRow {
+  id: number;
+  ticket_id: string;
+  sender_type: string;
+  sender_name: string | null;
+  message: string;
+  attachments: string;
+  source: string;
   created_at: string;
 }
 

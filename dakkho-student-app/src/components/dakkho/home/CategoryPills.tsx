@@ -1,13 +1,13 @@
 'use client';
 
-import { useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   Globe, Smartphone, Cpu, Zap, Wrench, Building2, Ruler,
   Code, BarChart3, Wifi, Palette, Scissors, ArrowRight,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { CATEGORIES } from '@/lib/mock-data';
+import { type Category, categoryApi } from '@/lib/api-client';
 
 const lucideIconMap: Record<string, React.ElementType> = {
   Globe, Smartphone, Cpu, Zap, Wrench, Building2, Ruler,
@@ -17,6 +17,13 @@ const lucideIconMap: Record<string, React.ElementType> = {
 export function CategoryPills() {
   const navigate = useNavigationStore((s) => s.navigate);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  useEffect(() => {
+    categoryApi.list().then((res) => {
+      setCategories(res.categories);
+    }).catch(() => {});
+  }, []);
 
   return (
     <div className="mb-8">
@@ -26,7 +33,7 @@ export function CategoryPills() {
         className="flex gap-2 overflow-x-auto pb-2 scroll-smooth"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
-        {CATEGORIES.map((cat, i) => {
+        {categories.map((cat, i) => {
           const IconComponent = lucideIconMap[cat.icon];
           return (
             <motion.button
@@ -54,7 +61,7 @@ export function CategoryPills() {
           onClick={() => navigate('explore')}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: CATEGORIES.length * 0.03 }}
+          transition={{ delay: categories.length * 0.03 }}
           whileHover={{ scale: 1.05, y: -2 }}
           whileTap={{ scale: 0.95 }}
         >

@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { GlassCard } from '../shared/GlassCard';
 import { GradientButton } from '../shared/GradientButton';
 import { ProgressBar } from '../shared/ProgressBar';
-import { COURSES, formatDuration } from '@/lib/mock-data';
+import { formatDuration } from '@/lib/utils';
 
 interface DownloadItem {
   id: string;

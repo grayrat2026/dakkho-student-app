@@ -25,6 +25,10 @@ bucket_name = "dakkho-avatars"
 binding = "R2_RESOURCES"
 bucket_name = "dakkho-resources"
 
+[[r2_buckets]]
+binding = "R2_SUPPORT_ATTACHMENTS"
+bucket_name = "dakkho-support-attachments"
+
 # Workers KV — for config/cache
 [[kv_namespaces]]
 binding = "KV_CONFIG"
@@ -45,3 +49,9 @@ ENVIRONMENT = "production"
 # Secrets (set via `wrangler secret put`):
 # RESEND_API_KEY
 # ADMIN_SECRET_KEY
+# ONE_SIGNAL_APP_ID
+# ONE_SIGNAL_REST_API_KEY
+
+# Cron Triggers
+[triggers]
+crons = ["0 3 * * *"]

@@ -8,7 +8,7 @@ import type { Env } from '../env';
 import type { AuthVariables } from '../lib/auth';
 import { adminAuthMiddleware } from '../lib/auth';
 import { logAudit } from '../lib/audit';
-import { getErrorMessage } from '../lib/utils';
+import { getErrorMessage, normalizeKeys } from '../lib/utils';
 
 const videoRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -57,9 +57,11 @@ videoRoutes.get('/', async (c) => {
 // POST / — Create video
 videoRoutes.post('/', async (c) => {
   try {
-    const data = await c.req.json<Record<string, unknown>>();
+    const rawData = await c.req.json<Record<string, unknown>>();
+    const allowedFields = ['title', 'slug', 'description', 'course_id', 'video_url', 'thumbnail_url', 'duration', 'sort_order', 'is_preview', 'is_published'];
+    const data = normalizeKeys(rawData, allowedFields);
     const id = crypto.randomUUID();
-    const slug = (data.slug as string) || (data.title as string).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const slug = (data.slug as string) || ((data.title as string) || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
     await c.env.DB.prepare(`
       INSERT INTO videos (id, title, slug, description, course_id, video_url, thumbnail_url, duration, sort_order, is_preview, is_published)
@@ -93,14 +95,16 @@ videoRoutes.post('/', async (c) => {
 // PUT / — Update video
 videoRoutes.put('/', async (c) => {
   try {
-    const data = await c.req.json<Record<string, unknown>>();
-    const { videoId, ...updates } = data;
+    const rawData = await c.req.json<Record<string, unknown>>();
+    const { videoId, ...rawUpdates } = rawData;
 
     if (!videoId) {
       return c.json({ error: 'Video ID required' }, 400);
     }
 
     const allowedFields = ['title', 'slug', 'description', 'course_id', 'video_url', 'thumbnail_url', 'duration', 'sort_order', 'is_preview', 'is_published'];
+    // Normalize camelCase keys from admin panel to snake_case for D1
+    const updates = normalizeKeys(rawUpdates, allowedFields);
     const setClauses: string[] = [];
     const setValues: unknown[] = [];
 

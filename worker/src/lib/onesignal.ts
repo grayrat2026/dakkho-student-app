@@ -181,13 +181,14 @@ export async function unregisterPushToken(
 /**
  * Check if a user should receive a specific type of notification
  * based on their notification_preferences in D1.
- * Returns { push: boolean, email: boolean } — defaults to true if no prefs found.
+ * Returns { push: boolean, email: boolean, quietHours: boolean } — defaults to push/email true if no prefs found.
+ * quietHours=true means user has quiet hours enabled and current time is within quiet hours.
  */
 export async function checkUserNotifPrefs(
   env: Env,
   userId: string,
   notifType: string
-): Promise<{ push: boolean; email: boolean }> {
+): Promise<{ push: boolean; email: boolean; quietHours: boolean }> {
   try {
     const prefs = await env.DB.prepare(
       'SELECT * FROM notification_preferences WHERE user_id = ?'
@@ -195,12 +196,29 @@ export async function checkUserNotifPrefs(
 
     if (!prefs) {
       // No preferences set → use defaults (push: true, email: true for most types)
-      return { push: true, email: true };
+      return { push: true, email: true, quietHours: false };
+    }
+
+    // Check if quiet hours are active
+    let isQuietHours = false;
+    if (prefs.quiet_hours_enabled) {
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      const [startH, startM] = (prefs.quiet_hours_start || '22:00').split(':').map(Number);
+      const [endH, endM] = (prefs.quiet_hours_end || '08:00').split(':').map(Number);
+      const startMinutes = (startH || 0) * 60 + (startM || 0);
+      const endMinutes = (endH || 0) * 60 + (endM || 0);
+
+      if (startMinutes > endMinutes) {
+        isQuietHours = currentMinutes >= startMinutes || currentMinutes < endMinutes;
+      } else {
+        isQuietHours = currentMinutes >= startMinutes && currentMinutes < endMinutes;
+      }
     }
 
     // Check master switches first
-    if (!prefs.push_enabled) return { push: false, email: !!prefs.email_enabled };
-    if (!prefs.email_enabled) return { push: !!prefs.push_enabled, email: false };
+    if (!prefs.push_enabled) return { push: false, email: !!prefs.email_enabled, quietHours: isQuietHours };
+    if (!prefs.email_enabled) return { push: !!prefs.push_enabled, email: false, quietHours: isQuietHours };
 
     // Map notification type to per-category preference columns
     const typeToColumn: Record<string, { push: string; email: string }> = {
@@ -216,15 +234,17 @@ export async function checkUserNotifPrefs(
       'system': { push: 'system_push', email: 'system_email' },
       'warning': { push: 'system_push', email: 'system_email' },
       'error': { push: 'system_push', email: 'system_email' },
+      'support': { push: 'system_push', email: 'system_email' },
     };
 
     const mapping = typeToColumn[notifType] || typeToColumn['info'];
     return {
       push: !!prefs[mapping.push],
       email: !!prefs[mapping.email],
+      quietHours: isQuietHours,
     };
   } catch (error) {
     // On error, default to allowing notifications
-    return { push: true, email: true };
+    return { push: true, email: true, quietHours: false };
   }
 }

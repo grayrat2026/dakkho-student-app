@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, TrendingUp, Clock, BookOpen, GraduationCap, Video } from 'lucide-react';
 import { useSearchStore, useNavigationStore } from '@/lib/store';
-import { searchCourses, searchInstructors, searchVideos, TRENDING_SEARCHES, formatDuration } from '@/lib/mock-data';
+import { type Course, type Instructor, type Video, courseApi, instructorApi } from '@/lib/api-client';
+import { formatDuration, TRENDING_SEARCHES } from '@/lib/utils';
 import { GlassCard } from '../shared/GlassCard';
 
 export function SearchPage() {

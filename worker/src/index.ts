@@ -36,9 +36,14 @@ import instituteRequestRoutes from './routes/institute-requests';
 import studentApiRoutes from './routes/student-api';
 import pushRoutes from './routes/push';
 import techRoutes from './routes/technologies';
+import subjectRoutes from './routes/subjects';
 import packageRoutes from './routes/packages';
 import enrollmentRoutes from './routes/enrollments';
 import achievementRoutes from './routes/achievements';
+import migrateRoutes from './routes/migrate';
+import watchHistoryRoutes from './routes/watch-history';
+import { aboutPublicRoutes, aboutAdminRoutes } from './routes/about';
+import { supportPublicRoutes, supportAdminRoutes, telegramWebhookRoutes } from './routes/support';
 
 // R2 file serving (no auth needed — public access for images/videos)
 import { getFile, getBucketForType } from './lib/r2';
@@ -103,12 +108,24 @@ app.route('/admin/payments', paymentRoutes);
 app.route('/admin/institute-requests', instituteRequestRoutes);
 app.route('/admin/push', pushRoutes);
 app.route('/admin/technologies', techRoutes);
+app.route('/admin/subjects', subjectRoutes);
 app.route('/admin/packages', packageRoutes);
 app.route('/admin/enrollments', enrollmentRoutes);
 app.route('/admin/achievements', achievementRoutes);
+app.route('/admin/migrate', migrateRoutes);
 
 // Student-facing API (no admin auth)
+// NOTE: /api/about, /api/support, /api/webhook/telegram must be mounted BEFORE /api
+// to avoid studentApiRoutes' wildcard catching them
+app.route('/api/about', aboutPublicRoutes);
+app.route('/api/support', supportPublicRoutes);
+app.route('/api/webhook/telegram', telegramWebhookRoutes);
+app.route('/api/watch-history', watchHistoryRoutes);
 app.route('/api', studentApiRoutes);
+
+// Admin about page management
+app.route('/admin/about', aboutAdminRoutes);
+app.route('/admin/support', supportAdminRoutes);
 
 // ─── Public R2 File Serving ───
 // Serves files from R2 buckets — no auth required.
@@ -154,4 +171,51 @@ app.onError((err, c) => {
   return c.json({ error: err.message || 'Internal server error' }, 500);
 });
 
-export default app;
+// ─── Cron Handler: Clean up R2 attachments from resolved/closed tickets older than 30 days ───
+export default {
+  fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil((async () => {
+      try {
+        // Find tickets that are resolved/closed and older than 30 days
+        const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').replace('Z', '');
+        const tickets = await env.DB.prepare(
+          "SELECT ticket_id FROM support_tickets WHERE status IN ('resolved', 'closed') AND updated_at < ? AND updated_at > ''"
+        ).bind(cutoff).all();
+
+        if (!tickets.results.length) return;
+
+        let deletedCount = 0;
+        for (const ticket of tickets.results as { ticket_id: string }[]) {
+          // Get all messages for this ticket that have attachments
+          const messages = await env.DB.prepare(
+            "SELECT attachments FROM support_messages WHERE ticket_id = ? AND attachments NOT IN ('[]', '', 'null')"
+          ).bind(ticket.ticket_id).all();
+
+          for (const msg of messages.results as { attachments: string }[]) {
+            try {
+              const keys: string[] = JSON.parse(msg.attachments || '[]');
+              for (const key of keys) {
+                if (key && key.startsWith('support/')) {
+                  try {
+                    await env.R2_SUPPORT_ATTACHMENTS.delete(key);
+                    deletedCount++;
+                  } catch {}
+                }
+              }
+            } catch {}
+          }
+
+          // Clear attachments from messages (replace with empty array marker)
+          await env.DB.prepare(
+            "UPDATE support_messages SET attachments = '[]' WHERE ticket_id = ? AND attachments NOT IN ('[]', '', 'null')"
+          ).bind(ticket.ticket_id).run();
+        }
+
+        console.log(`[Cron] Cleaned ${deletedCount} R2 attachments from ${tickets.results.length} old resolved/closed tickets`);
+      } catch (error) {
+        console.error('[Cron] Failed to clean up attachments:', error);
+      }
+    })());
+  },
+};

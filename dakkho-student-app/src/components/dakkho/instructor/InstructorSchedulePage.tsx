@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Calendar, Clock, Video, MapPin, Users, Bell,
@@ -8,7 +8,7 @@ import {
   Zap, BookOpen, Globe, Monitor,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getInstructor } from '@/lib/mock-data';
+import { type Instructor, instructorApi } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -50,7 +50,14 @@ const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export function InstructorSchedulePage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const instructorId = pageParams.instructorId as string;
-  const instructor = getInstructor(instructorId);
+  const [instructor, setInstructor] = useState<Instructor | null>(null);
+
+  useEffect(() => {
+    if (!instructorId) return;
+    instructorApi.get(instructorId)
+      .then((res) => setInstructor(res.instructor))
+      .catch(() => setInstructor(null));
+  }, [instructorId]);
 
   const [filterType, setFilterType] = useState<string>('all');
   const [reminders, setReminders] = useState<Set<string>>(new Set());

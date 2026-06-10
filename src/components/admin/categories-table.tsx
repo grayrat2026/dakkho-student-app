@@ -88,7 +88,7 @@ export default function CategoriesTable() {
     setError(null);
     try {
       const data = await apiGet('/categories?limit=100') as Record<string, unknown>;
-      const docs = (data.documents ?? data.data ?? []) as Category[];
+      const docs = (data.categories ?? data.documents ?? []) as Category[];
       setCategories(docs);
       setTotal((data.total as number) || docs.length);
     } catch {

@@ -21,6 +21,7 @@ import { VideoPlayerPage } from './video/VideoPlayerPage';
 import { InstructorsPage } from './instructor/InstructorsPage';
 import { InstructorProfilePage } from './instructor/InstructorProfilePage';
 import { NotificationsPage } from './notifications/NotificationsPage';
+import { NotificationDetailPage } from './notifications/NotificationDetailPage';
 import { ProfilePage } from './profile/ProfilePage';
 import { MyCoursesPage } from './courses/MyCoursesPage';
 import { BookmarksPage } from './bookmarks/BookmarksPage';
@@ -110,6 +111,7 @@ import { ActiveSessionsPage } from './settings/ActiveSessionsPage';
 // Help sub-pages
 import { FAQPage } from './help/FAQPage';
 import { ContactSupportPage } from './help/ContactSupportPage';
+import { TicketDetailPage } from './help/TicketDetailPage';
 import { ReportIssuePage } from './help/ReportIssuePage';
 import { TermsOfServicePage } from './help/TermsOfServicePage';
 import { PrivacyPolicyPage } from './help/PrivacyPolicyPage';
@@ -149,6 +151,7 @@ function PageRouter() {
     explore: <ExplorePage />,
     search: <SearchPage />,
     notifications: <NotificationsPage />,
+    'notification-detail': <NotificationDetailPage />,
     profile: <ProfilePage />,
     // Course pages
     'course-detail': <CourseDetailPage />,
@@ -233,6 +236,7 @@ function PageRouter() {
     // Help sub-pages
     faq: <FAQPage />,
     'contact-support': <ContactSupportPage />,
+    'ticket-detail': <TicketDetailPage />,
     'report-issue': <ReportIssuePage />,
     'terms-of-service': <TermsOfServicePage />,
     'privacy-policy': <PrivacyPolicyPage />,
@@ -264,8 +268,8 @@ function PageRouter() {
   };
 
   // Include pageParams in key for pages that need full remount on param change
-  const paramKey = (pageParams?.videoId || pageParams?.courseId || pageParams?.instructorId)
-    ? `-${pageParams.videoId || ''}${pageParams.courseId || ''}${pageParams.instructorId || ''}`
+  const paramKey = (pageParams?.videoId || pageParams?.courseId || pageParams?.instructorId || pageParams?.notificationId)
+    ? `-${pageParams.videoId || ''}${pageParams.courseId || ''}${pageParams.instructorId || ''}${pageParams.notificationId || ''}`
     : '';
 
   return (
@@ -285,6 +289,7 @@ function PageRouter() {
 
 export function DakkhoApp() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const needsVerification = useAuthStore((s) => s.needsVerification);
   const isHydrated = useAuthStore((s) => s.isHydrated);
   const hydrateAuth = useAuthStore((s) => s.hydrateAuth);
   const currentPage = useNavigationStore((s) => s.currentPage);
@@ -346,15 +351,17 @@ export function DakkhoApp() {
   // Redirect authenticated users away from auth pages
   // Note: 'forgot-password' is allowed even when authenticated — a logged-in
   // user who forgot their password needs to be able to access this flow.
+  // Note: When needsVerification is true, the user is NOT redirected away from
+  // the signup page — they need to complete OTP verification first.
   const authPageKeys = ['login', 'signup'];
   const redirectingRef = useRef(false);
   useEffect(() => {
-    if (isAuthenticated && authPageKeys.includes(currentPage) && !redirectingRef.current) {
+    if (isAuthenticated && !needsVerification && authPageKeys.includes(currentPage) && !redirectingRef.current) {
       redirectingRef.current = true;
       navigate('home');
       requestAnimationFrame(() => { redirectingRef.current = false; });
     }
-  }, [isAuthenticated, currentPage, navigate]);
+  }, [isAuthenticated, needsVerification, currentPage, navigate]);
 
   // ── While auth is being hydrated, show a loading screen ──
   // This avoids the flash where SSR renders auth pages but the
@@ -374,8 +381,36 @@ export function DakkhoApp() {
     );
   }
 
-  // ── Unauthenticated: show auth pages (no shell) ──
-  if (!isAuthenticated) {
+  // ── Unauthenticated or pending verification: show auth pages (no shell) ──
+  // When needsVerification is true, the user has signed up but hasn't verified
+  // their OTP yet — they must stay on the signup page to complete verification.
+  if (!isAuthenticated || needsVerification) {
+    // When needsVerification is true, always render the SignupPage directly
+    // so the user sees the OTP verification step (step 4) immediately.
+    // Also update the navigation state so the URL matches.
+    if (needsVerification) {
+      if (currentPage !== 'signup') {
+        // Schedule navigation update without causing a render flash
+        requestAnimationFrame(() => navigate('signup'));
+      }
+      return (
+        <ErrorBoundary>
+          <ContentProtection>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key="signup-verification"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <SignupPage />
+              </motion.div>
+            </AnimatePresence>
+          </ContentProtection>
+        </ErrorBoundary>
+      );
+    }
     return (
       <ErrorBoundary>
         <ContentProtection>

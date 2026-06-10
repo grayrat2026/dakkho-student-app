@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   BookOpen, Star, Users, Clock, Filter, Search,
   GraduationCap, ArrowRight, Grid3X3, List,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
-import { getInstructor, getInstructorCourses, formatDuration, getLevelColor } from '@/lib/mock-data';
+import { type Instructor, type Course, instructorApi } from '@/lib/api-client';
+import { formatDuration, getLevelColor } from '@/lib/utils';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -15,8 +16,18 @@ import { GradientButton } from '../shared/GradientButton';
 export function InstructorCoursesPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const instructorId = pageParams.instructorId as string;
-  const instructor = getInstructor(instructorId);
-  const courses = getInstructorCourses(instructorId);
+  const [instructor, setInstructor] = useState<Instructor | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
+
+  useEffect(() => {
+    if (!instructorId) return;
+    instructorApi.get(instructorId)
+      .then((res) => setInstructor(res.instructor))
+      .catch(() => setInstructor(null));
+    instructorApi.courses(instructorId)
+      .then((res) => setCourses(res.courses))
+      .catch(() => {});
+  }, [instructorId]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [levelFilter, setLevelFilter] = useState<string>('all');

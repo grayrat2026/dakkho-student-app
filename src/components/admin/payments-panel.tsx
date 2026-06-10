@@ -44,7 +44,7 @@ export default function PaymentsPanel() {
     try {
       const status = statusFilter !== 'all' ? `&status=${statusFilter}` : '';
       const data = await apiGet(`/payments?page=1&limit=100${status}`) as any;
-      setPayments(data.payments || []);
+      setPayments(data.payments || data.documents || []);
       setTotal(data.total || 0);
     } catch { toast({ title: 'Error', variant: 'destructive' }); }
     finally { setLoading(false); }

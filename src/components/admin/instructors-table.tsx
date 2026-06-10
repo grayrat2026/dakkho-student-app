@@ -57,7 +57,7 @@ function slugify(text: string): string {
 function renderStars(rating: number) {
   const full = Math.floor(rating);
   const half = rating - full >= 0.5;
-  const stars = [];
+  const stars: React.ReactNode[] = [];
 
   for (let i = 0; i < 5; i++) {
     if (i < full) {
@@ -245,11 +245,36 @@ export default function InstructorsTable() {
       if (search) params.set('search', search);
 
       const data = await apiGet(`/instructors?${params}`) as Record<string, unknown>;
-      const docs = (data.documents ?? data.data ?? []) as Instructor[];
-      setInstructors(docs);
-      setTotal((data.total as number) || docs.length);
-    } catch {
-      setError('Failed to load instructors');
+
+      // Handle multiple possible response shapes from the Worker API:
+      // { instructors: [...] } or { documents: [...] } or { data: [...] } or just an array at top level
+      let docs: Instructor[];
+      if (Array.isArray(data)) {
+        docs = data as Instructor[];
+      } else if (Array.isArray(data.instructors)) {
+        docs = data.instructors as Instructor[];
+      } else if (Array.isArray(data.documents)) {
+        docs = data.documents as Instructor[];
+      } else if (Array.isArray(data.data)) {
+        docs = data.data as Instructor[];
+      } else {
+        docs = [];
+      }
+
+      // Normalize D1 boolean fields (0/1 → true/false) and null numerics
+      const normalized = docs.map((inst) => ({
+        ...inst,
+        isActive: Boolean(inst.isActive),
+        rating: Number(inst.rating ?? 0),
+        totalStudents: Number(inst.totalStudents ?? 0),
+        totalCourses: Number(inst.totalCourses ?? 0),
+      })) as Instructor[];
+
+      setInstructors(normalized);
+      setTotal((data.total as number) || (data.count as number) || normalized.length);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to load instructors';
+      setError(message);
       toast({ title: 'Error', description: 'Failed to fetch instructors', variant: 'destructive' });
     } finally {
       setLoading(false);
@@ -292,15 +317,16 @@ export default function InstructorsTable() {
 
     setSaving(true);
     try {
+      // Map camelCase form fields to snake_case for D1 columns
       const payload = {
         name: form.name,
         email: form.email || undefined,
         bio: form.bio || undefined,
         specialization: form.specialization || undefined,
-        avatarUrl: form.avatarUrl || undefined,
-        coverUrl: form.coverUrl || undefined,
-        socialLinks: form.socialLinks || undefined,
-        isActive: form.isActive,
+        avatar_url: form.avatarUrl || undefined,
+        cover_url: form.coverUrl || undefined,
+        social_links: form.socialLinks || undefined,
+        is_active: form.isActive,
       };
 
       if (editInstructor) {
@@ -334,7 +360,7 @@ export default function InstructorsTable() {
   // ---- Toggle active ----
   const toggleActive = async (inst: Instructor) => {
     try {
-      await apiPut('/instructors', { instructorId: inst.id, isActive: !inst.isActive });
+      await apiPut('/instructors', { instructorId: inst.id, is_active: !inst.isActive });
       toast({ title: 'Success', description: inst.isActive ? 'Deactivated' : 'Activated' });
       fetchInstructors();
     } catch {
@@ -451,7 +477,7 @@ export default function InstructorsTable() {
                 ) : (
                   <>
                     {instructors.map((inst) => (
-                      <tr
+                      <TableRow
                         key={inst.id}
                         className="border-white/[0.06] hover:bg-white/[0.03] transition-colors"
                       >
@@ -522,7 +548,7 @@ export default function InstructorsTable() {
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
-                      </tr>
+                      </TableRow>
                     ))}
                   </>
                 )}

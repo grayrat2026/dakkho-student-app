@@ -52,16 +52,18 @@ async function getStudentUserDoc(env: Env, userId: string): Promise<Record<strin
 // ─── Helper: Transform Worker ServerConfig → Student-friendly format ───
 function transformConfigForStudent(config: ServerConfig) {
   return {
-    featureToggles: config.featureToggles,
-    homePageSections: config.homePageSections.sections,
-    sidebarVisibility: config.sidebarVisibility,
-    bottomNavTabs: config.bottomNavTabs.tabs
-      .filter((t) => t.enabled)
-      .sort((a, b) => a.order - b.order)
-      .map((t) => t.id),
-    topBarElements: config.topBarElements,
-    cardStyle: config.cardStyle,
     contentProtection: config.contentProtection,
+    features: config.featureToggles,
+    ui: {
+      homeSections: config.homePageSections.sections,
+      sidebarSections: config.sidebarVisibility,
+      bottomNavTabs: config.bottomNavTabs.tabs
+        .filter((t) => t.enabled)
+        .sort((a, b) => a.order - b.order)
+        .map((t) => t.id),
+      topBarElements: config.topBarElements,
+      cardStyle: config.cardStyle,
+    },
   };
 }
 
@@ -603,8 +605,8 @@ studentApiRoutes.post('/auth/login', async (c) => {
       return c.json({ error: 'Invalid email or password' }, 401);
     }
 
-    // Verify this is a student (not admin)
-    if (user.role === 'admin') {
+    // Verify this is a student (not admin/super_admin)
+    if (user.role === 'admin' || user.role === 'super_admin') {
       return c.json({ error: 'Admin accounts cannot login here. Use the admin panel.' }, 403);
     }
 
@@ -814,6 +816,64 @@ async function sendPasswordResetEmail(
     `
   );
 }
+
+// PUT /auth/profile — Update student profile
+studentApiRoutes.put('/auth/profile', async (c) => {
+  try {
+    const auth = await getStudentAuth(c);
+    if (!auth.authorized) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const body = await c.req.json();
+    const { fullName, instituteId, technology, bio, phone, semester, avatarUrl } = body;
+
+    // Build update query dynamically - only update provided fields
+    const updates: string[] = [];
+    const params: unknown[] = [];
+
+    if (fullName !== undefined) { updates.push('full_name = ?'); params.push(fullName); }
+    if (instituteId !== undefined) { updates.push('institute_id = ?'); params.push(instituteId); }
+    if (technology !== undefined) { updates.push('technology = ?'); params.push(technology); }
+    if (bio !== undefined) { updates.push('bio = ?'); params.push(bio); }
+    if (phone !== undefined) { updates.push('phone = ?'); params.push(phone); }
+    if (semester !== undefined) { updates.push('semester = ?'); params.push(semester); }
+    if (avatarUrl !== undefined) { updates.push('avatar_url = ?'); params.push(avatarUrl); }
+
+    if (updates.length === 0) {
+      return c.json({ error: 'No fields to update' }, 400);
+    }
+
+    updates.push("updated_at = datetime('now')");
+    params.push(auth.userId);
+
+    await c.env.DB.prepare(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`
+    ).bind(...params).run();
+
+    // Return updated user
+    const updatedUser = await getStudentUserDoc(c.env, auth.userId!);
+    const u = updatedUser as any;
+
+    return c.json({
+      success: true,
+      user: {
+        id: auth.userId,
+        name: u?.full_name || '',
+        email: u?.email || auth.email || '',
+        phone: u?.phone || null,
+        bio: u?.bio || null,
+        semester: u?.semester || null,
+        instituteId: u?.institute_id || null,
+        technology: u?.technology || null,
+        emailVerified: !!u?.email_verified,
+        avatarUrl: u?.avatar_url || '',
+      },
+    });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
 
 // POST /auth/forgot-password — Request password reset OTP
 studentApiRoutes.post('/auth/forgot-password', async (c) => {
@@ -1095,6 +1155,73 @@ studentApiRoutes.delete('/push/unregister', async (c) => {
   }
 });
 
+// GET /push/vapid-key — Get VAPID public key for web push subscription
+studentApiRoutes.get('/push/vapid-key', async (c) => {
+  try {
+    const publicKey = c.env.VAPID_PUBLIC_KEY;
+    if (!publicKey) {
+      return c.json({ error: 'Web push not configured' }, 503);
+    }
+    return c.json({ publicKey });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// POST /push/subscribe — Subscribe to web push notifications (stores PushSubscription)
+studentApiRoutes.post('/push/subscribe', async (c) => {
+  try {
+    const auth = await getStudentAuth(c);
+    if (!auth.authorized) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+    if (!auth.emailVerified) {
+      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+    }
+
+    const { subscription } = await c.req.json();
+    if (!subscription || !subscription.endpoint) {
+      return c.json({ error: 'subscription object with endpoint required' }, 400);
+    }
+
+    // Store the full subscription JSON as push_token (endpoint + keys)
+    // Also register as a simple push token for backward compat
+    const subscriptionJson = JSON.stringify(subscription);
+    const deviceType = 'webpush';
+
+    await env_push_upsert(c.env, auth.userId!, subscription.endpoint, subscriptionJson, deviceType);
+
+    return c.json({ success: true });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// Helper: Upsert push subscription
+async function env_push_upsert(
+  env: any,
+  userId: string,
+  endpoint: string,
+  subscriptionJson: string,
+  deviceType: string
+): Promise<void> {
+  // Check if this endpoint already exists
+  const existing = await env.DB.prepare(
+    'SELECT id FROM user_push_tokens WHERE user_id = ? AND push_token = ?'
+  ).bind(userId, endpoint).first();
+
+  if (existing) {
+    await env.DB.prepare(
+      "UPDATE user_push_tokens SET device_info = ?, is_active = 1, updated_at = datetime('now') WHERE user_id = ? AND push_token = ?"
+    ).bind(subscriptionJson, userId, endpoint).run();
+  } else {
+    await env.DB.prepare(`
+      INSERT INTO user_push_tokens (id, user_id, push_token, device_type, device_info, is_active, created_at)
+      VALUES (?, ?, ?, ?, ?, 1, datetime('now'))
+    `).bind(generateId(), userId, endpoint, deviceType, subscriptionJson).run();
+  }
+}
+
 studentApiRoutes.post('/payments/submit', async (c) => {
   try {
     const auth = await getStudentAuth(c);
@@ -1171,7 +1298,7 @@ studentAuthenticated.get('/notifications', async (c) => {
     const params: unknown[] = [userId];
 
     if (unreadOnly) {
-      where += ' AND is_read = 0';
+      where += ' AND read = 0';
     }
 
     const countResult = await c.env.DB.prepare(
@@ -1188,8 +1315,9 @@ studentAuthenticated.get('/notifications', async (c) => {
       title: row.title || '',
       message: row.message || '',
       type: row.type || 'info',
+      category: row.category || '',
       actionUrl: row.action_url || '',
-      read: !!row.is_read,
+      read: !!row.read,
       createdAt: row.created_at,
     }));
 
@@ -1214,7 +1342,7 @@ studentAuthenticated.put('/notifications/:id/read', async (c) => {
     }
 
     await c.env.DB.prepare(
-      'UPDATE notifications SET is_read = 1 WHERE id = ?'
+      'UPDATE notifications SET read = 1 WHERE id = ?'
     ).bind(notifId).run();
 
     return c.json({ success: true });
@@ -1228,7 +1356,7 @@ studentAuthenticated.put('/notifications/read-all', async (c) => {
     const userId = c.get('studentId');
 
     const result = await c.env.DB.prepare(
-      'UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0'
+      'UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0'
     ).bind(userId).run();
 
     return c.json({ success: true, count: result.meta?.changes || 0 });
@@ -1632,6 +1760,7 @@ studentAuthenticated.get('/settings', async (c) => {
           pushEnabled: true,
           emailEnabled: true,
           smsEnabled: false,
+          quietHoursEnabled: false,
           quietHoursStart: '22:00',
           quietHoursEnd: '08:00',
           courseUpdates: { push: true, email: true },
@@ -1651,8 +1780,9 @@ studentAuthenticated.get('/settings', async (c) => {
         pushEnabled: !!p.push_enabled,
         emailEnabled: !!p.email_enabled,
         smsEnabled: !!p.sms_enabled,
-        quietHoursStart: p.quiet_hours_start,
-        quietHoursEnd: p.quiet_hours_end,
+        quietHoursEnabled: !!p.quiet_hours_enabled,
+        quietHoursStart: p.quiet_hours_start || '22:00',
+        quietHoursEnd: p.quiet_hours_end || '08:00',
         courseUpdates: { push: !!p.course_updates_push, email: !!p.course_updates_email },
         grades: { push: !!p.grades_push, email: !!p.grades_email },
         schedule: { push: !!p.schedule_push, email: !!p.schedule_email },
@@ -1675,7 +1805,7 @@ studentAuthenticated.put('/settings', async (c) => {
     await c.env.DB.prepare(`
       INSERT INTO notification_preferences (
         user_id, push_enabled, email_enabled, sms_enabled,
-        quiet_hours_start, quiet_hours_end,
+        quiet_hours_enabled, quiet_hours_start, quiet_hours_end,
         course_updates_push, course_updates_email,
         grades_push, grades_email,
         schedule_push, schedule_email,
@@ -1683,11 +1813,12 @@ studentAuthenticated.put('/settings', async (c) => {
         promotions_push, promotions_email,
         social_push, social_email,
         system_push, system_email
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
         push_enabled = excluded.push_enabled,
         email_enabled = excluded.email_enabled,
         sms_enabled = excluded.sms_enabled,
+        quiet_hours_enabled = excluded.quiet_hours_enabled,
         quiet_hours_start = excluded.quiet_hours_start,
         quiet_hours_end = excluded.quiet_hours_end,
         course_updates_push = excluded.course_updates_push,
@@ -1710,6 +1841,7 @@ studentAuthenticated.put('/settings', async (c) => {
       prefs.pushEnabled ? 1 : 0,
       prefs.emailEnabled ? 1 : 0,
       prefs.smsEnabled ? 1 : 0,
+      prefs.quietHoursEnabled ? 1 : 0,
       prefs.quietHoursStart || '22:00',
       prefs.quietHoursEnd || '08:00',
       prefs.courseUpdates?.push ? 1 : 0,
