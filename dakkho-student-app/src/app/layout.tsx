@@ -51,8 +51,7 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap"
           rel="stylesheet"
         />
-        {/* OneSignal Push Notifications — widget hidden, permission requested naturally from UI */}
-        <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+        {/* OneSignal Push Notifications — loaded dynamically to avoid ad-blocker ERR_BLOCKED_BY_CLIENT */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -82,6 +81,20 @@ export default function RootLayout({
                   }
                 });
               });
+              // Load OneSignal SDK dynamically — avoids ERR_BLOCKED_BY_CLIENT from ad blockers
+              (function() {
+                try {
+                  var s = document.createElement("script");
+                  s.src = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
+                  s.defer = true;
+                  s.onerror = function() {
+                    console.warn("OneSignal SDK blocked — push notifications unavailable");
+                  };
+                  document.head.appendChild(s);
+                } catch(e) {
+                  console.warn("OneSignal SDK load failed — push notifications unavailable");
+                }
+              })();
             `,
           }}
         />
