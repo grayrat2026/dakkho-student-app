@@ -90,6 +90,11 @@ export function getBucketForType(type: string, env: Env): R2Bucket {
     case 'avatars':
     case 'avatar':
       return env.R2_AVATARS;
+    case 'covers':
+    case 'cover':
+    case 'banners':
+    case 'banner':
+      return env.R2_THUMBNAILS;  // covers/banners use thumbnails bucket
     case 'resources':
     case 'resource':
     case 'documents':
@@ -117,6 +122,10 @@ const R2_PUBLIC_URLS: Record<string, string> = {
   image: 'https://pub-60fdec4931744de9a37d73191723e1f8.r2.dev',
   avatars: 'https://pub-06c9b4a41d0b402d847fb9139262cb70.r2.dev',
   avatar: 'https://pub-06c9b4a41d0b402d847fb9139262cb70.r2.dev',
+  covers: 'https://pub-60fdec4931744de9a37d73191723e1f8.r2.dev',
+  cover: 'https://pub-60fdec4931744de9a37d73191723e1f8.r2.dev',
+  banners: 'https://pub-60fdec4931744de9a37d73191723e1f8.r2.dev',
+  banner: 'https://pub-60fdec4931744de9a37d73191723e1f8.r2.dev',
   resources: 'https://pub-25692986d3ff446abba05633a1d20a9a.r2.dev',
   resource: 'https://pub-25692986d3ff446abba05633a1d20a9a.r2.dev',
   documents: 'https://pub-25692986d3ff446abba05633a1d20a9a.r2.dev',

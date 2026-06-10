@@ -140,10 +140,26 @@ export function CourseDetailPage() {
 
       {/* Course header */}
       <GlassCard className="overflow-hidden mb-6">
-        <div className={`relative aspect-video md:aspect-[21/9] bg-gradient-to-br ${colorClass}`}>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <BookOpen className="w-20 h-20 text-white/20" />
-          </div>
+        <div className={`relative aspect-video md:aspect-[21/9] ${course.thumbnailUrl ? '' : 'bg-gradient-to-br ' + colorClass}`}>
+          {course.thumbnailUrl ? (
+            <img
+              src={course.thumbnailUrl}
+              alt={course.title}
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="lazy"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                if (target.parentElement) {
+                  target.parentElement.classList.add('bg-gradient-to-br', colorClass);
+                }
+              }}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <BookOpen className="w-20 h-20 text-white/20" />
+            </div>
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
             <h1 className="text-xl md:text-2xl font-extrabold mb-2">{course.title}</h1>
@@ -245,10 +261,16 @@ export function CourseDetailPage() {
                     <h2 className="text-lg font-bold mb-4">Your Instructor</h2>
                     <div className="flex items-start gap-4">
                       <motion.div
-                        className="w-14 h-14 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-lg font-extrabold flex-shrink-0"
+                        className="w-14 h-14 rounded-full flex items-center justify-center text-white text-lg font-extrabold flex-shrink-0 overflow-hidden"
                         whileHover={{ scale: 1.1 }}
                       >
-                        {instructor.name.charAt(0)}
+                        {instructor.avatarUrl ? (
+                          <img src={instructor.avatarUrl} alt={instructor.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center">
+                            {instructor.name.charAt(0)}
+                          </div>
+                        )}
                       </motion.div>
                       <div className="flex-1 min-w-0">
                         <h3 className="text-base font-bold text-foreground">{instructor.name}</h3>
@@ -403,10 +425,16 @@ export function CourseDetailPage() {
               <GlassCard className="p-6">
                 <div className="flex items-center gap-4 mb-4">
                   <motion.div
-                    className="w-16 h-16 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-xl font-extrabold"
+                    className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-extrabold overflow-hidden"
                     whileHover={{ scale: 1.1 }}
                   >
-                    {instructor.name.charAt(0)}
+                    {instructor.avatarUrl ? (
+                      <img src={instructor.avatarUrl} alt={instructor.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center">
+                        {instructor.name.charAt(0)}
+                      </div>
+                    )}
                   </motion.div>
                   <div>
                     <h3 className="text-lg font-bold text-foreground">{instructor.name}</h3>

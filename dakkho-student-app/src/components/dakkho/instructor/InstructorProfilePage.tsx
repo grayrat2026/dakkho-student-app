@@ -60,10 +60,29 @@ export function InstructorProfilePage() {
 
       {/* Cover + Avatar */}
       <GlassCard className="overflow-hidden mb-6">
-        <div className={`h-32 md:h-48 bg-gradient-to-br ${coverColors[0]} relative`}>
+        <div className={`h-32 md:h-48 ${instructor.coverUrl ? '' : 'bg-gradient-to-br ' + coverColors[0]} relative`}>
+          {instructor.coverUrl ? (
+            <img
+              src={instructor.coverUrl}
+              alt="Cover"
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="lazy"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                if (target.parentElement) {
+                  target.parentElement.classList.add('bg-gradient-to-br', coverColors[0]);
+                }
+              }}
+            />
+          ) : null}
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center text-white text-4xl font-extrabold">
-              {instructor.name.charAt(0)}
+            <div className="w-24 h-24 rounded-full overflow-hidden bg-white/20 flex items-center justify-center text-white text-4xl font-extrabold">
+              {instructor.avatarUrl ? (
+                <img src={instructor.avatarUrl} alt={instructor.name} className="w-full h-full object-cover" />
+              ) : (
+                instructor.name.charAt(0)
+              )}
             </div>
           </div>
         </div>
