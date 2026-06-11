@@ -718,13 +718,19 @@ studentApiRoutes.post('/auth/signup', async (c) => {
       'INSERT OR IGNORE INTO notification_preferences (user_id) VALUES (?)'
     ).bind(userId).run();
 
+    // ── Per-user daily rate limit for verification emails ──
+    const rateLimit = await checkDailyEmailRateLimit(c.env.DB, email);
+    if (!rateLimit.allowed) {
+      return c.json({ error: `Too many verification emails. You can send up to ${rateLimit.limit} emails per day. Please try again tomorrow.`, code: 'RATE_LIMITED' }, 429);
+    }
+
     // Generate and send email verification OTP (cryptographically secure)
     const verifyOtp = generateOTP();
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
     await c.env.DB.prepare(
-      'INSERT INTO password_reset_otps (email, otp, purpose, expires_at, used) VALUES (?, ?, ?, ?, 0)'
-    ).bind(email, verifyOtp, 'email_verification', otpExpiresAt).run();
+      'INSERT INTO password_reset_otps (email, otp, purpose, expires_at, used, created_at) VALUES (?, ?, ?, ?, 0, ?)'
+    ).bind(email, verifyOtp, 'email_verification', otpExpiresAt, new Date().toISOString()).run();
 
     // Send verification email
     try {
@@ -1120,8 +1126,8 @@ studentApiRoutes.post('/auth/forgot-password', async (c) => {
       // Store OTP in D1 with 5-minute expiration
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       await c.env.DB.prepare(
-        'INSERT INTO password_reset_otps (email, otp, purpose, expires_at) VALUES (?, ?, ?, ?)'
-      ).bind(email, otp, 'password_reset', expiresAt).run();
+        'INSERT INTO password_reset_otps (email, otp, purpose, expires_at, created_at) VALUES (?, ?, ?, ?, ?)'
+      ).bind(email, otp, 'password_reset', expiresAt, new Date().toISOString()).run();
 
       // Send OTP email via Resend
       try {
@@ -1203,11 +1209,25 @@ const EMAIL_OTP_DAILY_LIMIT = 10; // Max 10 verification emails per user per day
 async function checkDailyEmailRateLimit(db: D1Database, email: string): Promise<{ allowed: boolean; count: number; limit: number }> {
   try {
     // Count OTPs created for this email in the last 24 hours (both purposes)
+    // NOTE: created_at is stored in ISO 8601 format, so we validate in JavaScript
+    // to avoid SQLite datetime format mismatch issues.
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const result = await db.prepare(
-      "SELECT COUNT(*) as count FROM password_reset_otps WHERE email = ? AND created_at > datetime('now', '-24 hours')"
-    ).bind(email).first<{ count: number }>();
-    const count = result?.count || 0;
-    return { allowed: count < EMAIL_OTP_DAILY_LIMIT, count, limit: EMAIL_OTP_DAILY_LIMIT };
+      'SELECT created_at FROM password_reset_otps WHERE email = ?'
+    ).bind(email).all<{ created_at: string | null }>();
+
+    // Filter in JavaScript to handle ISO 8601 dates correctly
+    const recentCount = result.results.filter(row => {
+      if (!row.created_at) return false;
+      try {
+        return new Date(row.created_at) >= new Date(twentyFourHoursAgo);
+      } catch {
+        return false;
+      }
+    }).length;
+
+    return { allowed: recentCount < EMAIL_OTP_DAILY_LIMIT, count: recentCount, limit: EMAIL_OTP_DAILY_LIMIT };
   } catch {
     // If the check fails, allow the request (fail open)
     return { allowed: true, count: 0, limit: EMAIL_OTP_DAILY_LIMIT };
@@ -1255,8 +1275,8 @@ studentApiRoutes.post('/auth/resend-otp', async (c) => {
       const expiryMinutes = resendPurpose === 'email_verification' ? 10 : 5;
       const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString();
       await c.env.DB.prepare(
-        'INSERT INTO password_reset_otps (email, otp, purpose, expires_at) VALUES (?, ?, ?, ?)'
-      ).bind(email, otp, resendPurpose, expiresAt).run();
+        'INSERT INTO password_reset_otps (email, otp, purpose, expires_at, created_at) VALUES (?, ?, ?, ?, ?)'
+      ).bind(email, otp, resendPurpose, expiresAt, new Date().toISOString()).run();
 
       // Send OTP email via Resend
       try {

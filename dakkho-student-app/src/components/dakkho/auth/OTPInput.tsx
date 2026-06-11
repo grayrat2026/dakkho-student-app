@@ -10,11 +10,12 @@ interface OTPInputProps {
   cooldown: number;
   error?: string;
   mode?: 'numeric' | 'alphanumeric';
+  isVerifying?: boolean;
 }
 
 type FeedbackType = 'none' | 'success' | 'error';
 
-export function OTPInput({ onComplete, onResend, cooldown, error, mode = 'numeric' }: OTPInputProps) {
+export function OTPInput({ onComplete, onResend, cooldown, error, mode = 'numeric', isVerifying = false }: OTPInputProps) {
   const [values, setValues] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [feedback, setFeedback] = useState<FeedbackType>('none');
   const [focusedIndex, setFocusedIndex] = useState<number>(0);
@@ -43,6 +44,7 @@ export function OTPInput({ onComplete, onResend, cooldown, error, mode = 'numeri
   };
 
   const handleChange = (index: number, value: string) => {
+    if (isVerifying) return; // Don't allow changes while verifying
     const lastChar = value.slice(-1);
     if (value && !isValidChar(lastChar)) return;
 
@@ -92,6 +94,7 @@ export function OTPInput({ onComplete, onResend, cooldown, error, mode = 'numeri
   };
 
   const handlePaste = (e: ClipboardEvent<HTMLInputElement>) => {
+    if (isVerifying) return;
     e.preventDefault();
     const pasteData = e.clipboardData.getData('text').trim();
     const filterRegex = mode === 'numeric' ? /\D/g : /[^A-Za-z0-9]/g;
@@ -178,12 +181,13 @@ export function OTPInput({ onComplete, onResend, cooldown, error, mode = 'numeri
                 onPaste={handlePaste}
                 onFocus={() => handleFocus(index)}
                 onBlur={() => setFocusedIndex(-1)}
-                className={`w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold rounded-xl bg-muted/30 border-2 outline-none transition-all duration-200 ${getBorderColor(index)} ${getShadowClass(index)} ${values[index] ? 'text-foreground' : 'text-muted-foreground'}`}
+                disabled={isVerifying}
+                className={`w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold rounded-xl bg-muted/30 border-2 outline-none transition-all duration-200 ${getBorderColor(index)} ${getShadowClass(index)} ${values[index] ? 'text-foreground' : 'text-muted-foreground'} ${isVerifying ? 'opacity-50 cursor-not-allowed' : ''}`}
                 autoComplete="one-time-code"
               />
               {/* Focus ring animation */}
               <AnimatePresence>
-                {focusedIndex === index && !values[index] && (
+                {focusedIndex === index && !values[index] && !isVerifying && (
                   <motion.div
                     className="absolute inset-0 rounded-xl border-2 border-sky-400/50 pointer-events-none"
                     initial={{ opacity: 0 }}
@@ -222,11 +226,12 @@ export function OTPInput({ onComplete, onResend, cooldown, error, mode = 'numeri
         ) : (
           <motion.button
             onClick={onResend}
-            className="text-xs font-bold text-sky-500 hover:text-sky-600 transition-colors"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            disabled={isVerifying}
+            className={`text-xs font-bold transition-colors ${isVerifying ? 'text-muted-foreground cursor-not-allowed' : 'text-sky-500 hover:text-sky-600'}`}
+            whileHover={isVerifying ? {} : { scale: 1.05 }}
+            whileTap={isVerifying ? {} : { scale: 0.95 }}
           >
-            Resend Code
+            {isVerifying ? 'Verifying...' : 'Resend Code'}
           </motion.button>
         )}
       </div>

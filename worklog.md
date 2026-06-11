@@ -110,3 +110,32 @@ Stage Summary:
 - Email verification OTP now consistently uses 10-minute expiry
 - Rate limiting added: max 10 verification/reset emails per user per day
 - Worker deployed: Version ID 58fe02ce-9cf4-4b8d-9914-0f614663dae0
+---
+Task ID: 5
+Agent: Main Agent
+Task: Fix OTP expiry bug, cooldown persistence, resend UX, and add rate limiting
+
+Work Log:
+- Investigated all OTP-related code in student-api.ts, EmailVerificationPage.tsx, OTPInput.tsx
+- Found root cause of "OTP expires immediately": password_reset_otps INSERT statements don't set created_at explicitly. If D1 table has no default, created_at is NULL, causing ORDER BY created_at DESC to return wrong (old/expired) OTP
+- Fixed backend: Added created_at column to ALL 3 INSERT statements (signup, forgot-password, resend-otp) with explicit new Date().toISOString()
+- Fixed backend: Rewrote checkDailyEmailRateLimit() to use JavaScript date comparison instead of SQLite datetime() format mismatch
+- Fixed backend: Added rate limiting to signup handler (was missing — only resend-otp and forgot-password had it)
+- Fixed frontend: EmailVerificationPage now persists cooldown end time in localStorage (key: dakkho-otp-cooldown-end), survives page refresh
+- Fixed frontend: "New code sent" notification now has pointer-events-none and select-none, clearly non-interactive (was confusing users who thought it was a button)
+- Fixed frontend: OTPInput now accepts isVerifying prop to disable input fields and resend button during verification
+- Fixed frontend: Resend Code button shows "Verifying..." and is disabled during OTP verification
+- Fixed frontend: Removed overlap between "New code sent" notification and resend button (notification moved below OTP input with clear green checkmark styling)
+- Student app built successfully, but deployment requires CLOUDFLARE_API_TOKEN which is not available in this session
+
+Stage Summary:
+- OTP root cause: NULL created_at in D1 → ORDER BY returns wrong OTP record
+- All 3 OTP INSERT statements now explicitly set created_at
+- Rate limiter fixed for ISO 8601 date format compatibility
+- Cooldown now persists across page refreshes via localStorage
+- "New code sent" notification made clearly non-interactive
+- OTP input disabled during verification to prevent double-submit
+- Backend changes: /home/z/my-project/worker/src/routes/student-api.ts
+- Frontend changes: /home/z/my-project/dakkho-student-app/src/components/dakkho/profile/EmailVerificationPage.tsx
+- Frontend changes: /home/z/my-project/dakkho-student-app/src/components/dakkho/auth/OTPInput.tsx
+- DEPLOYMENT PENDING: Need CLOUDFLARE_API_TOKEN to deploy both worker and student app

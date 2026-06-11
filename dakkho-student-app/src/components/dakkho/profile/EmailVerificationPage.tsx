@@ -10,21 +10,55 @@ import { GradientButton } from '../shared/GradientButton';
 import { OTPInput } from '../auth/OTPInput';
 import { OTP_RESEND_COOLDOWN } from '@/lib/constants';
 
+// ── Cooldown persistence helpers ──
+const COOLDOWN_STORAGE_KEY = 'dakkho-otp-cooldown-end';
+
+function saveCooldownEnd(timestamp: number) {
+  try { localStorage.setItem(COOLDOWN_STORAGE_KEY, String(timestamp)); } catch {}
+}
+
+function loadCooldownEnd(): number | null {
+  try {
+    const stored = localStorage.getItem(COOLDOWN_STORAGE_KEY);
+    if (stored) return Number(stored);
+  } catch {}
+  return null;
+}
+
+function clearCooldownEnd() {
+  try { localStorage.removeItem(COOLDOWN_STORAGE_KEY); } catch {}
+}
+
 export function EmailVerificationPage() {
   const user = useAuthStore((s) => s.user);
   const verifyOTP = useAuthStore((s) => s.verifyOTP);
   const navigate = useNavigationStore((s) => s.navigate);
   const goBack = useNavigationStore((s) => s.goBack);
 
+  // Initialize cooldown from localStorage (survives page refresh)
+  const getInitialCooldown = (): number => {
+    const endTime = loadCooldownEnd();
+    if (!endTime) return 0;
+    const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+    if (remaining <= 0) {
+      clearCooldownEnd();
+      return 0;
+    }
+    return remaining;
+  };
+
   const [otpError, setOtpError] = useState<string | undefined>();
   const [isVerifying, setIsVerifying] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
+  const [cooldown, setCooldown] = useState(getInitialCooldown);
   const [resendSent, setResendSent] = useState(false);
 
   // Cooldown timer
   useEffect(() => {
-    if (cooldown <= 0) return;
+    if (cooldown <= 0) {
+      clearCooldownEnd();
+      return;
+    }
     const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
     return () => clearTimeout(timer);
   }, [cooldown]);
@@ -39,6 +73,7 @@ export function EmailVerificationPage() {
       const success = await verifyOTP(user.email, otp);
       if (success) {
         setIsVerified(true);
+        clearCooldownEnd();
       } else {
         setOtpError('Invalid or expired code. Please try again.');
       }
@@ -50,10 +85,12 @@ export function EmailVerificationPage() {
   }, [user?.email, verifyOTP]);
 
   const handleResend = useCallback(async () => {
-    if (!user?.email || cooldown > 0) return;
+    if (!user?.email || cooldown > 0 || isVerifying) return;
 
     try {
       await authApi.resendOTP({ email: user.email });
+      const endTime = Date.now() + OTP_RESEND_COOLDOWN * 1000;
+      saveCooldownEnd(endTime);
       setCooldown(OTP_RESEND_COOLDOWN);
       setResendSent(true);
       setOtpError(undefined);
@@ -61,7 +98,7 @@ export function EmailVerificationPage() {
     } catch {
       setOtpError('Failed to resend code. Please try again.');
     }
-  }, [user?.email, cooldown]);
+  }, [user?.email, cooldown, isVerifying]);
 
   if (!user) return null;
 
@@ -182,28 +219,14 @@ export function EmailVerificationPage() {
               onResend={handleResend}
               cooldown={cooldown}
               error={otpError}
+              isVerifying={isVerifying}
             />
           </div>
-
-          {/* Resend feedback */}
-          <AnimatePresence>
-            {resendSent && (
-              <motion.div
-                className="flex items-center gap-2 justify-center mb-4 text-sm text-sky-600 dark:text-sky-400"
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-              >
-                <Mail className="w-4 h-4" />
-                New code sent to your email
-              </motion.div>
-            )}
-          </AnimatePresence>
 
           {/* Verifying indicator */}
           {isVerifying && (
             <motion.div
-              className="flex items-center gap-2 justify-center text-sm text-sky-600 dark:text-sky-400"
+              className="flex items-center gap-2 justify-center text-sm text-sky-600 dark:text-sky-400 mb-3"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
             >
@@ -216,6 +239,21 @@ export function EmailVerificationPage() {
             </motion.div>
           )}
 
+          {/* Resend feedback - clearly non-interactive notification */}
+          <AnimatePresence>
+            {resendSent && (
+              <motion.div
+                className="flex items-center gap-2 justify-center text-sm text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/10 rounded-lg px-3 py-2 mb-3 select-none pointer-events-none"
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+              >
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                <span>New code sent to your email</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Info box */}
           <div className="mt-6 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50">
             <div className="flex gap-2">
@@ -223,7 +261,7 @@ export function EmailVerificationPage() {
               <div className="text-xs text-amber-700 dark:text-amber-400">
                 <p className="font-semibold mb-1">Didn't receive the code?</p>
                 <p className="text-amber-600 dark:text-amber-500">
-                  Check your spam folder or click "Resend Code" to get a new one. The code expires in 10 minutes.
+                  Check your spam folder or wait for the cooldown and tap &quot;Resend Code&quot; to get a new one. The code expires in 10 minutes.
                 </p>
               </div>
             </div>
