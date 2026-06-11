@@ -175,7 +175,9 @@ export interface AuthResponse {
     name: string;
     email: string;
     instituteId: number | null;
+    instituteName: string | null;
     technology: string | null;
+    technologyName: string | null;
     emailVerified: boolean;
     packages: UserPackage[];
   };
@@ -187,7 +189,9 @@ export interface UserProfile {
   email: string;
   name: string;
   instituteId: number | null;
+  instituteName: string | null;
   technology: string | null;
+  technologyName: string | null;
   emailVerified: boolean;
   packages: UserPackage[];
 }

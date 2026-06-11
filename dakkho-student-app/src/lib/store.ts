@@ -336,9 +336,10 @@ export interface User {
   id: string;
   fullName: string;
   email: string;
-  institute?: string;
-  instituteId?: number;
-  technology?: string;
+  institute?: string;       // institute name (for display)
+  instituteId?: number;     // institute ID (for API calls)
+  technology?: string;      // technology short_code (for API/edit matching)
+  technologyName?: string;  // technology full name (for display)
   avatarUrl?: string;
   role: string;
   isNewUser?: boolean;
@@ -444,8 +445,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           id: res.user?.id || '',
           fullName: res.user?.name || '',
           email: res.user?.email || email,
+          institute: res.user?.instituteName || undefined,
           instituteId: res.user?.instituteId || undefined,
           technology: res.user?.technology || undefined,
+          technologyName: res.user?.technologyName || undefined,
           emailVerified: res.user?.emailVerified || false,
           avatarUrl: '',
           role: 'student',
@@ -484,8 +487,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           id: res.userId || '',
           fullName: data.fullName,
           email: data.email,
+          institute: res.user?.instituteName || undefined,
           instituteId: data.instituteId,
           technology: data.technology,
+          technologyName: res.user?.technologyName || undefined,
           avatarUrl: '',
           role: 'student',
           isNewUser: true,
@@ -576,8 +581,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const updatedUser: User = {
           ...get().user!,
           fullName: res.user.name || get().user?.fullName || '',
+          institute: res.user.instituteName || undefined,
           instituteId: res.user.instituteId || undefined,
           technology: res.user.technology || undefined,
+          technologyName: res.user.technologyName || undefined,
         };
         set({ user: updatedUser });
         saveAuthSession(updatedUser, true);
@@ -610,8 +617,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           id: res.user.id,
           fullName: res.user.name,
           email: res.user.email,
+          institute: res.user.instituteName || undefined,
           instituteId: res.user.instituteId || undefined,
           technology: res.user.technology || undefined,
+          technologyName: res.user.technologyName || undefined,
           emailVerified: res.user.emailVerified,
           avatarUrl: '',
           role: 'student',

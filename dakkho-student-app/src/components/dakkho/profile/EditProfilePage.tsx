@@ -17,15 +17,15 @@ import { GradientButton } from '../shared/GradientButton';
 export function EditProfilePage() {
   const { goBack, navigate } = useNavigationStore();
   const user = useAuthStore((s) => s.user);
-  const setUser = useAuthStore((s) => s.setUser);
+  const updateProfile = useAuthStore((s) => s.updateProfile);
 
-  const [fullName, setFullName] = useState(user?.fullName || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [institute, setInstitute] = useState(user?.institute || '');
-  const [technology, setTechnology] = useState(user?.technology || '');
+  const [selectedInstituteId, setSelectedInstituteId] = useState<string>('');
+  const [technology, setTechnology] = useState('');
   const [bio, setBio] = useState('');
-  const [semester, setSemester] = useState('3');
+  const [semester, setSemester] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -33,6 +33,19 @@ export function EditProfilePage() {
   const [institutes, setInstitutes] = useState<Institute[]>([]);
   const [technologies, setTechnologies] = useState<Technology[]>([]);
 
+  // Sync form state when user data becomes available (handles async hydration)
+  useEffect(() => {
+    if (user) {
+      setFullName(user.fullName || '');
+      setEmail(user.email || '');
+      setSelectedInstituteId(user.instituteId ? String(user.instituteId) : '');
+      setTechnology(user.technology || '');
+      // Note: phone, bio, semester are not in the User interface yet,
+      // so they'll stay empty for now until we refresh from /auth/me
+    }
+  }, [user]);
+
+  // Fetch institutes and technologies from API
   useEffect(() => {
     instituteApi.list({ limit: 100 })
       .then((res) => setInstitutes(res.institutes))
@@ -47,7 +60,7 @@ export function EditProfilePage() {
     if (!fullName.trim()) newErrors.fullName = 'Full name is required';
     if (!email.trim()) newErrors.email = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = 'Invalid email format';
-    if (!institute.trim()) newErrors.institute = 'Institute is required';
+    if (!selectedInstituteId) newErrors.institute = 'Institute is required';
     if (!technology.trim()) newErrors.technology = 'Technology is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -56,13 +69,22 @@ export function EditProfilePage() {
   const handleSave = async () => {
     if (!validate()) return;
     setIsSaving(true);
-    await new Promise((r) => setTimeout(r, 1500));
-    if (user) {
-      setUser({ ...user, fullName, email, institute, technology });
+    try {
+      await updateProfile({
+        fullName,
+        instituteId: selectedInstituteId ? Number(selectedInstituteId) : undefined,
+        technology,
+        bio: bio || undefined,
+        phone: phone || undefined,
+        semester: semester || undefined,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err: any) {
+      setErrors({ ...errors, fullName: err.message || 'Failed to save changes' });
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
   };
 
   return (
@@ -149,14 +171,12 @@ export function EditProfilePage() {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => { setEmail(e.target.value); setErrors({ ...errors, email: '' }); }}
-                  className={`w-full pl-10 pr-4 py-3 rounded-xl bg-muted/30 border text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/50 ${
-                    errors.email ? 'border-red-500' : 'border-white/30 dark:border-white/10'
-                  }`}
+                  readOnly
+                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-muted/30 border border-white/30 dark:border-white/10 text-sm font-medium text-muted-foreground cursor-not-allowed opacity-70"
                   placeholder="your.email@example.com"
                 />
               </div>
-              {errors.email && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.email}</p>}
+              <p className="text-xs text-muted-foreground mt-1">Email cannot be changed</p>
             </div>
 
             {/* Phone */}
@@ -182,15 +202,15 @@ export function EditProfilePage() {
               <div className="relative">
                 <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <select
-                  value={institute}
-                  onChange={(e) => { setInstitute(e.target.value); setErrors({ ...errors, institute: '' }); }}
+                  value={selectedInstituteId}
+                  onChange={(e) => { setSelectedInstituteId(e.target.value); setErrors({ ...errors, institute: '' }); }}
                   className={`w-full pl-10 pr-4 py-3 rounded-xl bg-muted/30 border text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/50 appearance-none ${
                     errors.institute ? 'border-red-500' : 'border-white/30 dark:border-white/10'
                   }`}
                 >
                   <option value="">Select your institute</option>
                   {institutes.map((inst) => (
-                    <option key={inst.id} value={inst.name}>{inst.name}</option>
+                    <option key={inst.id} value={String(inst.id)}>{inst.name}</option>
                   ))}
                 </select>
               </div>
@@ -213,7 +233,7 @@ export function EditProfilePage() {
                 >
                   <option value="">Select your technology</option>
                   {technologies.map((tech) => (
-                    <option key={tech.id} value={tech.name}>{tech.name}</option>
+                    <option key={tech.id} value={tech.short_code}>{tech.name} ({tech.short_code})</option>
                   ))}
                 </select>
               </div>

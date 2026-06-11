@@ -50,6 +50,32 @@ async function getStudentUserDoc(env: Env, userId: string): Promise<Record<strin
   }
 }
 
+// ─── Helper: Look up institute name by ID ───
+async function getInstituteName(env: Env, instituteId: number | null): Promise<string | null> {
+  if (!instituteId) return null;
+  try {
+    const inst = await env.DB.prepare(
+      'SELECT name FROM institutes WHERE id = ?'
+    ).bind(instituteId).first<{ name: string }>();
+    return inst?.name || null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Helper: Look up technology name by short_code ───
+async function getTechnologyName(env: Env, shortCode: string | null): Promise<string | null> {
+  if (!shortCode) return null;
+  try {
+    const tech = await env.DB.prepare(
+      'SELECT name FROM technologies WHERE short_code = ?'
+    ).bind(shortCode).first<{ name: string }>();
+    return tech?.name || null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Helper: Transform Worker ServerConfig → Student-friendly format ───
 function transformConfigForStudent(config: ServerConfig) {
   return {
@@ -762,6 +788,10 @@ studentApiRoutes.post('/auth/signup', async (c) => {
       // Don't fail signup if email fails, but log it
     }
 
+    // Look up institute name and technology name for the response
+    const instituteName = await getInstituteName(c.env, instituteId || null);
+    const technologyName = await getTechnologyName(c.env, technology || null);
+
     // Create D1 student session
     const token = await createStudentSession(c.env, userId, email);
 
@@ -774,7 +804,9 @@ studentApiRoutes.post('/auth/signup', async (c) => {
         name: fullName,
         email,
         instituteId: instituteId || null,
+        instituteName: instituteName || null,
         technology: technology || null,
+        technologyName: technologyName || null,
         emailVerified: false,
         packages: [],
         themeMode: 'system',
@@ -834,6 +866,10 @@ studentApiRoutes.post('/auth/login', async (c) => {
       }
     } catch {}
 
+    // Look up institute name and technology name
+    const instituteName = await getInstituteName(c.env, user.institute_id || null);
+    const technologyName = await getTechnologyName(c.env, user.technology || null);
+
     // Delete any existing D1 sessions and create new one
     await c.env.DB.prepare('DELETE FROM student_sessions WHERE user_id = ?').bind(user.id).run();
     const token = await createStudentSession(c.env, user.id, user.email);
@@ -847,7 +883,9 @@ studentApiRoutes.post('/auth/login', async (c) => {
         name: user.full_name,
         email: user.email,
         instituteId: user.institute_id || null,
+        instituteName: instituteName || null,
         technology: user.technology || null,
+        technologyName: technologyName || null,
         emailVerified: !!user.email_verified,
         packages: userPackages,
         themeMode,
@@ -910,6 +948,10 @@ studentApiRoutes.get('/auth/me', async (c) => {
       }
     } catch {}
 
+    // Look up institute name and technology name
+    const instituteName = await getInstituteName(c.env, (u?.institute_id as number) || null);
+    const technologyName = await getTechnologyName(c.env, (u?.technology as string) || null);
+
     return c.json({
       user: {
         id: auth.userId,
@@ -919,7 +961,9 @@ studentApiRoutes.get('/auth/me', async (c) => {
         bio: u?.bio || null,
         semester: u?.semester || null,
         instituteId: u?.institute_id || null,
+        instituteName: instituteName || null,
         technology: u?.technology || null,
+        technologyName: technologyName || null,
         emailVerified: !!u?.email_verified,
         avatarUrl: u?.avatar_url || '',
         role: u?.role || 'student',
@@ -1113,6 +1157,10 @@ studentApiRoutes.put('/auth/profile', async (c) => {
     const updatedUser = await getStudentUserDoc(c.env, auth.userId!);
     const u = updatedUser as any;
 
+    // Look up institute name and technology name
+    const updatedInstituteName = await getInstituteName(c.env, (u?.institute_id as number) || null);
+    const updatedTechnologyName = await getTechnologyName(c.env, (u?.technology as string) || null);
+
     return c.json({
       success: true,
       user: {
@@ -1123,7 +1171,9 @@ studentApiRoutes.put('/auth/profile', async (c) => {
         bio: u?.bio || null,
         semester: u?.semester || null,
         instituteId: u?.institute_id || null,
+        instituteName: updatedInstituteName || null,
         technology: u?.technology || null,
+        technologyName: updatedTechnologyName || null,
         emailVerified: !!u?.email_verified,
         avatarUrl: u?.avatar_url || '',
       },
