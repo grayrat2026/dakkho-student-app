@@ -2218,4 +2218,941 @@ instructorRoutes.get('/dashboard', instructorOrAdminMiddleware, async (c) => {
   }
 });
 
+// ═══════════════════════════════════════════════════
+// COURSE CRUD (Create, Update — instructors can only manage their own courses)
+// ═══════════════════════════════════════════════════
+
+// POST /courses — Create a new course (instructor is auto-assigned)
+instructorRoutes.post('/courses', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    const body = await c.req.json();
+    const { title, description, slug, technology_id, semester, level, price_bdt, is_published, thumbnail_url } = body;
+
+    if (!title) {
+      return c.json({ error: 'title is required' }, 400);
+    }
+
+    const courseId = generateId();
+    const courseSlug = slug || slugify(title);
+    const now = new Date().toISOString();
+
+    await c.env.DB.prepare(`
+      INSERT INTO courses (id, title, slug, description, technology_id, semester, level, price_bdt, is_published, instructor_id, thumbnail_url, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      courseId, title, courseSlug, description || null, technology_id || null,
+      semester || null, level || null, price_bdt || 0, is_published ? 1 : 0,
+      instructorId, thumbnail_url || null, now, now
+    ).run();
+
+    // Auto-create course_instructors junction entry
+    try {
+      await c.env.DB.prepare(`
+        INSERT INTO course_instructors (course_id, instructor_id, sort_order, created_at)
+        VALUES (?, ?, 0, ?)
+      `).bind(courseId, instructorId, now).run();
+    } catch {}
+
+    // Auto-create a "single" course_package with the same price
+    try {
+      await c.env.DB.prepare(`
+        INSERT INTO course_packages (course_id, name, price_bdt, original_price, package_type, features, is_active, sort_order, created_at, updated_at)
+        VALUES (?, 'Single', ?, ?, 'single', '', 1, 0, ?, ?)
+      `).bind(courseId, price_bdt || 0, price_bdt || 0, now, now).run();
+    } catch {}
+
+    const row = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(courseId).first();
+    const course = formatCourseRow(row as Record<string, unknown>);
+
+    return c.json({ success: true, course }, 201);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// PUT /courses/:id — Update course (only if instructor owns it)
+instructorRoutes.put('/courses/:id', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const courseId = c.req.param('id');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Verify ownership
+    const owns = await verifyCourseOwnership(c.env, courseId, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    const body = await c.req.json();
+
+    const fieldMapping: Record<string, string> = {
+      title: 'title',
+      slug: 'slug',
+      description: 'description',
+      technology_id: 'technology_id',
+      technologyId: 'technology_id',
+      semester: 'semester',
+      level: 'level',
+      price_bdt: 'price_bdt',
+      priceBdt: 'price_bdt',
+      is_published: 'is_published',
+      isPublished: 'is_published',
+      thumbnail_url: 'thumbnail_url',
+      thumbnailUrl: 'thumbnail_url',
+    };
+
+    const setClauses: string[] = [];
+    const params: unknown[] = [];
+
+    for (const [bodyField, dbColumn] of Object.entries(fieldMapping)) {
+      if (body[bodyField] !== undefined) {
+        setClauses.push(`${dbColumn} = ?`);
+        params.push(body[bodyField]);
+      }
+    }
+
+    if (setClauses.length === 0) {
+      return c.json({ error: 'No valid fields to update' }, 400);
+    }
+
+    setClauses.push('updated_at = ?');
+    params.push(new Date().toISOString());
+    params.push(courseId);
+
+    await c.env.DB.prepare(
+      `UPDATE courses SET ${setClauses.join(', ')} WHERE id = ?`
+    ).bind(...params).run();
+
+    const row = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(courseId).first();
+    const course = formatCourseRow(row as Record<string, unknown>);
+
+    return c.json({ success: true, course });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// CHAPTERS CRUD (within courses instructor owns)
+// ═══════════════════════════════════════════════════
+
+// GET /courses/:courseId/chapters — List chapters for a course
+instructorRoutes.get('/courses/:courseId/chapters', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const courseId = c.req.param('courseId');
+
+    const result = await c.env.DB.prepare(
+      'SELECT * FROM chapters WHERE course_id = ? ORDER BY sort_order ASC'
+    ).bind(courseId).all();
+
+    return c.json({ success: true, chapters: result.results });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// POST /courses/:courseId/chapters — Create chapter (verify ownership)
+instructorRoutes.post('/courses/:courseId/chapters', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const courseId = c.req.param('courseId');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Verify ownership
+    const owns = await verifyCourseOwnership(c.env, courseId, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    const body = await c.req.json();
+    const { title, slug, description, subject_id, sort_order } = body;
+
+    if (!title) {
+      return c.json({ error: 'title is required' }, 400);
+    }
+
+    const chapterId = generateId();
+    const chapterSlug = slug || slugify(title);
+    const now = new Date().toISOString();
+
+    await c.env.DB.prepare(`
+      INSERT INTO chapters (id, course_id, subject_id, title, slug, description, sort_order, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).bind(
+      chapterId, courseId, subject_id || null, title, chapterSlug,
+      description || null, sort_order || 0, now, now
+    ).run();
+
+    const row = await c.env.DB.prepare('SELECT * FROM chapters WHERE id = ?').bind(chapterId).first();
+
+    return c.json({ success: true, chapter: row }, 201);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// PUT /chapters/:id — Update chapter (verify the chapter's course_id belongs to instructor)
+instructorRoutes.put('/chapters/:id', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const chapterId = c.req.param('id');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Get chapter to find its course_id
+    const existing = await c.env.DB.prepare(
+      'SELECT course_id FROM chapters WHERE id = ?'
+    ).bind(chapterId).first<{ course_id: string }>();
+
+    if (!existing) {
+      return c.json({ error: 'Chapter not found' }, 404);
+    }
+
+    // Verify ownership of the course
+    const owns = await verifyCourseOwnership(c.env, existing.course_id, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    const body = await c.req.json();
+
+    const fieldMapping: Record<string, string> = {
+      title: 'title',
+      slug: 'slug',
+      description: 'description',
+      subject_id: 'subject_id',
+      subjectId: 'subject_id',
+      sort_order: 'sort_order',
+      sortOrder: 'sort_order',
+      is_active: 'is_active',
+      isActive: 'is_active',
+    };
+
+    const setClauses: string[] = [];
+    const params: unknown[] = [];
+
+    for (const [bodyField, dbColumn] of Object.entries(fieldMapping)) {
+      if (body[bodyField] !== undefined) {
+        setClauses.push(`${dbColumn} = ?`);
+        params.push(body[bodyField]);
+      }
+    }
+
+    if (setClauses.length === 0) {
+      return c.json({ error: 'No valid fields to update' }, 400);
+    }
+
+    setClauses.push('updated_at = ?');
+    params.push(new Date().toISOString());
+    params.push(chapterId);
+
+    await c.env.DB.prepare(
+      `UPDATE chapters SET ${setClauses.join(', ')} WHERE id = ?`
+    ).bind(...params).run();
+
+    const row = await c.env.DB.prepare('SELECT * FROM chapters WHERE id = ?').bind(chapterId).first();
+
+    return c.json({ success: true, chapter: row });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// DELETE /chapters/:id — Delete chapter (verify ownership)
+instructorRoutes.delete('/chapters/:id', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const chapterId = c.req.param('id');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Get chapter to find its course_id
+    const existing = await c.env.DB.prepare(
+      'SELECT course_id FROM chapters WHERE id = ?'
+    ).bind(chapterId).first<{ course_id: string }>();
+
+    if (!existing) {
+      return c.json({ error: 'Chapter not found' }, 404);
+    }
+
+    // Verify ownership of the course
+    const owns = await verifyCourseOwnership(c.env, existing.course_id, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    await c.env.DB.prepare('DELETE FROM chapters WHERE id = ?').bind(chapterId).run();
+
+    return c.json({ success: true, message: 'Chapter deleted' });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// LESSONS CRUD (within chapters/courses instructor owns)
+// ═══════════════════════════════════════════════════
+
+// GET /courses/:courseId/lessons — List lessons for a course
+instructorRoutes.get('/courses/:courseId/lessons', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const courseId = c.req.param('courseId');
+
+    const result = await c.env.DB.prepare(
+      'SELECT * FROM lessons WHERE course_id = ? ORDER BY sort_order ASC'
+    ).bind(courseId).all();
+
+    return c.json({ success: true, lessons: result.results });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// POST /courses/:courseId/lessons — Create lesson (verify course ownership)
+instructorRoutes.post('/courses/:courseId/lessons', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const courseId = c.req.param('courseId');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Verify ownership
+    const owns = await verifyCourseOwnership(c.env, courseId, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    const body = await c.req.json();
+    const { title, chapter_id, slug, description, lesson_type, sort_order, is_preview, video_url, thumbnail_url, document_url } = body;
+
+    if (!title) {
+      return c.json({ error: 'title is required' }, 400);
+    }
+
+    const lessonId = generateId();
+    const lessonSlug = slug || slugify(title);
+    const now = new Date().toISOString();
+
+    await c.env.DB.prepare(`
+      INSERT INTO lessons (id, chapter_id, course_id, subject_id, title, slug, description, lesson_type, sort_order, is_preview, is_active, duration, video_url, thumbnail_url, document_url, created_at, updated_at)
+      VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?)
+    `).bind(
+      lessonId, chapter_id || null, courseId, title, lessonSlug,
+      description || null, lesson_type || 'video', sort_order || 0,
+      is_preview ? 1 : 0, video_url || null, thumbnail_url || null,
+      document_url || null, now, now
+    ).run();
+
+    const row = await c.env.DB.prepare('SELECT * FROM lessons WHERE id = ?').bind(lessonId).first();
+
+    return c.json({ success: true, lesson: row }, 201);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// PUT /lessons/:id — Update lesson (verify the lesson's course_id belongs to instructor)
+instructorRoutes.put('/lessons/:id', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const lessonId = c.req.param('id');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Get lesson to find its course_id
+    const existing = await c.env.DB.prepare(
+      'SELECT course_id FROM lessons WHERE id = ?'
+    ).bind(lessonId).first<{ course_id: string }>();
+
+    if (!existing) {
+      return c.json({ error: 'Lesson not found' }, 404);
+    }
+
+    // Verify ownership of the course
+    const owns = await verifyCourseOwnership(c.env, existing.course_id, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    const body = await c.req.json();
+
+    const fieldMapping: Record<string, string> = {
+      title: 'title',
+      slug: 'slug',
+      description: 'description',
+      chapter_id: 'chapter_id',
+      chapterId: 'chapter_id',
+      lesson_type: 'lesson_type',
+      lessonType: 'lesson_type',
+      sort_order: 'sort_order',
+      sortOrder: 'sort_order',
+      is_preview: 'is_preview',
+      isPreview: 'is_preview',
+      is_active: 'is_active',
+      isActive: 'is_active',
+      duration: 'duration',
+      video_url: 'video_url',
+      videoUrl: 'video_url',
+      thumbnail_url: 'thumbnail_url',
+      thumbnailUrl: 'thumbnail_url',
+      document_url: 'document_url',
+      documentUrl: 'document_url',
+    };
+
+    const setClauses: string[] = [];
+    const params: unknown[] = [];
+
+    for (const [bodyField, dbColumn] of Object.entries(fieldMapping)) {
+      if (body[bodyField] !== undefined) {
+        setClauses.push(`${dbColumn} = ?`);
+        params.push(body[bodyField]);
+      }
+    }
+
+    if (setClauses.length === 0) {
+      return c.json({ error: 'No valid fields to update' }, 400);
+    }
+
+    setClauses.push('updated_at = ?');
+    params.push(new Date().toISOString());
+    params.push(lessonId);
+
+    await c.env.DB.prepare(
+      `UPDATE lessons SET ${setClauses.join(', ')} WHERE id = ?`
+    ).bind(...params).run();
+
+    const row = await c.env.DB.prepare('SELECT * FROM lessons WHERE id = ?').bind(lessonId).first();
+
+    return c.json({ success: true, lesson: row });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// DELETE /lessons/:id — Delete lesson (verify ownership)
+instructorRoutes.delete('/lessons/:id', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const lessonId = c.req.param('id');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Get lesson to find its course_id
+    const existing = await c.env.DB.prepare(
+      'SELECT course_id FROM lessons WHERE id = ?'
+    ).bind(lessonId).first<{ course_id: string }>();
+
+    if (!existing) {
+      return c.json({ error: 'Lesson not found' }, 404);
+    }
+
+    // Verify ownership of the course
+    const owns = await verifyCourseOwnership(c.env, existing.course_id, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    await c.env.DB.prepare('DELETE FROM lessons WHERE id = ?').bind(lessonId).run();
+
+    return c.json({ success: true, message: 'Lesson deleted' });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// VIDEO UPLOAD (Create/Delete videos for courses instructor owns)
+// ═══════════════════════════════════════════════════
+
+// POST /courses/:courseId/videos — Create video (verify ownership)
+instructorRoutes.post('/courses/:courseId/videos', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const courseId = c.req.param('courseId');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Verify ownership
+    const owns = await verifyCourseOwnership(c.env, courseId, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    const body = await c.req.json();
+    const { title, video_url, slug, duration, sort_order, is_preview, is_published, thumbnail_url, lesson_id, lesson_type } = body;
+
+    if (!title || !video_url) {
+      return c.json({ error: 'title and video_url are required' }, 400);
+    }
+
+    const videoId = generateId();
+    const videoSlug = slug || slugify(title);
+    const now = new Date().toISOString();
+
+    await c.env.DB.prepare(`
+      INSERT INTO videos (id, course_id, title, slug, video_url, thumbnail_url, duration, sort_order, is_preview, is_published, lesson_id, lesson_type, chapter_id, subject_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+    `).bind(
+      videoId, courseId, title, videoSlug, video_url,
+      thumbnail_url || null, duration || 0, sort_order || 0,
+      is_preview ? 1 : 0, is_published ? 1 : 0,
+      lesson_id || null, lesson_type || null, now, now
+    ).run();
+
+    const row = await c.env.DB.prepare('SELECT * FROM videos WHERE id = ?').bind(videoId).first();
+    const video = formatVideoRow(row as Record<string, unknown>);
+
+    return c.json({ success: true, video }, 201);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// DELETE /videos/:id — Delete video (verify the video's course_id belongs to instructor)
+instructorRoutes.delete('/videos/:id', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const videoId = c.req.param('id');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Get video to find its course_id
+    const existing = await c.env.DB.prepare(
+      'SELECT course_id FROM videos WHERE id = ?'
+    ).bind(videoId).first<{ course_id: string }>();
+
+    if (!existing) {
+      return c.json({ error: 'Video not found' }, 404);
+    }
+
+    // Verify ownership of the course
+    const owns = await verifyCourseOwnership(c.env, existing.course_id, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    await c.env.DB.prepare('DELETE FROM videos WHERE id = ?').bind(videoId).run();
+
+    return c.json({ success: true, message: 'Video deleted' });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// RESOURCES CRUD (course_resources for courses instructor owns)
+// ═══════════════════════════════════════════════════
+
+// GET /courses/:courseId/resources — List resources for a course
+instructorRoutes.get('/courses/:courseId/resources', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const courseId = c.req.param('courseId');
+
+    const result = await c.env.DB.prepare(
+      'SELECT * FROM course_resources WHERE course_id = ? ORDER BY sort_order ASC'
+    ).bind(courseId).all();
+
+    return c.json({ success: true, resources: result.results });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// POST /courses/:courseId/resources — Create resource (verify ownership)
+instructorRoutes.post('/courses/:courseId/resources', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const courseId = c.req.param('courseId');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Verify ownership
+    const owns = await verifyCourseOwnership(c.env, courseId, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    const body = await c.req.json();
+    const { title, description, file_url, file_type, file_size, chapter_id, lesson_id, is_downloadable, sort_order } = body;
+
+    if (!title || !file_url) {
+      return c.json({ error: 'title and file_url are required' }, 400);
+    }
+
+    const resourceId = generateId();
+    const now = new Date().toISOString();
+
+    await c.env.DB.prepare(`
+      INSERT INTO course_resources (id, course_id, chapter_id, lesson_id, title, description, file_url, file_type, file_size, is_downloadable, sort_order, uploaded_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      resourceId, courseId, chapter_id || null, lesson_id || null,
+      title, description || null, file_url, file_type || null,
+      file_size || null, is_downloadable ? 1 : 0, sort_order || 0,
+      instructorId, now, now
+    ).run();
+
+    const row = await c.env.DB.prepare('SELECT * FROM course_resources WHERE id = ?').bind(resourceId).first();
+
+    return c.json({ success: true, resource: row }, 201);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// PUT /resources/:id — Update resource (verify the resource's course_id belongs to instructor)
+instructorRoutes.put('/resources/:id', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const resourceId = c.req.param('id');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Get resource to find its course_id
+    const existing = await c.env.DB.prepare(
+      'SELECT course_id FROM course_resources WHERE id = ?'
+    ).bind(resourceId).first<{ course_id: string }>();
+
+    if (!existing) {
+      return c.json({ error: 'Resource not found' }, 404);
+    }
+
+    // Verify ownership of the course
+    const owns = await verifyCourseOwnership(c.env, existing.course_id, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    const body = await c.req.json();
+
+    const fieldMapping: Record<string, string> = {
+      title: 'title',
+      description: 'description',
+      file_url: 'file_url',
+      fileUrl: 'file_url',
+      file_type: 'file_type',
+      fileType: 'file_type',
+      file_size: 'file_size',
+      fileSize: 'file_size',
+      chapter_id: 'chapter_id',
+      chapterId: 'chapter_id',
+      lesson_id: 'lesson_id',
+      lessonId: 'lesson_id',
+      is_downloadable: 'is_downloadable',
+      isDownloadable: 'is_downloadable',
+      sort_order: 'sort_order',
+      sortOrder: 'sort_order',
+    };
+
+    const setClauses: string[] = [];
+    const params: unknown[] = [];
+
+    for (const [bodyField, dbColumn] of Object.entries(fieldMapping)) {
+      if (body[bodyField] !== undefined) {
+        setClauses.push(`${dbColumn} = ?`);
+        params.push(body[bodyField]);
+      }
+    }
+
+    if (setClauses.length === 0) {
+      return c.json({ error: 'No valid fields to update' }, 400);
+    }
+
+    setClauses.push('updated_at = ?');
+    params.push(new Date().toISOString());
+    params.push(resourceId);
+
+    await c.env.DB.prepare(
+      `UPDATE course_resources SET ${setClauses.join(', ')} WHERE id = ?`
+    ).bind(...params).run();
+
+    const row = await c.env.DB.prepare('SELECT * FROM course_resources WHERE id = ?').bind(resourceId).first();
+
+    return c.json({ success: true, resource: row });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// DELETE /resources/:id — Delete resource (verify ownership)
+instructorRoutes.delete('/resources/:id', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const resourceId = c.req.param('id');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Get resource to find its course_id
+    const existing = await c.env.DB.prepare(
+      'SELECT course_id FROM course_resources WHERE id = ?'
+    ).bind(resourceId).first<{ course_id: string }>();
+
+    if (!existing) {
+      return c.json({ error: 'Resource not found' }, 404);
+    }
+
+    // Verify ownership of the course
+    const owns = await verifyCourseOwnership(c.env, existing.course_id, instructorId);
+    if (!owns) {
+      return c.json({ error: 'You do not own this course' }, 403);
+    }
+
+    await c.env.DB.prepare('DELETE FROM course_resources WHERE id = ?').bind(resourceId).run();
+
+    return c.json({ success: true, message: 'Resource deleted' });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// LIVE CLASS CREATE (for instructor's own courses)
+// ═══════════════════════════════════════════════════
+
+// POST /schedule — Create live class (verify course ownership if course_id provided)
+instructorRoutes.post('/schedule', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    const body = await c.req.json();
+    const { title, course_id, scheduled_at, duration_minutes, meeting_url, platform, description } = body;
+
+    if (!title || !scheduled_at || !duration_minutes || !meeting_url) {
+      return c.json({ error: 'title, scheduled_at, duration_minutes, and meeting_url are required' }, 400);
+    }
+
+    // Verify course ownership if course_id provided
+    if (course_id) {
+      const owns = await verifyCourseOwnership(c.env, course_id, instructorId);
+      if (!owns) {
+        return c.json({ error: 'You do not own this course' }, 403);
+      }
+    }
+
+    const now = new Date().toISOString();
+
+    const result = await c.env.DB.prepare(`
+      INSERT INTO live_class_schedules (title, course_id, instructor_id, scheduled_at, duration_minutes, meeting_url, platform, description, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).bind(
+      title, course_id || null, instructorId, scheduled_at,
+      duration_minutes, meeting_url, platform || null,
+      description || null, now, now
+    ).run();
+
+    const insertedId = result.meta?.last_row_id;
+
+    const row = await c.env.DB.prepare(
+      'SELECT * FROM live_class_schedules WHERE rowid = ?'
+    ).bind(insertedId).first();
+
+    return c.json({ success: true, schedule: row }, 201);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// REVIEW REPLY
+// ═══════════════════════════════════════════════════
+
+// PUT /reviews/:id/reply — Reply to a review (verify the review's instructor_id matches)
+instructorRoutes.put('/reviews/:id/reply', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const reviewId = c.req.param('id');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Get the review and verify instructor_id matches
+    const existing = await c.env.DB.prepare(
+      'SELECT instructor_id FROM instructor_reviews WHERE id = ?'
+    ).bind(reviewId).first<{ instructor_id: string }>();
+
+    if (!existing) {
+      return c.json({ error: 'Review not found' }, 404);
+    }
+
+    if (existing.instructor_id !== instructorId) {
+      return c.json({ error: 'You can only reply to reviews for yourself' }, 403);
+    }
+
+    const body = await c.req.json();
+    const { reply_text } = body;
+
+    if (!reply_text) {
+      return c.json({ error: 'reply_text is required' }, 400);
+    }
+
+    const now = new Date().toISOString();
+
+    await c.env.DB.prepare(
+      'UPDATE instructor_reviews SET reply_text = ?, replied_at = ?, updated_at = ? WHERE id = ?'
+    ).bind(reply_text, now, now, reviewId).run();
+
+    const row = await c.env.DB.prepare('SELECT * FROM instructor_reviews WHERE id = ?').bind(reviewId).first();
+
+    return c.json({ success: true, review: row });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════
+// SUPPORT TICKET CREATE + MESSAGE
+// ═══════════════════════════════════════════════════
+
+// POST /support/tickets — Create support ticket
+instructorRoutes.post('/support/tickets', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    const body = await c.req.json();
+    const { category, subject, description, priority } = body;
+
+    if (!category || !subject || !description) {
+      return c.json({ error: 'category, subject, and description are required' }, 400);
+    }
+
+    const now = new Date().toISOString();
+
+    const result = await c.env.DB.prepare(`
+      INSERT INTO support_tickets (user_id, category, subject, description, priority, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'open', ?, ?)
+    `).bind(
+      instructorId, category, subject, description,
+      priority || 'medium', now, now
+    ).run();
+
+    const insertedId = result.meta?.last_row_id;
+
+    const row = await c.env.DB.prepare(
+      'SELECT * FROM support_tickets WHERE rowid = ?'
+    ).bind(insertedId).first();
+
+    return c.json({ success: true, ticket: row }, 201);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// POST /support/tickets/:id/messages — Send message on support ticket
+instructorRoutes.post('/support/tickets/:id/messages', instructorOrAdminMiddleware, async (c) => {
+  try {
+    const authRole = c.get('authRole');
+    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
+    const ticketId = c.req.param('id');
+
+    if (!instructorId) {
+      return c.json({ error: 'instructorId is required' }, 400);
+    }
+
+    // Verify the ticket belongs to this instructor
+    const ticket = await c.env.DB.prepare(
+      'SELECT user_id, status FROM support_tickets WHERE id = ?'
+    ).bind(ticketId).first<{ user_id: string; status: string }>();
+
+    if (!ticket) {
+      return c.json({ error: 'Ticket not found' }, 404);
+    }
+
+    if (ticket.user_id !== instructorId) {
+      return c.json({ error: 'You can only message on your own tickets' }, 403);
+    }
+
+    const body = await c.req.json();
+    const { message } = body;
+
+    if (!message) {
+      return c.json({ error: 'message is required' }, 400);
+    }
+
+    const now = new Date().toISOString();
+
+    const result = await c.env.DB.prepare(`
+      INSERT INTO support_messages (ticket_id, user_id, message, is_admin, created_at)
+      VALUES (?, ?, ?, 0, ?)
+    `).bind(ticketId, instructorId, message, now).run();
+
+    // Update ticket status to 'waiting' if it was 'replied' or 'resolved'
+    if (ticket.status !== 'open') {
+      await c.env.DB.prepare(
+        "UPDATE support_tickets SET status = 'waiting', updated_at = ? WHERE id = ?"
+      ).bind(now, ticketId).run();
+    } else {
+      await c.env.DB.prepare(
+        'UPDATE support_tickets SET updated_at = ? WHERE id = ?'
+      ).bind(now, ticketId).run();
+    }
+
+    const insertedId = result.meta?.last_row_id;
+
+    const row = await c.env.DB.prepare(
+      'SELECT * FROM support_messages WHERE rowid = ?'
+    ).bind(insertedId).first();
+
+    return c.json({ success: true, message: row }, 201);
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
 export default instructorRoutes;
