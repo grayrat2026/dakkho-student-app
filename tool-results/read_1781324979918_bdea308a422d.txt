@@ -639,11 +639,11 @@
    639→      'SELECT * FROM courses WHERE instructor_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
    640→    ).bind(instructorId, limit, offset).all();
    641→
-   642→    // Also check course_subjects D1 table for courses assigned to this instructor
+   642→    // Also check course_instructors D1 table for courses assigned to this instructor
    643→    let coursesFromSubjects: string[] = [];
    644→    try {
    645→      const subjectResult = await c.env.DB.prepare(
-   646→        'SELECT DISTINCT course_id FROM course_subjects WHERE instructor_id = ?'
+   646→        'SELECT DISTINCT course_id FROM course_instructors WHERE instructor_id = ?'
    647→      ).bind(instructorId).all<{ course_id: string }>();
    648→      coursesFromSubjects = subjectResult.results.map(r => r.course_id);
    649→    } catch {}

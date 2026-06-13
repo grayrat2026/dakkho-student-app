@@ -1,0 +1,252 @@
+/home/z/my-project/student-app/package.json:10:    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+/home/z/my-project/student-app/package.json:11:    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+/home/z/my-project/student-app/package.json:12:    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+/home/z/my-project/student-app/package.json:13:    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+/home/z/my-project/student-app/package.json:21:    "@opennextjs/cloudflare": "^1.19.11",
+/home/z/my-project/student-app/package.json:79:    "@cloudflare/workers-types": "^4.20260604.1",
+/home/z/my-project/public/_headers:1:# https://developers.cloudflare.com/workers/static-assets/headers
+/home/z/my-project/public/_headers:2:# https://opennext.js.org/cloudflare/caching#static-assets-caching
+/home/z/my-project/student-app/public/_headers:1:# https://developers.cloudflare.com/workers/static-assets/headers
+/home/z/my-project/student-app/public/_headers:2:# https://opennext.js.org/cloudflare/caching#static-assets-caching
+/home/z/my-project/student-app/public/_headers:7:# https://developers.cloudflare.com/workers/static-assets/headers
+/home/z/my-project/student-app/public/_headers:8:# https://opennext.js.org/cloudflare/caching#static-assets-caching
+/home/z/my-project/student-app/public/_worker.js:1:// Cloudflare Pages Function for SPA routing
+/home/z/my-project/student-app/public/_worker.js:8:    // Serve static assets directly (they will be handled by Cloudflare Pages)
+/home/z/my-project/tool-results/read_1781282603456_eb8e596493e8.txt:972:   972→  ('telegram_bot_token', 'SET_VIA_CLOUDFLARE_SECRET_OR_D1', 'Telegram bot token for support notifications'),
+/home/z/my-project/repos/dakkho-student-app/student-app/package.json:10:    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+/home/z/my-project/repos/dakkho-student-app/student-app/package.json:11:    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+/home/z/my-project/repos/dakkho-student-app/student-app/package.json:12:    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+/home/z/my-project/repos/dakkho-student-app/student-app/package.json:13:    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+/home/z/my-project/repos/dakkho-student-app/student-app/package.json:21:    "@opennextjs/cloudflare": "^1.19.11",
+/home/z/my-project/repos/dakkho-student-app/student-app/package.json:79:    "@cloudflare/workers-types": "^4.20260604.1",
+/home/z/my-project/repos/dakkho-student-app/student-app/public/_headers:1:# https://developers.cloudflare.com/workers/static-assets/headers
+/home/z/my-project/repos/dakkho-student-app/student-app/public/_headers:2:# https://opennext.js.org/cloudflare/caching#static-assets-caching
+/home/z/my-project/repos/dakkho-student-app/student-app/public/_headers:7:# https://developers.cloudflare.com/workers/static-assets/headers
+/home/z/my-project/repos/dakkho-student-app/student-app/public/_headers:8:# https://opennext.js.org/cloudflare/caching#static-assets-caching
+/home/z/my-project/repos/dakkho-student-app/student-app/public/_worker.js:1:// Cloudflare Pages Function for SPA routing
+/home/z/my-project/repos/dakkho-student-app/student-app/public/_worker.js:8:    // Serve static assets directly (they will be handled by Cloudflare Pages)
+/home/z/my-project/src/components/admin/payments-panel.tsx:224:                      PipraPay enables automatic payment via bKash, Nagad, Rocket. Set PIPRAPAY_API_KEY and PIPRAPAY_BASE_URL in Cloudflare Worker environment variables.
+/home/z/my-project/student-app-work/package.json:10:    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+/home/z/my-project/student-app-work/package.json:11:    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+/home/z/my-project/student-app-work/package.json:12:    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+/home/z/my-project/student-app-work/package.json:13:    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+/home/z/my-project/student-app-work/package.json:21:    "@opennextjs/cloudflare": "^1.19.11",
+/home/z/my-project/student-app-work/package.json:82:    "@cloudflare/workers-types": "^4.20260604.1",
+/home/z/my-project/student-app-work/public/_headers:1:# https://developers.cloudflare.com/workers/static-assets/headers
+/home/z/my-project/student-app-work/public/_headers:2:# https://opennext.js.org/cloudflare/caching#static-assets-caching
+/home/z/my-project/student-app-work/public/_headers:7:# https://developers.cloudflare.com/workers/static-assets/headers
+/home/z/my-project/student-app-work/public/_headers:8:# https://opennext.js.org/cloudflare/caching#static-assets-caching
+/home/z/my-project/student-app/src/components/dakkho/semester/SemesterPageTemplate.tsx:38:    { name: 'Computer Fundamentals', code: 'CF-101', credits: 3 },
+/home/z/my-project/src/components/student/semester/SemesterPageTemplate.tsx:37:    { name: 'Computer Fundamentals', code: 'CF-101', credits: 3 },
+/home/z/my-project/repos/dakkho-student-app/student-app/src/components/dakkho/semester/SemesterPageTemplate.tsx:38:    { name: 'Computer Fundamentals', code: 'CF-101', credits: 3 },
+/home/z/my-project/student-app/src/app/not-found.tsx:10:// Cloudflare Pages serves 404.html for any path that doesn't match a static asset.
+/home/z/my-project/student-app/src/app/[[...slug]]/page.tsx:5:// Without this, refreshing on any non-root path returns 404 on Cloudflare Pages.
+/home/z/my-project/student-app/src/app/[[...slug]]/page.tsx:8:// All other routes are handled client-side by the SPA router on Cloudflare.
+/home/z/my-project/student-app-work/src/components/dakkho/semester/SemesterPageTemplate.tsx:37:    { name: 'Computer Fundamentals', code: 'CF-101', credits: 3 },
+/home/z/my-project/student-app/open-next.config.ts:1:// default open-next.config.ts file created by @opennextjs/cloudflare
+/home/z/my-project/student-app/open-next.config.ts:2:import { defineCloudflareConfig } from "@opennextjs/cloudflare";
+/home/z/my-project/student-app/open-next.config.ts:3:// import r2IncrementalCache from "@opennextjs/cloudflare/overrides/incremental-cache/r2-incremental-cache";
+/home/z/my-project/student-app/open-next.config.ts:5:export default defineCloudflareConfig({
+/home/z/my-project/student-app/open-next.config.ts:7:	// See https://opennext.js.org/cloudflare/caching for more details
+/home/z/my-project/src/lib/api-client.ts:5: *   1. Cloudflare Workers (when NEXT_PUBLIC_API_BASE_URL is set) — PREFERRED
+/home/z/my-project/src/lib/api-client.ts:29: * For Cloudflare Pages or local dev, no prefix is needed.
+/home/z/my-project/src/lib/api-client.ts:35: * Works with both GitHub Pages (basePath) and Cloudflare Pages (no basePath).
+/home/z/my-project/src/lib/api-client.ts:53:    // Cloudflare Workers URL pattern:
+/home/z/my-project/src/lib/api-client.ts:163:  // For remote API (Cloudflare Workers), attach Bearer token
+/home/z/my-project/src/lib/api-client.ts:335: * Path mapping for Cloudflare Workers:
+/home/z/my-project/README.md:12:  <img src="https://img.shields.io/badge/Cloudflare-Pages-F38020?logo=cloudflare" alt="Cloudflare Pages" />
+/home/z/my-project/README.md:86:│    (Hono + Cloudflare Workers)              │
+/home/z/my-project/README.md:160:| Cloudflare Pages | https://dakkho-student.pages.dev           |
+/home/z/my-project/README.md:162:### Deploy to Cloudflare Pages
+/home/z/my-project/student-app/bun.lock:13:        "@opennextjs/cloudflare": "^1.19.11",
+/home/z/my-project/student-app/bun.lock:71:        "@cloudflare/workers-types": "^4.20260604.1",
+/home/z/my-project/student-app/bun.lock:236:    "@cloudflare/kv-asset-handler": ["@cloudflare/kv-asset-handler@0.5.0", "", {}, "sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg=="],
+/home/z/my-project/student-app/bun.lock:238:    "@cloudflare/unenv-preset": ["@cloudflare/unenv-preset@2.16.1", "", { "peerDependencies": { "unenv": "2.0.0-rc.24", "workerd": ">1.20260305.0 <2.0.0-0" }, "optionalPeers": ["workerd"] }, "sha512-ECxObrMfyTl5bhQf/lZCXwo5G6xX9IAUo+nDMKK4SZ8m4Jvvxp52vilxyySSWh2YTZz8+HQ07qGH/2rEom1vDw=="],
+/home/z/my-project/student-app/bun.lock:240:    "@cloudflare/workerd-darwin-64": ["@cloudflare/workerd-darwin-64@1.20260601.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-iXZBVuRbvuVqQ/63wul01hHCv/3R8G5S8zbkjfoHvyPZFynmlKTV59Hk+H8whyGwFAZuB71UJGLr+G5mJKfjWA=="],
+/home/z/my-project/student-app/bun.lock:242:    "@cloudflare/workerd-darwin-arm64": ["@cloudflare/workerd-darwin-arm64@1.20260601.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-veGpZQGBw07Twt+Y4z3oyo+/obKHt0iWUwvDV5GOiDAYjC/zW+YGstgVzg4SHq+k1sLH3ElqL2TXx20I5WBv3Q=="],
+/home/z/my-project/student-app/bun.lock:244:    "@cloudflare/workerd-linux-64": ["@cloudflare/workerd-linux-64@1.20260601.1", "", { "os": "linux", "cpu": "x64" }, "sha512-n/9hDz7fPGpYF0J684+Xr5zgjcS2jdmY2Of5m6e+eQ/M9+RfR+UaU8Ee/tkA1dDC0LYQB13hfPafZG66Ff1CsA=="],
+/home/z/my-project/student-app/bun.lock:246:    "@cloudflare/workerd-linux-arm64": ["@cloudflare/workerd-linux-arm64@1.20260601.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-VHRZZbexATS+n+1j3x/CZaYbIJEye0J3iIHgG0Wp+l+NrZCKQ8qi8Lq1uTV0dLJQ67FuZtJtWdQ95mm9F7Fc+A=="],
+/home/z/my-project/student-app/bun.lock:248:    "@cloudflare/workerd-windows-64": ["@cloudflare/workerd-windows-64@1.20260601.1", "", { "os": "win32", "cpu": "x64" }, "sha512-ye0C7MFLkeH16iTo8Tcjv2KiFmp23+sZGvUzSQa4xhP0QMe6EoJ+H/4SqqvnZ5nfN54slqKvx2VnXceENWe2CQ=="],
+/home/z/my-project/student-app/bun.lock:250:    "@cloudflare/workers-types": ["@cloudflare/workers-types@4.20260604.1", "", {}, "sha512-nVTydUwPcz9WfwZ/6xAmqs8uUVeGbDVmyPvSYrYAo4CQTyi0122SoE1Suw8RvqnN60XXHPChAjDqSIjnr/mbmg=="],
+/home/z/my-project/student-app/bun.lock:628:    "@opennextjs/cloudflare": ["@opennextjs/cloudflare@1.19.11", "", { "dependencies": { "@ast-grep/napi": "^0.40.5", "@dotenvx/dotenvx": "1.31.0", "@opennextjs/aws": "4.0.2", "ci-info": "^4.2.0", "cloudflare": "^4.4.1", "comment-json": "^4.5.1", "enquirer": "^2.4.1", "glob": "^12.0.0", "ts-tqdm": "^0.8.6", "yargs": "^18.0.0" }, "peerDependencies": { "next": ">=15.5.18 <16 || >=16.2.6", "wrangler": "^4.86.0" }, "bin": { "opennextjs-cloudflare": "dist/cli/index.js" } }, "sha512-spZ7YsZZW9q/OJStaZlJhuklYKei5e2tNQ7PMi3DDSJ7x7167m7EYYHQZfVN5gwJBDkMR2jUDW88oHjnGz4YYw=="],
+/home/z/my-project/student-app/bun.lock:1106:    "cloudflare": ["cloudflare@4.5.0", "", { "dependencies": { "@types/node": "^18.11.18", "@types/node-fetch": "^2.6.4", "abort-controller": "^3.0.0", "agentkeepalive": "^4.2.1", "form-data-encoder": "1.7.2", "formdata-node": "^4.3.2", "node-fetch": "^2.6.7" } }, "sha512-fPcbPKx4zF45jBvQ0z7PCdgejVAPBBCZxwqk1k7krQNfpM07Cfj97/Q6wBzvYqlWXx/zt1S9+m8vnfCe06umbQ=="],
+/home/z/my-project/student-app/bun.lock:2176:    "workerd": ["workerd@1.20260601.1", "", { "optionalDependencies": { "@cloudflare/workerd-darwin-64": "1.20260601.1", "@cloudflare/workerd-darwin-arm64": "1.20260601.1", "@cloudflare/workerd-linux-64": "1.20260601.1", "@cloudflare/workerd-linux-arm64": "1.20260601.1", "@cloudflare/workerd-windows-64": "1.20260601.1" }, "bin": { "workerd": "bin/workerd" } }, "sha512-Bg4+HF3B8TW0urAv8chiz25HSQ/aJxMBjgheUzu/nB1NQa+CaKGrUPv+Z3bf0np/WxLHYW1kcseVEtzZVPbX4g=="],
+/home/z/my-project/student-app/bun.lock:2178:    "wrangler": ["wrangler@4.97.0", "", { "dependencies": { "@cloudflare/kv-asset-handler": "0.5.0", "@cloudflare/unenv-preset": "2.16.1", "blake3-wasm": "2.1.5", "esbuild": "0.27.3", "miniflare": "4.20260601.0", "path-to-regexp": "6.3.0", "unenv": "2.0.0-rc.24", "workerd": "1.20260601.1" }, "optionalDependencies": { "fsevents": "2.3.3" }, "peerDependencies": { "@cloudflare/workers-types": "^4.20260601.1" }, "optionalPeers": ["@cloudflare/workers-types"], "bin": { "wrangler": "bin/wrangler.js", "wrangler2": "bin/wrangler.js" } }, "sha512-jzW/aNvjerV+4TmwbvwGY6lpcuBk7EFUTonMDNfci45wSmMTj2/OJN+83cc/CeepKdb+6ZjGJw9NRjmcQoxqRg=="],
+/home/z/my-project/student-app/bun.lock:2324:    "cloudflare/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
+/home/z/my-project/student-app/bun.lock:2484:    "cloudflare/@types/node/undici-types": ["undici-types@5.26.5", "", {}, "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="],
+/home/z/my-project/prisma/schema.prisma:11:// The main data is fetched from the external API (Cloudflare Workers)
+/home/z/my-project/setup-secrets.sh:3:# Run this to configure Cloudflare Worker secrets
+/home/z/my-project/setup-secrets.sh:7:echo "🔐 Setting up Cloudflare Worker secrets..."
+/home/z/my-project/setup-secrets.sh:37:echo "⚠️ IMPORTANT: These secrets are stored in Cloudflare Workers and NEVER exposed to the client."
+/home/z/my-project/repos/dakkho-student-app/student-app/src/app/not-found.tsx:10:// Cloudflare Pages serves 404.html for any path that doesn't match a static asset.
+/home/z/my-project/repos/dakkho-student-app/student-app/src/app/[[...slug]]/page.tsx:5:// Without this, refreshing on any non-root path returns 404 on Cloudflare Pages.
+/home/z/my-project/student-app/package-lock.json:16:        "@opennextjs/cloudflare": "^1.19.11",
+/home/z/my-project/student-app/package-lock.json:74:        "@cloudflare/workers-types": "^4.20260604.1",
+/home/z/my-project/student-app/package-lock.json:1498:    "node_modules/@cloudflare/kv-asset-handler": {
+/home/z/my-project/student-app/package-lock.json:1500:      "resolved": "https://registry.npmjs.org/@cloudflare/kv-asset-handler/-/kv-asset-handler-0.5.0.tgz",
+/home/z/my-project/student-app/package-lock.json:1508:    "node_modules/@cloudflare/unenv-preset": {
+/home/z/my-project/student-app/package-lock.json:1510:      "resolved": "https://registry.npmjs.org/@cloudflare/unenv-preset/-/unenv-preset-2.16.1.tgz",
+/home/z/my-project/student-app/package-lock.json:1524:    "node_modules/@cloudflare/workerd-darwin-64": {
+/home/z/my-project/student-app/package-lock.json:1526:      "resolved": "https://registry.npmjs.org/@cloudflare/workerd-darwin-64/-/workerd-darwin-64-1.20260601.1.tgz",
+/home/z/my-project/student-app/package-lock.json:1541:    "node_modules/@cloudflare/workerd-darwin-arm64": {
+/home/z/my-project/student-app/package-lock.json:1543:      "resolved": "https://registry.npmjs.org/@cloudflare/workerd-darwin-arm64/-/workerd-darwin-arm64-1.20260601.1.tgz",
+/home/z/my-project/student-app/package-lock.json:1558:    "node_modules/@cloudflare/workerd-linux-64": {
+/home/z/my-project/student-app/package-lock.json:1560:      "resolved": "https://registry.npmjs.org/@cloudflare/workerd-linux-64/-/workerd-linux-64-1.20260601.1.tgz",
+/home/z/my-project/student-app/package-lock.json:1575:    "node_modules/@cloudflare/workerd-linux-arm64": {
+/home/z/my-project/student-app/package-lock.json:1577:      "resolved": "https://registry.npmjs.org/@cloudflare/workerd-linux-arm64/-/workerd-linux-arm64-1.20260601.1.tgz",
+/home/z/my-project/student-app/package-lock.json:1592:    "node_modules/@cloudflare/workerd-windows-64": {
+/home/z/my-project/student-app/package-lock.json:1594:      "resolved": "https://registry.npmjs.org/@cloudflare/workerd-windows-64/-/workerd-windows-64-1.20260601.1.tgz",
+/home/z/my-project/student-app/package-lock.json:1609:    "node_modules/@cloudflare/workers-types": {
+/home/z/my-project/student-app/package-lock.json:1611:      "resolved": "https://registry.npmjs.org/@cloudflare/workers-types/-/workers-types-4.20260604.1.tgz",
+/home/z/my-project/student-app/package-lock.json:4240:    "node_modules/@opennextjs/cloudflare": {
+/home/z/my-project/student-app/package-lock.json:4242:      "resolved": "https://registry.npmjs.org/@opennextjs/cloudflare/-/cloudflare-1.19.11.tgz",
+/home/z/my-project/student-app/package-lock.json:4250:        "cloudflare": "^4.4.1",
+/home/z/my-project/student-app/package-lock.json:4258:        "opennextjs-cloudflare": "dist/cli/index.js"
+/home/z/my-project/student-app/package-lock.json:4265:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/aix-ppc64": {
+/home/z/my-project/student-app/package-lock.json:4281:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/android-arm": {
+/home/z/my-project/student-app/package-lock.json:4297:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/android-arm64": {
+/home/z/my-project/student-app/package-lock.json:4313:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/android-x64": {
+/home/z/my-project/student-app/package-lock.json:4329:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/darwin-arm64": {
+/home/z/my-project/student-app/package-lock.json:4345:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/darwin-x64": {
+/home/z/my-project/student-app/package-lock.json:4361:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/freebsd-arm64": {
+/home/z/my-project/student-app/package-lock.json:4377:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/freebsd-x64": {
+/home/z/my-project/student-app/package-lock.json:4393:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/linux-arm": {
+/home/z/my-project/student-app/package-lock.json:4409:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/linux-arm64": {
+/home/z/my-project/student-app/package-lock.json:4425:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/linux-ia32": {
+/home/z/my-project/student-app/package-lock.json:4441:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/linux-loong64": {
+/home/z/my-project/student-app/package-lock.json:4457:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/linux-mips64el": {
+/home/z/my-project/student-app/package-lock.json:4473:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/linux-ppc64": {
+/home/z/my-project/student-app/package-lock.json:4489:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/linux-riscv64": {
+/home/z/my-project/student-app/package-lock.json:4505:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/linux-s390x": {
+/home/z/my-project/student-app/package-lock.json:4521:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/linux-x64": {
+/home/z/my-project/student-app/package-lock.json:4537:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/netbsd-arm64": {
+/home/z/my-project/student-app/package-lock.json:4553:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/netbsd-x64": {
+/home/z/my-project/student-app/package-lock.json:4569:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/openbsd-arm64": {
+/home/z/my-project/student-app/package-lock.json:4585:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/openbsd-x64": {
+/home/z/my-project/student-app/package-lock.json:4601:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/sunos-x64": {
+/home/z/my-project/student-app/package-lock.json:4617:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/win32-arm64": {
+/home/z/my-project/student-app/package-lock.json:4633:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/win32-ia32": {
+/home/z/my-project/student-app/package-lock.json:4649:    "node_modules/@opennextjs/cloudflare/node_modules/@esbuild/win32-x64": {
+/home/z/my-project/student-app/package-lock.json:4665:    "node_modules/@opennextjs/cloudflare/node_modules/@opennextjs/aws": {
+/home/z/my-project/student-app/package-lock.json:4696:    "node_modules/@opennextjs/cloudflare/node_modules/chalk": {
+/home/z/my-project/student-app/package-lock.json:4708:    "node_modules/@opennextjs/cloudflare/node_modules/esbuild": {
+/home/z/my-project/student-app/package-lock.json:8597:    "node_modules/cloudflare": {
+/home/z/my-project/student-app/package-lock.json:8599:      "resolved": "https://registry.npmjs.org/cloudflare/-/cloudflare-4.5.0.tgz",
+/home/z/my-project/student-app/package-lock.json:8612:    "node_modules/cloudflare/node_modules/@types/node": {
+/home/z/my-project/student-app/package-lock.json:8621:    "node_modules/cloudflare/node_modules/undici-types": {
+/home/z/my-project/student-app/package-lock.json:15806:        "@cloudflare/workerd-darwin-64": "1.20260601.1",
+/home/z/my-project/student-app/package-lock.json:15807:        "@cloudflare/workerd-darwin-arm64": "1.20260601.1",
+/home/z/my-project/student-app/package-lock.json:15808:        "@cloudflare/workerd-linux-64": "1.20260601.1",
+/home/z/my-project/student-app/package-lock.json:15809:        "@cloudflare/workerd-linux-arm64": "1.20260601.1",
+/home/z/my-project/student-app/package-lock.json:15810:        "@cloudflare/workerd-windows-64": "1.20260601.1"
+/home/z/my-project/student-app/package-lock.json:15820:        "@cloudflare/kv-asset-handler": "0.5.0",
+/home/z/my-project/student-app/package-lock.json:15821:        "@cloudflare/unenv-preset": "2.16.1",
+/home/z/my-project/student-app/package-lock.json:15840:        "@cloudflare/workers-types": "^4.20260601.1"
+/home/z/my-project/student-app/package-lock.json:15843:        "@cloudflare/workers-types": {
+/home/z/my-project/scripts/build-for-cloudflare-pages.sh:4:echo "=== Building DAKKHO Admin for Cloudflare Pages ==="
+/home/z/my-project/scripts/build-for-cloudflare-pages.sh:6:# Ensure the Cloudflare Pages config is used as next.config.ts
+/home/z/my-project/scripts/build-for-cloudflare-pages.sh:7:# (no basePath — Cloudflare Pages deploys at root)
+/home/z/my-project/scripts/build-for-cloudflare-pages.sh:8:if [ -f "next.config.cloudflare-pages.ts" ]; then
+/home/z/my-project/scripts/build-for-cloudflare-pages.sh:10:  cp next.config.cloudflare-pages.ts next.config.ts
+/home/z/my-project/scripts/build-for-cloudflare-pages.sh:11:  echo "Using next.config.cloudflare-pages.ts (no basePath)"
+/home/z/my-project/scripts/build-for-cloudflare-pages.sh:37:# Fix SPA routing for Cloudflare Pages
+/home/z/my-project/scripts/build-for-cloudflare-pages.sh:41:echo "=== Cloudflare Pages build complete ==="
+/home/z/my-project/SETUP.md:26:- **Cloudflare R2** — File storage (videos, thumbnails, avatars, resources)
+/home/z/my-project/repos/dakkho-student-app/student-app/open-next.config.ts:1:// default open-next.config.ts file created by @opennextjs/cloudflare
+/home/z/my-project/repos/dakkho-student-app/student-app/open-next.config.ts:2:import { defineCloudflareConfig } from "@opennextjs/cloudflare";
+/home/z/my-project/repos/dakkho-student-app/student-app/open-next.config.ts:3:// import r2IncrementalCache from "@opennextjs/cloudflare/overrides/incremental-cache/r2-incremental-cache";
+/home/z/my-project/repos/dakkho-student-app/student-app/open-next.config.ts:5:export default defineCloudflareConfig({
+/home/z/my-project/repos/dakkho-student-app/student-app/open-next.config.ts:7:	// See https://opennext.js.org/cloudflare/caching for more details
+/home/z/my-project/repos/dakkho-student-app/student-app-work/package.json:10:    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+/home/z/my-project/repos/dakkho-student-app/student-app-work/package.json:11:    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+/home/z/my-project/repos/dakkho-student-app/student-app-work/package.json:12:    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+/home/z/my-project/repos/dakkho-student-app/student-app-work/package.json:13:    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+/home/z/my-project/repos/dakkho-student-app/student-app-work/package.json:21:    "@opennextjs/cloudflare": "^1.19.11",
+/home/z/my-project/repos/dakkho-student-app/student-app-work/package.json:82:    "@cloudflare/workers-types": "^4.20260604.1",
+/home/z/my-project/repos/dakkho-student-app/student-app-work/public/_headers:1:# https://developers.cloudflare.com/workers/static-assets/headers
+/home/z/my-project/repos/dakkho-student-app/student-app-work/public/_headers:2:# https://opennext.js.org/cloudflare/caching#static-assets-caching
+/home/z/my-project/repos/dakkho-student-app/student-app-work/public/_headers:7:# https://developers.cloudflare.com/workers/static-assets/headers
+/home/z/my-project/repos/dakkho-student-app/student-app-work/public/_headers:8:# https://opennext.js.org/cloudflare/caching#static-assets-caching
+/home/z/my-project/bun.lock:15:        "@opennextjs/cloudflare": "^1.19.11",
+/home/z/my-project/bun.lock:248:    "@cloudflare/kv-asset-handler": ["@cloudflare/kv-asset-handler@0.5.0", "", {}, "sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg=="],
+/home/z/my-project/bun.lock:250:    "@cloudflare/unenv-preset": ["@cloudflare/unenv-preset@2.16.1", "", { "peerDependencies": { "unenv": "2.0.0-rc.24", "workerd": ">1.20260305.0 <2.0.0-0" }, "optionalPeers": ["workerd"] }, "sha512-ECxObrMfyTl5bhQf/lZCXwo5G6xX9IAUo+nDMKK4SZ8m4Jvvxp52vilxyySSWh2YTZz8+HQ07qGH/2rEom1vDw=="],
+/home/z/my-project/bun.lock:252:    "@cloudflare/workerd-darwin-64": ["@cloudflare/workerd-darwin-64@1.20260609.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-AK8tYLQm+8BqQMzjZ55ZfuhfIm1eCkj+Ykxz6kWXojdACwjjU03MrwdM9fBDdgzU3upXOs4e1scOFHySlfVQjA=="],
+/home/z/my-project/bun.lock:254:    "@cloudflare/workerd-darwin-arm64": ["@cloudflare/workerd-darwin-arm64@1.20260609.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-4kKXfr7ZHU6xQ/R9ShdSuj1A1bEouoRcHzUWdjnuMPBlRsAAVanlxAVYISotFUulLEinayOpRFbhpsfwzrpSSw=="],
+/home/z/my-project/bun.lock:256:    "@cloudflare/workerd-linux-64": ["@cloudflare/workerd-linux-64@1.20260609.1", "", { "os": "linux", "cpu": "x64" }, "sha512-T2Ebir2OPHAvvZ0HUh5mi1lN8q30sVi4lf7LIpc28AHoWtoOmJ0jA5AJK4IYJm1MKEbBldq+QsckaHOCQFmRpQ=="],
+/home/z/my-project/bun.lock:258:    "@cloudflare/workerd-linux-arm64": ["@cloudflare/workerd-linux-arm64@1.20260609.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-INfcYoSsKqEIvPL69/3RkqYoP8WUR0VEN6loWN/3tekXLoJrVOj3E5NjIetsdS8MJN6zc3st/ae4bMuWRRzoDg=="],
+/home/z/my-project/bun.lock:260:    "@cloudflare/workerd-windows-64": ["@cloudflare/workerd-windows-64@1.20260609.1", "", { "os": "win32", "cpu": "x64" }, "sha512-EWhfxKI1aqUr7S8xuGxgmRCumEzB8iSsCIz6oEqJN+3pZuW3EWiKDGFW4EY1BmwNINLW1eO5VMGYb8Fj6FVYxA=="],
+/home/z/my-project/bun.lock:648:    "@opennextjs/cloudflare": ["@opennextjs/cloudflare@1.19.11", "", { "dependencies": { "@ast-grep/napi": "^0.40.5", "@dotenvx/dotenvx": "1.31.0", "@opennextjs/aws": "4.0.2", "ci-info": "^4.2.0", "cloudflare": "^4.4.1", "comment-json": "^4.5.1", "enquirer": "^2.4.1", "glob": "^12.0.0", "ts-tqdm": "^0.8.6", "yargs": "^18.0.0" }, "peerDependencies": { "next": ">=15.5.18 <16 || >=16.2.6", "wrangler": "^4.86.0" }, "bin": { "opennextjs-cloudflare": "dist/cli/index.js" } }, "sha512-spZ7YsZZW9q/OJStaZlJhuklYKei5e2tNQ7PMi3DDSJ7x7167m7EYYHQZfVN5gwJBDkMR2jUDW88oHjnGz4YYw=="],
+/home/z/my-project/bun.lock:1240:    "cloudflare": ["cloudflare@4.5.0", "", { "dependencies": { "@types/node": "^18.11.18", "@types/node-fetch": "^2.6.4", "abort-controller": "^3.0.0", "agentkeepalive": "^4.2.1", "form-data-encoder": "1.7.2", "formdata-node": "^4.3.2", "node-fetch": "^2.6.7" } }, "sha512-fPcbPKx4zF45jBvQ0z7PCdgejVAPBBCZxwqk1k7krQNfpM07Cfj97/Q6wBzvYqlWXx/zt1S9+m8vnfCe06umbQ=="],
+/home/z/my-project/bun.lock:2452:    "workerd": ["workerd@1.20260609.1", "", { "optionalDependencies": { "@cloudflare/workerd-darwin-64": "1.20260609.1", "@cloudflare/workerd-darwin-arm64": "1.20260609.1", "@cloudflare/workerd-linux-64": "1.20260609.1", "@cloudflare/workerd-linux-arm64": "1.20260609.1", "@cloudflare/workerd-windows-64": "1.20260609.1" }, "bin": { "workerd": "bin/workerd" } }, "sha512-KF/Y/8f4VoXCk87NuU6RqmO0X5fdzcrxU3XzAgoPUpnH9t1ZyzRgX1O/9sJvjItxroCBTEBzKssda02Dz9i6BA=="],
+/home/z/my-project/bun.lock:2454:    "wrangler": ["wrangler@4.99.0", "", { "dependencies": { "@cloudflare/kv-asset-handler": "0.5.0", "@cloudflare/unenv-preset": "2.16.1", "blake3-wasm": "2.1.5", "esbuild": "0.27.3", "miniflare": "4.20260609.0", "path-to-regexp": "6.3.0", "unenv": "2.0.0-rc.24", "workerd": "1.20260609.1" }, "optionalDependencies": { "fsevents": "2.3.3" }, "peerDependencies": { "@cloudflare/workers-types": "^4.20260609.1" }, "optionalPeers": ["@cloudflare/workers-types"], "bin": { "wrangler": "bin/wrangler.js", "wrangler2": "bin/wrangler.js" } }, "sha512-i7GA2mZETTyq3ljWdEzM908FjLaMWZ1AaAHKaOJ8pFA/tonf2VqIWDyBGzKleIVBbNQxOTIY2wnbv0iaK3rC6g=="],
+/home/z/my-project/bun.lock:2610:    "cloudflare/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
+/home/z/my-project/bun.lock:2748:    "cloudflare/@types/node/undici-types": ["undici-types@5.26.5", "", {}, "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:15:        "@opennextjs/cloudflare": "^1.19.11",
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:82:        "@cloudflare/workers-types": "^4.20260604.1",
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:249:    "@cloudflare/kv-asset-handler": ["@cloudflare/kv-asset-handler@0.5.0", "", {}, "sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:251:    "@cloudflare/unenv-preset": ["@cloudflare/unenv-preset@2.16.1", "", { "peerDependencies": { "unenv": "2.0.0-rc.24", "workerd": ">1.20260305.0 <2.0.0-0" }, "optionalPeers": ["workerd"] }, "sha512-ECxObrMfyTl5bhQf/lZCXwo5G6xX9IAUo+nDMKK4SZ8m4Jvvxp52vilxyySSWh2YTZz8+HQ07qGH/2rEom1vDw=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:253:    "@cloudflare/workerd-darwin-64": ["@cloudflare/workerd-darwin-64@1.20260601.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-iXZBVuRbvuVqQ/63wul01hHCv/3R8G5S8zbkjfoHvyPZFynmlKTV59Hk+H8whyGwFAZuB71UJGLr+G5mJKfjWA=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:255:    "@cloudflare/workerd-darwin-arm64": ["@cloudflare/workerd-darwin-arm64@1.20260601.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-veGpZQGBw07Twt+Y4z3oyo+/obKHt0iWUwvDV5GOiDAYjC/zW+YGstgVzg4SHq+k1sLH3ElqL2TXx20I5WBv3Q=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:257:    "@cloudflare/workerd-linux-64": ["@cloudflare/workerd-linux-64@1.20260601.1", "", { "os": "linux", "cpu": "x64" }, "sha512-n/9hDz7fPGpYF0J684+Xr5zgjcS2jdmY2Of5m6e+eQ/M9+RfR+UaU8Ee/tkA1dDC0LYQB13hfPafZG66Ff1CsA=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:259:    "@cloudflare/workerd-linux-arm64": ["@cloudflare/workerd-linux-arm64@1.20260601.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-VHRZZbexATS+n+1j3x/CZaYbIJEye0J3iIHgG0Wp+l+NrZCKQ8qi8Lq1uTV0dLJQ67FuZtJtWdQ95mm9F7Fc+A=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:261:    "@cloudflare/workerd-windows-64": ["@cloudflare/workerd-windows-64@1.20260601.1", "", { "os": "win32", "cpu": "x64" }, "sha512-ye0C7MFLkeH16iTo8Tcjv2KiFmp23+sZGvUzSQa4xhP0QMe6EoJ+H/4SqqvnZ5nfN54slqKvx2VnXceENWe2CQ=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:263:    "@cloudflare/workers-types": ["@cloudflare/workers-types@4.20260604.1", "", {}, "sha512-nVTydUwPcz9WfwZ/6xAmqs8uUVeGbDVmyPvSYrYAo4CQTyi0122SoE1Suw8RvqnN60XXHPChAjDqSIjnr/mbmg=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:651:    "@opennextjs/cloudflare": ["@opennextjs/cloudflare@1.19.11", "", { "dependencies": { "@ast-grep/napi": "^0.40.5", "@dotenvx/dotenvx": "1.31.0", "@opennextjs/aws": "4.0.2", "ci-info": "^4.2.0", "cloudflare": "^4.4.1", "comment-json": "^4.5.1", "enquirer": "^2.4.1", "glob": "^12.0.0", "ts-tqdm": "^0.8.6", "yargs": "^18.0.0" }, "peerDependencies": { "next": ">=15.5.18 <16 || >=16.2.6", "wrangler": "^4.86.0" }, "bin": { "opennextjs-cloudflare": "dist/cli/index.js" } }, "sha512-spZ7YsZZW9q/OJStaZlJhuklYKei5e2tNQ7PMi3DDSJ7x7167m7EYYHQZfVN5gwJBDkMR2jUDW88oHjnGz4YYw=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:1239:    "cloudflare": ["cloudflare@4.5.0", "", { "dependencies": { "@types/node": "^18.11.18", "@types/node-fetch": "^2.6.4", "abort-controller": "^3.0.0", "agentkeepalive": "^4.2.1", "form-data-encoder": "1.7.2", "formdata-node": "^4.3.2", "node-fetch": "^2.6.7" } }, "sha512-fPcbPKx4zF45jBvQ0z7PCdgejVAPBBCZxwqk1k7krQNfpM07Cfj97/Q6wBzvYqlWXx/zt1S9+m8vnfCe06umbQ=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:2435:    "workerd": ["workerd@1.20260601.1", "", { "optionalDependencies": { "@cloudflare/workerd-darwin-64": "1.20260601.1", "@cloudflare/workerd-darwin-arm64": "1.20260601.1", "@cloudflare/workerd-linux-64": "1.20260601.1", "@cloudflare/workerd-linux-arm64": "1.20260601.1", "@cloudflare/workerd-windows-64": "1.20260601.1" }, "bin": { "workerd": "bin/workerd" } }, "sha512-Bg4+HF3B8TW0urAv8chiz25HSQ/aJxMBjgheUzu/nB1NQa+CaKGrUPv+Z3bf0np/WxLHYW1kcseVEtzZVPbX4g=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:2437:    "wrangler": ["wrangler@4.97.0", "", { "dependencies": { "@cloudflare/kv-asset-handler": "0.5.0", "@cloudflare/unenv-preset": "2.16.1", "blake3-wasm": "2.1.5", "esbuild": "0.27.3", "miniflare": "4.20260601.0", "path-to-regexp": "6.3.0", "unenv": "2.0.0-rc.24", "workerd": "1.20260601.1" }, "optionalDependencies": { "fsevents": "2.3.3" }, "peerDependencies": { "@cloudflare/workers-types": "^4.20260601.1" }, "optionalPeers": ["@cloudflare/workers-types"], "bin": { "wrangler": "bin/wrangler.js", "wrangler2": "bin/wrangler.js" } }, "sha512-jzW/aNvjerV+4TmwbvwGY6lpcuBk7EFUTonMDNfci45wSmMTj2/OJN+83cc/CeepKdb+6ZjGJw9NRjmcQoxqRg=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:2589:    "cloudflare/@types/node": ["@types/node@18.19.130", "", { "dependencies": { "undici-types": "~5.26.4" } }, "sha512-GRaXQx6jGfL8sKfaIDD6OupbIHBr9jv7Jnaml9tB7l4v068PAOXqfcujMMo5PhbIs6ggR1XODELqahT2R8v0fg=="],
+/home/z/my-project/repos/dakkho-student-app/student-app/bun.lock:2775:    "cloudflare/@types/node/undici-types": ["undici-types@5.26.5", "", {}, "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="],
+/home/z/my-project/worker/tsconfig.json:7:    "types": ["@cloudflare/workers-types"],
+/home/z/my-project/worker/package.json:14:    "@cloudflare/workers-types": "^4.20250109.0",
+/home/z/my-project/worker/dist/index.js:2: * DAKKHO Admin API — Cloudflare Workers + Hono
+/home/z/my-project/worker/dist/index.js:58:        // Cloudflare Pages domains
+/home/z/my-project/worker/dist/index.js:79:    runtime: 'Cloudflare Workers',
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:16:        "@opennextjs/cloudflare": "^1.19.11",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:74:        "@cloudflare/workers-types": "^4.20260604.1",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1367:    "node_modules/@cloudflare/kv-asset-handler": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1369:      "resolved": "https://registry.npmjs.org/@cloudflare/kv-asset-handler/-/kv-asset-handler-0.5.0.tgz",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1376:    "node_modules/@cloudflare/unenv-preset": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1378:      "resolved": "https://registry.npmjs.org/@cloudflare/unenv-preset/-/unenv-preset-2.16.1.tgz",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1391:    "node_modules/@cloudflare/workerd-darwin-64": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1393:      "resolved": "https://registry.npmjs.org/@cloudflare/workerd-darwin-64/-/workerd-darwin-64-1.20260601.1.tgz",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1407:    "node_modules/@cloudflare/workerd-darwin-arm64": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1409:      "resolved": "https://registry.npmjs.org/@cloudflare/workerd-darwin-arm64/-/workerd-darwin-arm64-1.20260601.1.tgz",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1423:    "node_modules/@cloudflare/workerd-linux-64": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1425:      "resolved": "https://registry.npmjs.org/@cloudflare/workerd-linux-64/-/workerd-linux-64-1.20260601.1.tgz",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1439:    "node_modules/@cloudflare/workerd-linux-arm64": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1441:      "resolved": "https://registry.npmjs.org/@cloudflare/workerd-linux-arm64/-/workerd-linux-arm64-1.20260601.1.tgz",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1455:    "node_modules/@cloudflare/workerd-windows-64": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1457:      "resolved": "https://registry.npmjs.org/@cloudflare/workerd-windows-64/-/workerd-windows-64-1.20260601.1.tgz",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1471:    "node_modules/@cloudflare/workers-types": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:1473:      "resolved": "https://registry.npmjs.org/@cloudflare/workers-types/-/workers-types-4.20260604.1.tgz",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:4666:    "node_modules/@opennextjs/cloudflare": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:4668:      "resolved": "https://registry.npmjs.org/@opennextjs/cloudflare/-/cloudflare-1.19.11.tgz",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:4676:        "cloudflare": "^4.4.1",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:4684:        "opennextjs-cloudflare": "dist/cli/index.js"
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:8498:    "node_modules/cloudflare": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:8500:      "resolved": "https://registry.npmjs.org/cloudflare/-/cloudflare-4.5.0.tgz",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:8513:    "node_modules/cloudflare/node_modules/@types/node": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:8522:    "node_modules/cloudflare/node_modules/undici-types": {
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:15702:        "@cloudflare/workerd-darwin-64": "1.20260601.1",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:15703:        "@cloudflare/workerd-darwin-arm64": "1.20260601.1",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:15704:        "@cloudflare/workerd-linux-64": "1.20260601.1",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:15705:        "@cloudflare/workerd-linux-arm64": "1.20260601.1",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:15706:        "@cloudflare/workerd-windows-64": "1.20260601.1"
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:15715:        "@cloudflare/kv-asset-handler": "0.5.0",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:15716:        "@cloudflare/unenv-preset": "2.16.1",
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:15735:        "@cloudflare/workers-types": "^4.20260601.1"
+/home/z/my-project/repos/dakkho-student-app/student-app/package-lock.json:15738:        "@cloudflare/workers-types": {
+/home/z/my-project/repos/dakkho-student-app/student-app/next.config.ts:5:  // We deploy via opennextjs-cloudflare which provides SSR on Cloudflare Workers.
+/home/z/my-project/repos/dakkho-student-app/scripts/build-for-cloudflare-pages.sh:4:echo "=== Building DAKKHO Admin for Cloudflare Pages ==="
+/home/z/my-project/repos/dakkho-student-app/scripts/build-for-cloudflare-pages.sh:23:echo "=== Cloudflare Pages build complete ==="
+/home/z/my-project/student-app-work/open-next.config.ts:1:// default open-next.config.ts file created by @opennextjs/cloudflare
+/home/z/my-project/student-app-work/open-next.config.ts:2:import { defineCloudflareConfig } from "@opennextjs/cloudflare";
+/home/z/my-project/student-app-work/open-next.config.ts:3:// import r2IncrementalCache from "@opennextjs/cloudflare/overrides/incremental-cache/r2-incremental-cache";
+/home/z/my-project/student-app-work/open-next.config.ts:5:export default defineCloudflareConfig({
+/home/z/my-project/student-app-work/open-next.config.ts:7:	// See https://opennext.js.org/cloudflare/caching for more details
+/home/z/my-project/repos/dakkho-student-app/dakkho-student-app/package.json:14:    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+/home/z/my-project/repos/dakkho-student-app/dakkho-student-app/package.json:15:    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+/home/z/my-project/repos/dakkho-student-app/dakkho-student-app/package.json:16:    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+
+[Showing results with pagination = limit: 250]

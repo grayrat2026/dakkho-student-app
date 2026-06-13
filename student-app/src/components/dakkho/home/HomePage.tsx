@@ -221,7 +221,13 @@ function LiveNow() {
             >
               <motion.div
                 className="relative rounded-2xl overflow-hidden cursor-pointer group"
-                onClick={() => navigate('explore')}
+                onClick={() => {
+                  if (session.meetingUrl && session.status === 'live') {
+                    window.open(session.meetingUrl, '_blank', 'noopener');
+                  } else {
+                    navigate('live-sessions');
+                  }
+                }}
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
               >
