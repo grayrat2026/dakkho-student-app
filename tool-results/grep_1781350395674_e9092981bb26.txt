@@ -1,0 +1,252 @@
+/home/z/my-project/dakkho-worker-fresh/worker/src/env.ts:43:  // PipraPay (optional - plug & play)
+/home/z/my-project/dakkho-worker-fresh/worker/src/env.ts:44:  PIPRAPAY_API_KEY?: string;
+/home/z/my-project/dakkho-worker-fresh/worker/src/env.ts:45:  PIPRAPAY_BASE_URL?: string;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/notifications.ts:61:    'payment': 'payment_push',
+/home/z/my-project/dakkho-worker-fresh/worker/src/index.ts:35:import paymentRoutes from './routes/payments';
+/home/z/my-project/dakkho-worker-fresh/worker/src/index.ts:75:  allowHeaders: ['Content-Type', 'Authorization', 'apikey', 'mh-v-api-key', 'mh-piprapay-api-key'],
+/home/z/my-project/dakkho-worker-fresh/worker/src/index.ts:119:app.route('/admin/payments', paymentRoutes);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:395:    // Total revenue (from payments for instructor's courses)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:399:        "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE course_id IN (SELECT id FROM courses WHERE instructor_id = ?) AND status = 'completed'"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:971:    // Get recent payments from D1
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:973:    let paymentCount = 0;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:975:      const paymentStats = await c.env.DB.prepare(
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:976:        "SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM payments WHERE course_id = ? AND status = 'completed'"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:978:      paymentCount = paymentStats?.count || 0;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:979:      revenue = paymentStats?.total || 0;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:1021:        paymentCount,
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:431:export interface PaymentRow {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:436:  amount: number;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:440:  gateway_payment_id: string | null;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:502:export interface PaymentConfigRow {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:528:  payment_push: number;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:529:  payment_email: number;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student.ts:37:  notifyPaymentStatus,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student.ts:2051:      return { allowed: false, statusCode: 402, error: 'Payment required', isPreview: false, courseId };
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student.ts:2055:    return { allowed: false, statusCode: 402, error: 'Payment required', isPreview: false, courseId };
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:6: * Authenticated: institute requests, push tokens, packages, payments
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:134:// GET /config/payment — Get active payment gateway config (public)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:135:studentApiRoutes.get('/config/payment', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:138:      'SELECT id, gateway, is_active, instructions, instructions_bn, sandbox_mode FROM payment_config WHERE is_active = 1'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:141:    return c.json({ paymentConfig: result.results });
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1704:studentApiRoutes.post('/payments/submit', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1732:      INSERT INTO payments (user_id, package_id, course_id, amount, currency, gateway, trx_id_submitted, phone_submitted, proof_url, status, metadata)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1736:    return c.json({ success: true, message: 'Payment submitted for verification' });
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1742:// ─── Helper: Auto-activate package after payment verification ───
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1797:// POST /payments/create — Create PipraPay payment session
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1798:studentApiRoutes.post('/payments/create', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1813:    // Check if PipraPay is active
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1814:    const pipraPayConfig = await c.env.DB.prepare(
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1815:      "SELECT * FROM payment_config WHERE gateway = 'piprapay' AND is_active = 1"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1818:    if (!pipraPayConfig) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1819:      return c.json({ error: 'PipraPay payment is not available right now. Please use manual payment.' }, 400);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1832:    let finalAmount = p.price;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1846:              const discount = finalAmount * (cp.discount_value / 100);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1847:              finalAmount = Math.max(0, finalAmount - (cp.max_discount ? Math.min(discount, cp.max_discount) : discount));
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1849:              finalAmount = Math.max(0, finalAmount - cp.discount_value);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1852:            finalAmount = Math.round(finalAmount);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1862:    // Get user details for PipraPay
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1869:    // Insert pending payment in D1
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1870:    const paymentResult = await c.env.DB.prepare(`
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1871:      INSERT INTO payments (user_id, package_id, course_id, amount, currency, gateway, status, metadata)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1872:      VALUES (?, ?, ?, ?, 'BDT', 'piprapay', 'pending', ?)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1877:      finalAmount,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1878:      JSON.stringify({ couponCode: couponCode || null, originalPrice: p.price, discountedPrice: finalAmount, duoMemberEmail: duoMemberEmail || null })
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1881:    // Get the inserted payment ID
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1882:    const paymentRow = await c.env.DB.prepare(
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1883:      'SELECT id FROM payments WHERE user_id = ? AND gateway = ? AND status = ? ORDER BY created_at DESC LIMIT 1'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1884:    ).bind(auth.userId, 'piprapay', 'pending').first();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1886:    const paymentId = (paymentRow as any)?.id;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1888:    // Call PipraPay API
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1889:    const { createPipraPayPayment } = await import('../lib/payment');
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1890:    const returnUrl = `https://dakkho-student.pages.dev/payment-result?pp_id={pp_id}&payment_id=${paymentId}`;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1891:    const webhookUrl = `https://dakkho-admin-api.dakkho-admin.workers.dev/api/payments/piprapay/webhook`;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1893:    const result = await createPipraPayPayment(c.env, {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1897:      amount: finalAmount,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1905:        payment_id: paymentId,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1911:      // Update payment as failed
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1913:        "UPDATE payments SET status = 'failed', metadata = ? WHERE id = ?"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1914:      ).bind(JSON.stringify({ error: result.error }), paymentId).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1919:    // Store pp_id in payment row
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1921:      'UPDATE payments SET gateway_payment_id = ?, gateway_trx_id = ? WHERE id = ?'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1922:    ).bind(result.pp_id, result.pp_id, paymentId).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1928:      payment_id: paymentId,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1935:// POST /payments/verify — Verify PipraPay payment status
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1936:studentApiRoutes.post('/payments/verify', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1948:    // Find the payment in D1
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1949:    const payment = await c.env.DB.prepare(
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1950:      'SELECT * FROM payments WHERE gateway_payment_id = ? OR gateway_trx_id = ? ORDER BY created_at DESC LIMIT 1'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1953:    if (!payment) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1954:      return c.json({ error: 'Payment not found' }, 404);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1957:    const p = payment as any;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1963:        amount: p.amount,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1970:    // Verify with PipraPay API
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1971:    const { verifyPipraPayPayment } = await import('../lib/payment');
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1972:    const result = await verifyPipraPayPayment(c.env, pp_id);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1977:        amount: p.amount,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1984:    // Map PipraPay status to our system
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1989:        UPDATE payments SET status = 'verified', gateway_trx_id = ?, verified_at = datetime('now'), updated_at = datetime('now') WHERE id = ?
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1999:        amount: p.amount,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2006:        "UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE id = ?"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2011:        amount: p.amount,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2014:        message: 'Payment was not completed successfully.',
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2020:        amount: p.amount,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2023:        message: 'Payment is still being processed.',
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2031:// POST /payments/piprapay/webhook — PipraPay webhook callback (NO auth)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2032:studentApiRoutes.post('/payments/piprapay/webhook', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2039:    const { verifyPipraPayWebhookSignature } = await import('../lib/payment');
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2040:    const sigResult = await verifyPipraPayWebhookSignature(c.env, rawBody, signatureHeader);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2042:      console.warn('PipraPay webhook signature invalid:', sigResult.reason);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2046:      console.warn('PipraPay webhook signature warning:', sigResult.reason);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2050:    const { pp_id, status, amount, currency, payment_method, metadata } = body;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2056:    // Find payment by pp_id (could be in gateway_payment_id or gateway_trx_id)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2057:    const payment = await c.env.DB.prepare(
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2058:      'SELECT * FROM payments WHERE gateway_payment_id = ? OR gateway_trx_id = ? ORDER BY created_at DESC LIMIT 1'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2061:    if (!payment) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2062:      // Payment not found — could be from a different system or not yet inserted
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2063:      // Try to find by metadata.payment_id
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2064:      if (metadata?.payment_id) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2065:        const altPayment = await c.env.DB.prepare(
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2066:          'SELECT * FROM payments WHERE id = ?'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2067:        ).bind(metadata.payment_id).first();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2069:        if (altPayment) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2070:          const ap = altPayment as any;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2079:              UPDATE payments SET status = 'verified', gateway_payment_id = ?, gateway_trx_id = ?, verified_at = datetime('now'), updated_at = datetime('now')
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2088:              "UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE id = ?"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2092:              UPDATE payments SET status = 'refunded', updated_at = datetime('now') WHERE id = ?
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2107:      return c.json({ error: 'Payment not found' }, 404);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2110:    const p = payment as any;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2121:        UPDATE payments SET status = 'verified', gateway_payment_id = ?, gateway_trx_id = ?, verified_at = datetime('now'), updated_at = datetime('now')
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2131:        "UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE id = ?"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2135:        "UPDATE payments SET status = 'refunded', updated_at = datetime('now') WHERE id = ?"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2148:    // Always return 200 to PipraPay so they don't retry unnecessarily
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2149:    console.error('PipraPay webhook error:', error);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2197:          payment: { push: true, email: true },
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2217:        payment: { push: !!p.payment_push, email: !!p.payment_email },
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2246:        payment_push, payment_email,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2264:        payment_push = excluded.payment_push,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2265:        payment_email = excluded.payment_email,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2287:      prefs.payment?.push ? 1 : 0,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:2288:      prefs.payment?.email ? 1 : 0,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3024:// ENROLLMENT & PAYMENT ROUTES (Piprapay)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3074:    let paymentStatus = 'none';
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3089:          paymentStatus = 'expired';
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3093:      // Check pending payment
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3095:        const pendingPayment = await c.env.DB.prepare(
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3096:          "SELECT * FROM payments WHERE user_id = ? AND course_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3099:        if (pendingPayment) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3100:          paymentStatus = 'pending';
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3105:    return c.json({ enrolled, enrollment, paymentStatus });
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3158:        return c.json({ error: 'This package requires payment. Use /payments/create instead.' }, 400);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3175:          return c.json({ error: 'This course requires payment. Use /payments/create instead.' }, 400);
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:2: * Payment Gateway Helpers
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:3: * Supports: Manual, SSLCommerz (plug & play), bKash (plug & play), PipraPay (plug & play)
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:16:interface SSLCommerzPaymentParams {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:17:  total_amount: number;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:41:  params: SSLCommerzPaymentParams
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:50:    sandbox: true, // Will read from payment_config
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:58:    total_amount: params.total_amount.toString(),
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:96:export async function verifySSLCommerzPayment(
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:163:export async function createBkashPayment(
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:166:    amount: number;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:174:): Promise<{ paymentURL: string; paymentID: string } | { error: string }> {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:194:        amount: params.amount.toString(),
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:205:        paymentURL: result.bkashURL as string,
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:206:        paymentID: result.paymentID as string,
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:209:      return { error: (result.errorMessage as string) || 'bKash payment creation failed' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:216:export async function executeBkashPayment(
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:218:  paymentID: string
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:235:      body: JSON.stringify({ paymentID }),
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:246:      return { error: (result.errorMessage as string) || 'bKash payment execution failed' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:253:// ─── PipraPay ───
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:255:export function getPipraPayBaseURL(env: Env): string {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:256:  return env.PIPRAPAY_BASE_URL || 'https://pay.dakkho.pro.bd';
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:259:export function getPipraPayHeaders(env: Env): Record<string, string> {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:262:    'MHS-PIPRAPAY-API-KEY': env.PIPRAPAY_API_KEY || '',
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:267: * Verify PipraPay webhook signature.
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:268: * PipraPay sends an 'hh_signature' header with HMAC-SHA256 of the payload using the API key.
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:272:export async function verifyPipraPayWebhookSignature(
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:279:    // PipraPay may not always send signatures depending on configuration
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:280:    return { valid: true, reason: 'No signature header — consider enabling webhook signing in PipraPay dashboard' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:283:  if (!env.PIPRAPAY_API_KEY) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:284:    return { valid: false, reason: 'PIPRAPAY_API_KEY not configured — cannot verify webhook signature' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:288:    // PipraPay uses HMAC-SHA256 with API key as secret
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:290:    const keyData = encoder.encode(env.PIPRAPAY_API_KEY);
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:329:export interface PipraPayCreateParams {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:333:  amount: number | string;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:340:export async function createPipraPayPayment(
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:342:  params: PipraPayCreateParams
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:344:  if (!env.PIPRAPAY_API_KEY) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:345:    return { error: 'PipraPay not configured. Set API key in Admin Panel.' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:348:  const baseURL = getPipraPayBaseURL(env);
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:353:      headers: getPipraPayHeaders(env),
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:358:        amount: String(params.amount),
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:374:      return { error: (result.message as string) || (result.error as string) || 'PipraPay payment creation failed' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:377:    return { error: error instanceof Error ? error.message : 'PipraPay request failed' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:381:export async function verifyPipraPayPayment(
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:387:  amount: string;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:389:  payment_method: string;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:394:  if (!env.PIPRAPAY_API_KEY) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:395:    return { error: 'PipraPay not configured' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:398:  const baseURL = getPipraPayBaseURL(env);
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:401:    const response = await fetch(`${baseURL}/api/verify-payment`, {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:403:      headers: getPipraPayHeaders(env),
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:413:        amount: (result.amount as string) || '0',
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:415:        payment_method: (result.payment_method as string) || '',
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:421:      return { error: (result.message as string) || (result.error as string) || 'PipraPay verification failed' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:424:    return { error: error instanceof Error ? error.message : 'PipraPay verification request failed' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:428:export async function refundPipraPayPayment(
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:432:  if (!env.PIPRAPAY_API_KEY) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:433:    return { error: 'PipraPay not configured' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:436:  const baseURL = getPipraPayBaseURL(env);
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:439:    const response = await fetch(`${baseURL}/api/refund-payment`, {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:441:      headers: getPipraPayHeaders(env),
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:450:      return { error: (result.message as string) || (result.error as string) || 'PipraPay refund failed' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/payment.ts:453:    return { error: error instanceof Error ? error.message : 'PipraPay refund request failed' };
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:65:    `CREATE TABLE IF NOT EXISTS payment_config (id INTEGER PRIMARY KEY AUTOINCREMENT, gateway TEXT NOT NULL UNIQUE, is_active INTEGER DEFAULT 0, config TEXT DEFAULT '{}', sandbox_mode INTEGER DEFAULT 1, instructions TEXT, instructions_bn TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')))`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:66:    `CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, package_id INTEGER, course_id TEXT, amount REAL NOT NULL, currency TEXT DEFAULT 'BDT', gateway TEXT NOT NULL, gateway_trx_id TEXT, gateway_payment_id TEXT, status TEXT DEFAULT 'pending', proof_url TEXT, trx_id_submitted TEXT, phone_submitted TEXT, verified_by TEXT, verified_at TEXT, metadata TEXT DEFAULT '{}', created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')))`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:67:    `CREATE TABLE IF NOT EXISTS notification_preferences (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, push_enabled INTEGER DEFAULT 1, email_enabled INTEGER DEFAULT 1, sms_enabled INTEGER DEFAULT 0, quiet_hours_start TEXT DEFAULT '22:00', quiet_hours_end TEXT DEFAULT '08:00', course_updates_push INTEGER DEFAULT 1, course_updates_email INTEGER DEFAULT 1, grades_push INTEGER DEFAULT 1, grades_email INTEGER DEFAULT 1, schedule_push INTEGER DEFAULT 1, schedule_email INTEGER DEFAULT 1, payment_push INTEGER DEFAULT 1, payment_email INTEGER DEFAULT 1, promotions_push INTEGER DEFAULT 0, promotions_email INTEGER DEFAULT 0, social_push INTEGER DEFAULT 1, social_email INTEGER DEFAULT 0, system_push INTEGER DEFAULT 1, system_email INTEGER DEFAULT 1, updated_at TEXT DEFAULT (datetime('now')), created_at TEXT DEFAULT (datetime('now')))`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:131:    // enrollments - add payment/enrollment-related columns
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:197:    `CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:198:    `CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:199:    `CREATE INDEX IF NOT EXISTS idx_payments_gateway ON payments(gateway)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:200:    `CREATE INDEX IF NOT EXISTS idx_payments_created ON payments(created_at DESC)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:238:    `INSERT OR IGNORE INTO payment_config (gateway, is_active, config, sandbox_mode, instructions, instructions_bn) VALUES ('manual', 1, '{}', 0, 'Send payment via bKash/Nagad to 01XXXXXXXXX and submit your Transaction ID below.', 'bKash/Nagad এ 01XXXXXXXXX নম্বরে পেমেন্ট পাঠিয়ে আপনার Transaction ID নিচে জমা দিন।')`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:239:    `INSERT OR IGNORE INTO payment_config (gateway, is_active, config, sandbox_mode, instructions, instructions_bn) VALUES ('sslcommerz', 0, '{}', 1, NULL, NULL)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:240:    `INSERT OR IGNORE INTO payment_config (gateway, is_active, config, sandbox_mode, instructions, instructions_bn) VALUES ('bkash', 0, '{}', 1, NULL, NULL)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:241:    `INSERT OR IGNORE INTO payment_config (gateway, is_active, config, sandbox_mode, instructions, instructions_bn) VALUES ('piprapay', 0, '{"api_key":"","base_url":"https://pay.dakkho.pro.bd"}', 0, 'Click "Pay Now" to pay via bKash/Nagad/Rocket automatically through PipraPay.', 'PipraPay এর মাধ্যমে "Pay Now" ক্লিক করে bKash/Nagad/Rocket এ অটোমেটিক পেমেন্ট করুন।')`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/onesignal.ts:230:      'payment': { push: 'payment_push', email: 'payment_email' },
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/auto-notifications.ts:7:  | 'payment' 
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/auto-notifications.ts:250:export async function notifyPaymentStatus(
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/auto-notifications.ts:260:    type: 'payment',
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/auto-notifications.ts:261:    title: isVerified ? 'Payment Verified' : 'Payment Rejected',
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/auto-notifications.ts:264:      ? `Your payment for "${packageName}" has been verified. Enjoy your course!`
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/auto-notifications.ts:265:      : `Your payment for "${packageName}" was rejected. Please contact support.`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/rate-limit.ts:14:  payment: { windowMs: 60 * 60 * 1000, maxRequests: 5 },    // 5 payment submissions per hour
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:2: * Payment Admin Routes
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:3: * - Manual payment verification
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:4: * - Payment config management
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:12:import { createSSLCommerzSession, createBkashPayment } from '../lib/payment';
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:16:const paymentRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:18:paymentRoutes.use('*', adminAuthMiddleware);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:20:// GET / — List payments
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:21:paymentRoutes.get('/', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:29:    let query = 'SELECT * FROM payments';
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:30:    let countQuery = 'SELECT COUNT(*) as total FROM payments';
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:56:    return c.json({ payments: result.results, total });
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:62:// PUT /:id/verify — Verify manual payment
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:63:paymentRoutes.put('/:id/verify', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:68:    // Get payment
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:69:    const payment = await c.env.DB.prepare('SELECT * FROM payments WHERE id = ?').bind(id).first();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:70:    if (!payment) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:71:      return c.json({ error: 'Payment not found' }, 404);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:74:    const p = payment as any;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:77:      return c.json({ error: 'Payment is not in pending status' }, 400);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:80:    // Update payment status
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:82:      UPDATE payments SET status = 'verified', verified_by = ?, verified_at = datetime('now'), updated_at = datetime('now') WHERE id = ?
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:85:    // If payment has a package, create user_package AND enrollment
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:130:            console.error('Failed to create enrollment on payment verify:', fallbackErr);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:136:    await logAudit(c.env, user.id, 'VERIFY_PAYMENT', 'payments', id);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:138:    return c.json({ success: true, message: 'Payment verified and package activated' });
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/payments.ts:144:// PUT /:id/reject — Reject manual payment
+
+[Showing results with pagination = limit: 250]

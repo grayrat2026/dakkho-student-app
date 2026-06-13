@@ -1,0 +1,1096 @@
+     1→import { create } from 'zustand';
+     2→
+     3→// ============ PAGE TYPES ============
+     4→export type Page =
+     5→  // Auth
+     6→  | 'login' | 'signup' | 'forgot-password'
+     7→  // Main
+     8→  | 'home' | 'explore' | 'search' | 'notifications' | 'profile'
+     9→  // Course
+    10→  | 'course-detail' | 'video-player'
+    11→  | 'course-curriculum' | 'course-reviews' | 'course-qa' | 'course-announcements'
+    12→  | 'course-resources' | 'course-notes' | 'course-quizzes' | 'course-progress'
+    13→  // Instructor
+    14→  | 'instructors' | 'instructor-profile'
+    15→  | 'instructor-courses' | 'instructor-reviews' | 'instructor-schedule' | 'instructor-contact'
+    16→  // User pages
+    17→  | 'my-courses' | 'bookmarks' | 'settings' | 'help'
+    18→  | 'watch-history' | 'downloads' | 'certificates' | 'live-sessions'
+    19→  | 'achievements' | 'assignment' | 'discussion' | 'about'
+    20→  // Department pages
+    21→  | 'dept-cse' | 'dept-ete' | 'dept-eee' | 'dept-me' | 'dept-ce'
+    22→  | 'dept-architecture' | 'dept-textile' | 'dept-chemical' | 'dept-automobile' | 'dept-rac'
+    23→  | 'dept-glass-ceramic' | 'dept-printing' | 'dept-surveying' | 'dept-mechatronics' | 'dept-mining'
+    24→  | 'dept-metallurgical' | 'dept-power' | 'dept-instrumentation' | 'dept-food' | 'dept-leather'
+    25→  // Semester pages
+    26→  | 'semester-1' | 'semester-2' | 'semester-3' | 'semester-4'
+    27→  | 'semester-5' | 'semester-6' | 'semester-7' | 'semester-8'
+    28→  // Profile sub-pages
+    29→  | 'edit-profile' | 'change-password' | 'learning-stats' | 'subscription' | 'referral' | 'delete-account' | 'verify-email'
+    30→  // Settings sub-pages
+    31→  | 'settings-account' | 'settings-notifications' | 'settings-privacy'
+    32→  | 'settings-language' | 'settings-theme' | 'settings-downloads' | 'settings-content-protection' | 'settings-sessions'
+    33→  | 'settings-video-quality' | 'settings-download-settings' | 'settings-network-data'
+    34→  // Help sub-pages
+    35→  | 'faq' | 'contact-support' | 'ticket-detail' | 'report-issue' | 'terms-of-service' | 'privacy-policy' | 'refund-policy'
+    36→  // Exam pages
+    37→  | 'exam-prep' | 'exam-schedule' | 'exam-results' | 'exam-practice' | 'exam-tips'
+    38→  // Social/Community pages
+    39→  | 'leaderboard' | 'study-groups' | 'peer-connections' | 'community' | 'feedback' | 'roadmap'
+    40→  // Category
+    41→  | 'category'
+    42→  // Misc pages
+    43→  | 'pricing' | 'changelog' | 'maintenance' | 'terms' | 'privacy'
+    44→  // Notification detail
+    45→  | 'notification-detail'
+    46→  // Payment status pages
+    47→  | 'payment-success' | 'payment-failed' | 'payment-cancel'
+    48→  // Error pages
+    49→  | 'error-404' | 'error-500';
+    50→
+    51→// ============ URL MAPPING ============
+    52→// Maps page names to URL paths and vice versa
+    53→const pageToPath: Record<string, string> = {
+    54→  'home': '/',
+    55→  'login': '/login',
+    56→  'signup': '/signup',
+    57→  'forgot-password': '/forgot-password',
+    58→  'explore': '/explore',
+    59→  'search': '/search',
+    60→  'notifications': '/notifications',
+    61→  'profile': '/profile',
+    62→  'course-detail': '/course/detail',
+    63→  'video-player': '/video/play',
+    64→  'course-curriculum': '/course/curriculum',
+    65→  'course-reviews': '/course/reviews',
+    66→  'course-qa': '/course/qa',
+    67→  'course-announcements': '/course/announcements',
+    68→  'course-resources': '/course/resources',
+    69→  'course-notes': '/course/notes',
+    70→  'course-quizzes': '/course/quizzes',
+    71→  'course-progress': '/course/progress',
+    72→  'instructors': '/instructors',
+    73→  'instructor-profile': '/instructor/profile',
+    74→  'instructor-courses': '/instructor/courses',
+    75→  'instructor-reviews': '/instructor/reviews',
+    76→  'instructor-schedule': '/instructor/schedule',
+    77→  'instructor-contact': '/instructor/contact',
+    78→  'my-courses': '/my-courses',
+    79→  'bookmarks': '/bookmarks',
+    80→  'settings': '/settings',
+    81→  'help': '/help',
+    82→  'watch-history': '/watch-history',
+    83→  'downloads': '/downloads',
+    84→  'certificates': '/certificates',
+    85→  'live-sessions': '/live-sessions',
+    86→  'achievements': '/achievements',
+    87→  'assignment': '/assignment',
+    88→  'discussion': '/discussion',
+    89→  'about': '/about',
+    90→  'dept-cse': '/department/cse',
+    91→  'dept-ete': '/department/ete',
+    92→  'dept-eee': '/department/eee',
+    93→  'dept-me': '/department/me',
+    94→  'dept-ce': '/department/ce',
+    95→  'dept-architecture': '/department/architecture',
+    96→  'dept-textile': '/department/textile',
+    97→  'dept-chemical': '/department/chemical',
+    98→  'dept-automobile': '/department/automobile',
+    99→  'dept-rac': '/department/rac',
+   100→  'dept-glass-ceramic': '/department/glass-ceramic',
+   101→  'dept-printing': '/department/printing',
+   102→  'dept-surveying': '/department/surveying',
+   103→  'dept-mechatronics': '/department/mechatronics',
+   104→  'dept-mining': '/department/mining',
+   105→  'dept-metallurgical': '/department/metallurgical',
+   106→  'dept-power': '/department/power',
+   107→  'dept-instrumentation': '/department/instrumentation',
+   108→  'dept-food': '/department/food',
+   109→  'dept-leather': '/department/leather',
+   110→  'semester-1': '/semester/1',
+   111→  'semester-2': '/semester/2',
+   112→  'semester-3': '/semester/3',
+   113→  'semester-4': '/semester/4',
+   114→  'semester-5': '/semester/5',
+   115→  'semester-6': '/semester/6',
+   116→  'semester-7': '/semester/7',
+   117→  'semester-8': '/semester/8',
+   118→  'edit-profile': '/profile/edit',
+   119→  'change-password': '/profile/change-password',
+   120→  'learning-stats': '/profile/learning-stats',
+   121→  'subscription': '/profile/subscription',
+   122→  'referral': '/profile/referral',
+   123→  'delete-account': '/profile/delete-account',
+   124→  'verify-email': '/profile/verify-email',
+   125→  'settings-account': '/settings/account',
+   126→  'settings-notifications': '/settings/notifications',
+   127→  'settings-privacy': '/settings/privacy',
+   128→  'settings-language': '/settings/language',
+   129→  'settings-theme': '/settings/theme',
+   130→  'settings-downloads': '/settings/downloads',
+   131→  'settings-video-quality': '/settings/video-quality',
+   132→  'settings-download-settings': '/settings/download-settings',
+   133→  'settings-network-data': '/settings/network-data',
+   134→  'settings-content-protection': '/settings/content-protection',
+   135→  'settings-sessions': '/settings/sessions',
+   136→  'faq': '/help/faq',
+   137→  'contact-support': '/help/contact-support',
+   138→  'ticket-detail': '/help/contact-support',
+   139→  'report-issue': '/help/report-issue',
+   140→  'terms-of-service': '/help/terms-of-service',
+   141→  'privacy-policy': '/help/privacy-policy',
+   142→  'refund-policy': '/help/refund-policy',
+   143→  'exam-prep': '/exam/prep',
+   144→  'exam-schedule': '/exam/schedule',
+   145→  'exam-results': '/exam/results',
+   146→  'exam-practice': '/exam/practice',
+   147→  'exam-tips': '/exam/tips',
+   148→  'leaderboard': '/community/leaderboard',
+   149→  'study-groups': '/community/study-groups',
+   150→  'peer-connections': '/community/peer-connections',
+   151→  'community': '/community',
+   152→  'feedback': '/community/feedback',
+   153→  'roadmap': '/community/roadmap',
+   154→  'category': '/category',
+   155→  'pricing': '/pricing',
+   156→  'changelog': '/changelog',
+   157→  'maintenance': '/maintenance',
+   158→  'terms': '/terms',
+   159→  'privacy': '/privacy',
+   160→  'notification-detail': '/notifications',
+   161→  'payment-success': '/payment/success',
+   162→  'payment-failed': '/payment/failed',
+   163→  'payment-cancel': '/payment/cancel',
+   164→  'error-404': '/error/404',
+   165→  'error-500': '/error/500',
+   166→};
+   167→
+   168→// Reverse mapping: path → page name
+   169→const pathToPage: Record<string, string> = {};
+   170→for (const [page, path] of Object.entries(pageToPath)) {
+   171→  pathToPage[path] = page;
+   172→}
+   173→
+   174→/** Convert a page name to a URL path, including dynamic params */
+   175→export function pageToUrl(page: string, params?: Record<string, unknown>): string {
+   176→  let path = pageToPath[page] || `/${page}`;
+   177→
+   178→  // Append dynamic params as URL segments
+   179→  if (params) {
+   180→    const extraSegments: string[] = [];
+   181→    if (params.courseId) extraSegments.push(String(params.courseId));
+   182→    // Course detail deep links: /course/detail/{courseId}/{tab}
+   183→    if (page === 'course-detail' && params.tab && params.courseId) {
+   184→      extraSegments.push(String(params.tab));
+   185→    }
+   186→    if (params.videoId) extraSegments.push(String(params.videoId));
+   187→    if (params.instructorId) extraSegments.push(String(params.instructorId));
+   188→    if (params.query) extraSegments.push(encodeURIComponent(String(params.query)));
+   189→    if (params.userId && params.notificationId) {
+   190→      // Notification detail: /notifications/{userId}/{notificationId}[/slug]
+   191→      extraSegments.push(String(params.userId));
+   192→      extraSegments.push(String(params.notificationId));
+   193→      if (params.notificationSlug) extraSegments.push(String(params.notificationSlug));
+   194→    } else if (params.userId) {
+   195→      extraSegments.push(String(params.userId));
+   196→    }
+   197→    if (extraSegments.length > 0) {
+   198→      path += '/' + extraSegments.join('/');
+   199→    }
+   200→  }
+   201→
+   202→  return path;
+   203→}
+   204→
+   205→/** Convert a URL path back to a page name and params */
+   206→export function urlToPage(urlPath: string): { page: string; params: Record<string, string> } {
+   207→  // Normalize: remove trailing slash
+   208→  const normalized = urlPath.replace(/\/+$/, '') || '/';
+   209→
+   210→  // Try exact match first
+   211→  const exactMatch = pathToPage[normalized];
+   212→  if (exactMatch) {
+   213→    return { page: exactMatch, params: {} };
+   214→  }
+   215→
+   216→  // Try matching with dynamic segments
+   217→  // e.g., /course/detail/c1 → { page: 'course-detail', params: { courseId: 'c1' } }
+   218→  // e.g., /search/web%20dev → { page: 'search', params: { query: 'web dev' } }
+   219→  // e.g., /instructor/profile/ins1 → { page: 'instructor-profile', params: { instructorId: 'ins1' } }
+   220→
+   221→  const segments = normalized.split('/').filter(Boolean);
+   222→
+   223→  // Try progressively shorter paths
+   224→  for (let i = segments.length; i >= 1; i--) {
+   225→    const prefix = '/' + segments.slice(0, i).join('/');
+   226→    const match = pathToPage[prefix];
+   227→    if (match) {
+   228→      const extraSegments = segments.slice(i);
+   229→      const params: Record<string, string> = {};
+   230→
+   231→      // Assign extra segments to known param keys based on page type
+   232→      if (match === 'course-detail' && extraSegments[0]) {
+   233→        params.courseId = extraSegments[0];
+   234→        // Support deep link tabs: /course/detail/{courseId}/{tab}
+   235→        // tab can be: 'overview', 'curriculum', 'reviews', 'instructor'
+   236→        if (extraSegments[1]) {
+   237→          const validTabs = ['overview', 'curriculum', 'reviews', 'instructor'];
+   238→          if (validTabs.includes(extraSegments[1])) {
+   239→            params.tab = extraSegments[1];
+   240→          }
+   241→        }
+   242→      }
+   243→      else if (match === 'video-player' && extraSegments[0]) params.videoId = extraSegments[0];
+   244→      else if (match === 'instructor-profile' && extraSegments[0]) params.instructorId = extraSegments[0];
+   245→      else if (match === 'search' && extraSegments[0]) params.query = decodeURIComponent(extraSegments[0]);
+   246→      else if (match === 'profile' && extraSegments[0]) params.userId = extraSegments[0];
+   247→      else if (match === 'notifications' && extraSegments.length >= 2) {
+   248→        // /notifications/{userId}/{notificationId}[/slug] → notification-detail page
+   249→        return { page: 'notification-detail' as Page, params: { userId: extraSegments[0], notificationId: extraSegments[1], ...(extraSegments.length > 2 ? { notificationSlug: extraSegments.slice(2).join('/') } : {}) } };
+   250→      }
+   251→      else {
+   252→        // Generic: store as param0, param1, etc.
+   253→        extraSegments.forEach((seg, idx) => {
+   254→          params[`param${idx}`] = seg;
+   255→        });
+   256→      }
+   257→
+   258→      return { page: match, params };
+   259→    }
+   260→  }
+   261→
+   262→  // No match found → 404
+   263→  return { page: 'error-404', params: {} };
+   264→}
+   265→
+   266→// ============ NAVIGATION STORE ============
+   267→interface NavigationState {
+   268→  currentPage: Page;
+   269→  pageParams: Record<string, unknown>;
+   270→  navigate: (page: Page, params?: Record<string, unknown>) => void;
+   271→  goBack: () => void;
+   272→  history: Array<{ page: Page; params: Record<string, unknown> }>;
+   273→  sidebarOpen: boolean;
+   274→  toggleSidebar: () => void;
+   275→  setSidebarOpen: (open: boolean) => void;
+   276→  syncFromUrl: (urlPath: string) => void;
+   277→}
+   278→
+   279→let isNavigatingProgrammatically = false;
+   280→
+   281→export const useNavigationStore = create<NavigationState>((set, get) => ({
+   282→  currentPage: 'home',
+   283→  pageParams: {},
+   284→  history: [],
+   285→  sidebarOpen: false,
+   286→  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+   287→  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+   288→  navigate: (page, params = {}) => {
+   289→    const state = get();
+   290→    const url = pageToUrl(page, params);
+   291→
+   292→    // Update browser URL
+   293→    if (typeof window !== 'undefined') {
+   294→      isNavigatingProgrammatically = true;
+   295→      window.history.pushState({ page, params }, '', url);
+   296→      // Reset the flag after a microtask
+   297→      queueMicrotask(() => { isNavigatingProgrammatically = false; });
+   298→    }
+   299→
+   300→    set({
+   301→      currentPage: page,
+   302→      pageParams: params,
+   303→      history: [...state.history, { page: state.currentPage, params: state.pageParams }],
+   304→    });
+   305→  },
+   306→  goBack: () => {
+   307→    const state = get();
+   308→    if (typeof window !== 'undefined') {
+   309→      window.history.back();
+   310→    }
+   311→    if (state.history.length > 0) {
+   312→      const prev = state.history[state.history.length - 1];
+   313→      set({
+   314→        currentPage: prev.page,
+   315→        pageParams: prev.params,
+   316→        history: state.history.slice(0, -1),
+   317→      });
+   318→    }
+   319→  },
+   320→  syncFromUrl: (urlPath: string) => {
+   321→    const { page, params } = urlToPage(urlPath);
+   322→    if (page !== get().currentPage || JSON.stringify(params) !== JSON.stringify(get().pageParams)) {
+   323→      set({
+   324→        currentPage: page as Page,
+   325→        pageParams: params,
+   326→      });
+   327→    }
+   328→  },
+   329→}));
+   330→
+   331→// ============ AUTH STORE ============
+   332→import { authApi, setAuthToken, clearAuthToken, getAuthToken, setPendingVerificationToken, clearPendingVerificationToken, getPendingVerificationToken } from './api-client';
+   333→import { technologyApi, instituteApi } from './api-client';
+   334→
+   335→export interface User {
+   336→  id: string;
+   337→  fullName: string;
+   338→  email: string;
+   339→  institute?: string;       // institute name (for display)
+   340→  instituteId?: number;     // institute ID (for API calls)
+   341→  technology?: string;      // technology short_code (for API/edit matching)
+   342→  technologyName?: string;  // technology full name (for display)
+   343→  avatarUrl?: string;
+   344→  role: string;
+   345→  isNewUser?: boolean;
+   346→  enrolledCourseIds?: string[];
+   347→  emailVerified?: boolean;
+   348→}
+   349→
+   350→interface AuthState {
+   351→  user: User | null;
+   352→  isAuthenticated: boolean;
+   353→  needsVerification: boolean;  // true after signup, before OTP verification
+   354→  pendingVerificationEmail: string | null;  // email of the user pending verification
+   355→  isHydrated: boolean;  // true once we've read localStorage on the client
+   356→  isLoading: boolean;
+   357→  login: (email: string, password: string) => Promise<void>;
+   358→  signup: (data: { fullName: string; email: string; password: string; instituteId?: number; technology?: string }) => Promise<{ token: string; userId: string }>;
+   359→  logout: () => Promise<void>;
+   360→  forgotPassword: (email: string) => Promise<void>;
+   361→  resetPassword: (email: string, otp: string, newPassword: string) => Promise<boolean>;
+   362→  verifyOTP: (email: string, otp: string) => Promise<boolean>;
+   363→  resendOTP: (email: string) => Promise<void>;
+   364→  updateProfile: (data: { fullName?: string; instituteId?: number; technology?: string; bio?: string; phone?: string; semester?: string; avatarUrl?: string }) => Promise<void>;
+   365→  setUser: (user: User | null) => void;
+   366→  hydrateAuth: () => void;  // read localStorage and set isHydrated
+   367→  refreshUser: () => Promise<void>;
+   368→}
+   369→
+   370→// ============ AUTH PERSISTENCE ============
+   371→const AUTH_STORAGE_KEY = 'dakkho-auth-session';
+   372→const PENDING_VERIFICATION_KEY = 'dakkho-pending-verification';
+   373→
+   374→const loadAuthSession = (): { user: User | null; isAuthenticated: boolean; needsVerification: boolean; pendingVerificationEmail: string | null } => {
+   375→  if (typeof window === 'undefined') return { user: null, isAuthenticated: false, needsVerification: false, pendingVerificationEmail: null };
+   376→  try {
+   377→    // Check for pending verification state first
+   378→    const pendingStored = localStorage.getItem(PENDING_VERIFICATION_KEY);
+   379→    const pendingToken = getPendingVerificationToken();
+   380→    if (pendingStored && pendingToken) {
+   381→      const parsed = JSON.parse(pendingStored);
+   382→      return { user: parsed.user, isAuthenticated: false, needsVerification: true, pendingVerificationEmail: parsed.user?.email || null };
+   383→    }
+   384→
+   385→    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+   386→    const token = localStorage.getItem('dakkho_student_token');
+   387→    if (stored && token) {
+   388→      const parsed = JSON.parse(stored);
+   389→      if (parsed.expiresAt && Date.now() < parsed.expiresAt) {
+   390→        return { user: parsed.user, isAuthenticated: parsed.isAuthenticated, needsVerification: false, pendingVerificationEmail: null };
+   391→      }
+   392→      localStorage.removeItem(AUTH_STORAGE_KEY);
+   393→      localStorage.removeItem('dakkho_student_token');
+   394→    }
+   395→  } catch {}
+   396→  return { user: null, isAuthenticated: false, needsVerification: false, pendingVerificationEmail: null };
+   397→};
+   398→
+   399→const saveAuthSession = (user: User | null, isAuthenticated: boolean) => {
+   400→  if (typeof window === 'undefined') return;
+   401→  try {
+   402→    if (isAuthenticated && user) {
+   403→      const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
+   404→      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ user, isAuthenticated, expiresAt }));
+   405→    } else {
+   406→      localStorage.removeItem(AUTH_STORAGE_KEY);
+   407→    }
+   408→  } catch {}
+   409→};
+   410→
+   411→const savePendingVerification = (user: User, token: string) => {
+   412→  if (typeof window === 'undefined') return;
+   413→  try {
+   414→    localStorage.setItem(PENDING_VERIFICATION_KEY, JSON.stringify({ user }));
+   415→    setPendingVerificationToken(token);
+   416→  } catch {}
+   417→};
+   418→
+   419→const clearPendingVerification = () => {
+   420→  if (typeof window === 'undefined') return;
+   421→  try {
+   422→    localStorage.removeItem(PENDING_VERIFICATION_KEY);
+   423→    clearPendingVerificationToken();
+   424→  } catch {}
+   425→};
+   426→
+   427→// IMPORTANT: Always initialise as unauthenticated so that the first
+   428→// client render matches the server render (SSR always renders as
+   429→// unauthenticated).  The real session is loaded in a useEffect via
+   430→// hydrateAuth() which runs AFTER hydration, avoiding a mismatch.
+   431→export const useAuthStore = create<AuthState>((set, get) => ({
+   432→  user: null,
+   433→  isAuthenticated: false,
+   434→  needsVerification: false,
+   435→  pendingVerificationEmail: null,
+   436→  isHydrated: false,
+   437→  isLoading: false,
+   438→  login: async (email, password) => {
+   439→    set({ isLoading: true });
+   440→    try {
+   441→      const res = await authApi.login({ email, password });
+   442→      if (res.success && res.token) {
+   443→        setAuthToken(res.token);
+   444→        const user: User = {
+   445→          id: res.user?.id || '',
+   446→          fullName: res.user?.name || '',
+   447→          email: res.user?.email || email,
+   448→          institute: res.user?.instituteName || undefined,
+   449→          instituteId: res.user?.instituteId || undefined,
+   450→          technology: res.user?.technology || undefined,
+   451→          technologyName: res.user?.technologyName || undefined,
+   452→          emailVerified: res.user?.emailVerified || false,
+   453→          avatarUrl: '',
+   454→          role: 'student',
+   455→          isNewUser: false,
+   456→          enrolledCourseIds: [],
+   457→        };
+   458→        set({ user, isAuthenticated: true, isLoading: false });
+   459→        saveAuthSession(user, true);
+   460→        // Initialize web push notifications after successful login
+   461→        try {
+   462→          const { initPushNotifications } = await import('./web-push');
+   463→          await initPushNotifications();
+   464→        } catch (e) {
+   465→          // Non-critical — don't fail login
+   466→        }
+   467→      } else {
+   468→        throw new Error(res.message || 'Login failed');
+   469→      }
+   470→    } catch (err: any) {
+   471→      set({ isLoading: false });
+   472→      throw new Error(err.message || 'Invalid email or password');
+   473→    }
+   474→  },
+   475→  signup: async (data) => {
+   476→    set({ isLoading: true });
+   477→    try {
+   478→      const res = await authApi.signup({
+   479→        fullName: data.fullName,
+   480→        email: data.email,
+   481→        password: data.password,
+   482→        instituteId: data.instituteId,
+   483→        technology: data.technology,
+   484→      });
+   485→      if (res.success && res.token) {
+   486→        const user: User = {
+   487→          id: res.userId || '',
+   488→          fullName: data.fullName,
+   489→          email: data.email,
+   490→          institute: res.user?.instituteName || undefined,
+   491→          instituteId: data.instituteId,
+   492→          technology: data.technology,
+   493→          technologyName: res.user?.technologyName || undefined,
+   494→          avatarUrl: '',
+   495→          role: 'student',
+   496→          isNewUser: true,
+   497→          emailVerified: false,
+   498→          enrolledCourseIds: [],
+   499→        };
+   500→        // Do NOT set isAuthenticated — user must verify OTP first.
+   501→        // Store the token in the pending key so API calls (like verify-otp) work,
+   502→        // but the user is NOT considered authenticated until OTP is verified.
+   503→        savePendingVerification(user, res.token);
+   504→        set({ user, isAuthenticated: false, needsVerification: true, pendingVerificationEmail: data.email, isLoading: false });
+   505→        return { token: res.token, userId: res.userId || '' };
+   506→      } else {
+   507→        throw new Error(res.message || 'Signup failed');
+   508→      }
+   509→    } catch (err: any) {
+   510→      set({ isLoading: false });
+   511→      throw new Error(err.message || 'Signup failed. Please try again.');
+   512→    }
+   513→  },
+   514→  logout: async () => {
+   515→    try {
+   516→      await authApi.logout();
+   517→    } catch {}
+   518→    clearAuthToken();
+   519→    clearPendingVerification();
+   520→    set({ user: null, isAuthenticated: false, needsVerification: false, pendingVerificationEmail: null });
+   521→    saveAuthSession(null, false);
+   522→  },
+   523→  forgotPassword: async (email) => {
+   524→    set({ isLoading: true });
+   525→    try {
+   526→      await authApi.forgotPassword({ email });
+   527→    } catch (err: any) {
+   528→      throw new Error(err.message || 'Failed to send reset email');
+   529→    } finally {
+   530→      set({ isLoading: false });
+   531→    }
+   532→  },
+   533→  resetPassword: async (email, otp, newPassword) => {
+   534→    set({ isLoading: true });
+   535→    try {
+   536→      const res = await authApi.resetPassword({ email, otp, newPassword });
+   537→      if (res.success) {
+   538→        return true;
+   539→      }
+   540→      throw new Error(res.message || 'Password reset failed');
+   541→    } catch (err: any) {
+   542→      throw new Error(err.message || 'Password reset failed');
+   543→    } finally {
+   544→      set({ isLoading: false });
+   545→    }
+   546→  },
+   547→  verifyOTP: async (email, otp) => {
+   548→    try {
+   549→      const res = await authApi.verifyOTP({ email, otp });
+   550→      if (res.success) {
+   551→        const user = get().user;
+   552→        if (user) {
+   553→          const updatedUser = { ...user, emailVerified: true };
+   554→          // OTP verified — user is now fully authenticated.
+   555→          // Move the pending token to the main auth token key.
+   556→          const pendingToken = getPendingVerificationToken();
+   557→          if (pendingToken) {
+   558→            setAuthToken(pendingToken);
+   559→            clearPendingVerificationToken();
+   560→          }
+   561→          clearPendingVerification();
+   562→          set({ user: updatedUser, isAuthenticated: true, needsVerification: false, pendingVerificationEmail: null });
+   563→          saveAuthSession(updatedUser, true);
+   564→        }
+   565→        return true;
+   566→      }
+   567→      return false;
+   568→    } catch {
+   569→      return false;
+   570→    }
+   571→  },
+   572→  resendOTP: async (email) => {
+   573→    try {
+   574→      await authApi.resendOTP({ email });
+   575→    } catch {}
+   576→  },
+   577→  updateProfile: async (data) => {
+   578→    try {
+   579→      const res = await authApi.updateProfile(data);
+   580→      if (res.success && res.user) {
+   581→        const updatedUser: User = {
+   582→          ...get().user!,
+   583→          fullName: res.user.name || get().user?.fullName || '',
+   584→          institute: res.user.instituteName || undefined,
+   585→          instituteId: res.user.instituteId || undefined,
+   586→          technology: res.user.technology || undefined,
+   587→          technologyName: res.user.technologyName || undefined,
+   588→        };
+   589→        set({ user: updatedUser });
+   590→        saveAuthSession(updatedUser, true);
+   591→      }
+   592→    } catch (err: any) {
+   593→      throw new Error(err.message || 'Profile update failed');
+   594→    }
+   595→  },
+   596→  setUser: (user) => {
+   597→    set({ user, isAuthenticated: !!user, needsVerification: false, pendingVerificationEmail: null });
+   598→    saveAuthSession(user, !!user);
+   599→  },
+   600→  hydrateAuth: () => {
+   601→    const session = loadAuthSession();
+   602→    set({
+   603→      user: session.user,
+   604→      isAuthenticated: session.isAuthenticated,
+   605→      needsVerification: session.needsVerification,
+   606→      pendingVerificationEmail: session.pendingVerificationEmail,
+   607→      isHydrated: true,
+   608→    });
+   609→  },
+   610→  refreshUser: async () => {
+   611→    try {
+   612→      const token = getAuthToken();
+   613→      if (!token) return;
+   614→      const res = await authApi.me();
+   615→      if (res.user) {
+   616→        const user: User = {
+   617→          id: res.user.id,
+   618→          fullName: res.user.name,
+   619→          email: res.user.email,
+   620→          institute: res.user.instituteName || undefined,
+   621→          instituteId: res.user.instituteId || undefined,
+   622→          technology: res.user.technology || undefined,
+   623→          technologyName: res.user.technologyName || undefined,
+   624→          emailVerified: res.user.emailVerified,
+   625→          avatarUrl: '',
+   626→          role: 'student',
+   627→        };
+   628→        set({ user });
+   629→        saveAuthSession(user, true);
+   630→      }
+   631→    } catch {}
+   632→  },
+   633→}));
+   634→
+   635→// ============ THEME STORE ============
+   636→interface ThemeState {
+   637→  theme: 'light' | 'dark';
+   638→  themeMode: 'light' | 'dark' | 'system';
+   639→  setThemeMode: (mode: 'light' | 'dark' | 'system') => void;
+   640→  toggleTheme: () => void;
+   641→  loadFromPreferences: (mode: 'light' | 'dark' | 'system') => void;
+   642→}
+   643→
+   644→const applyThemeMode = (mode: 'light' | 'dark' | 'system'): 'light' | 'dark' => {
+   645→  let effectiveTheme: 'light' | 'dark';
+   646→  if (mode === 'system') {
+   647→    effectiveTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+   648→  } else {
+   649→    effectiveTheme = mode;
+   650→  }
+   651→  if (effectiveTheme === 'dark') {
+   652→    document.documentElement.classList.add('dark');
+   653→  } else {
+   654→    document.documentElement.classList.remove('dark');
+   655→  }
+   656→  return effectiveTheme;
+   657→};
+   658→
+   659→export const useThemeStore = create<ThemeState>((set, get) => ({
+   660→  theme: 'light',
+   661→  themeMode: 'system',
+   662→  setThemeMode: (mode) => {
+   663→    if (typeof window !== 'undefined') {
+   664→      localStorage.setItem('dakkho_theme_mode', mode);
+   665→      const effectiveTheme = applyThemeMode(mode);
+   666→      set({ themeMode: mode, theme: effectiveTheme });
+   667→    }
+   668→  },
+   669→  toggleTheme: () => {
+   670→    const next = get().theme === 'light' ? 'dark' : 'light';
+   671→    set({ theme: next, themeMode: next });
+   672→    if (typeof window !== 'undefined') {
+   673→      localStorage.setItem('dakkho_theme_mode', next);
+   674→    }
+   675→    if (next === 'dark') {
+   676→      document.documentElement.classList.add('dark');
+   677→    } else {
+   678→      document.documentElement.classList.remove('dark');
+   679→    }
+   680→  },
+   681→  loadFromPreferences: (mode) => {
+   682→    if (typeof window !== 'undefined') {
+   683→      localStorage.setItem('dakkho_theme_mode', mode);
+   684→      const effectiveTheme = applyThemeMode(mode);
+   685→      set({ themeMode: mode, theme: effectiveTheme });
+   686→    }
+   687→  },
+   688→}));
+   689→
+   690→// ============ WATCH PROGRESS STORE ============
+   691→export interface WatchProgress {
+   692→  videoId: string;
+   693→  courseId: string;
+   694→  lastPosition: number;
+   695→  progress: number;
+   696→  completed: boolean;
+   697→  lastWatched: number;
+   698→}
+   699→
+   700→interface WatchProgressState {
+   701→  progress: Record<string, WatchProgress>;
+   702→  updateProgress: (videoId: string, data: Partial<WatchProgress>) => void;
+   703→  getProgress: (videoId: string) => WatchProgress | undefined;
+   704→}
+   705→
+   706→const loadProgress = (): Record<string, WatchProgress> => {
+   707→  if (typeof window === 'undefined') return {};
+   708→  try {
+   709→    const stored = localStorage.getItem('dakkho-watch-progress');
+   710→    return stored ? JSON.parse(stored) : {};
+   711→  } catch {
+   712→    return {};
+   713→  }
+   714→};
+   715→
+   716→const saveProgress = (progress: Record<string, WatchProgress>) => {
+   717→  if (typeof window === 'undefined') return;
+   718→  try {
+   719→    localStorage.setItem('dakkho-watch-progress', JSON.stringify(progress));
+   720→  } catch {}
+   721→};
+   722→
+   723→export const useWatchProgressStore = create<WatchProgressState>((set, get) => ({
+   724→  progress: loadProgress(),
+   725→  updateProgress: (videoId, data) => {
+   726→    const current = get().progress;
+   727→    const updated = {
+   728→      ...current,
+   729→      [videoId]: { ...current[videoId], videoId, ...data, lastWatched: Date.now() } as WatchProgress,
+   730→    };
+   731→    set({ progress: updated });
+   732→    saveProgress(updated);
+   733→  },
+   734→  getProgress: (videoId) => get().progress[videoId],
+   735→}));
+   736→
+   737→// ============ BOOKMARK STORE ============
+   738→interface BookmarkState {
+   739→  bookmarks: string[];
+   740→  toggleBookmark: (courseId: string) => void;
+   741→  isBookmarked: (courseId: string) => boolean;
+   742→}
+   743→
+   744→const loadBookmarks = (): string[] => {
+   745→  if (typeof window === 'undefined') return [];
+   746→  try {
+   747→    const stored = localStorage.getItem('dakkho-bookmarks');
+   748→    return stored ? JSON.parse(stored) : [];
+   749→  } catch {
+   750→    return [];
+   751→  }
+   752→};
+   753→
+   754→const saveBookmarks = (bookmarks: string[]) => {
+   755→  if (typeof window === 'undefined') return;
+   756→  try {
+   757→    localStorage.setItem('dakkho-bookmarks', JSON.stringify(bookmarks));
+   758→  } catch {}
+   759→};
+   760→
+   761→export const useBookmarkStore = create<BookmarkState>((set, get) => ({
+   762→  bookmarks: loadBookmarks(),
+   763→  toggleBookmark: (courseId) => {
+   764→    const current = get().bookmarks;
+   765→    const updated = current.includes(courseId)
+   766→      ? current.filter((id) => id !== courseId)
+   767→      : [...current, courseId];
+   768→    set({ bookmarks: updated });
+   769→    saveBookmarks(updated);
+   770→  },
+   771→  isBookmarked: (courseId) => get().bookmarks.includes(courseId),
+   772→}));
+   773→
+   774→// ============ NOTIFICATION STORE ============
+   775→export interface AppNotification {
+   776→  id: string;
+   777→  title: string;
+   778→  message: string;
+   779→  type: 'info' | 'success' | 'warning' | 'error' | 'announcement' | 'support';
+   780→  isRead: boolean;
+   781→  createdAt: string;
+   782→  actionUrl?: string;
+   783→  category?: string;
+   784→}
+   785→
+   786→// ── localStorage persistence helpers ──
+   787→const NOTIF_STORAGE_KEY = 'dakkho_notifications';
+   788→
+   789→const saveNotifToStorage = (notifs: AppNotification[]) => {
+   790→  if (typeof window === 'undefined') return;
+   791→  try {
+   792→    localStorage.setItem(NOTIF_STORAGE_KEY, JSON.stringify(notifs));
+   793→  } catch {}
+   794→};
+   795→
+   796→const loadNotifFromStorage = (): AppNotification[] => {
+   797→  if (typeof window === 'undefined') return [];
+   798→  try {
+   799→    const stored = localStorage.getItem(NOTIF_STORAGE_KEY);
+   800→    return stored ? JSON.parse(stored) : [];
+   801→  } catch { return []; }
+   802→};
+   803→
+   804→interface NotificationState {
+   805→  notifications: AppNotification[];
+   806→  markAsRead: (id: string) => void;
+   807→  markAllAsRead: () => void;
+   808→  unreadCount: () => number;
+   809→  addNotification: (notification: AppNotification) => void;
+   810→  addNotifications: (notifications: AppNotification[]) => void;
+   811→  removeNotification: (id: string) => void;
+   812→  hydrateFromStorage: () => void;
+   813→}
+   814→
+   815→export const useNotificationStore = create<NotificationState>((set, get) => ({
+   816→  notifications: [],
+   817→  markAsRead: (id) => {
+   818→    set((s) => {
+   819→      const updated = s.notifications.map((n) =>
+   820→        n.id === id ? { ...n, isRead: true } : n
+   821→      );
+   822→      saveNotifToStorage(updated);
+   823→      return { notifications: updated };
+   824→    });
+   825→  },
+   826→  markAllAsRead: () => {
+   827→    set((s) => {
+   828→      const updated = s.notifications.map((n) => ({ ...n, isRead: true }));
+   829→      saveNotifToStorage(updated);
+   830→      return { notifications: updated };
+   831→    });
+   832→  },
+   833→  unreadCount: () => get().notifications.filter((n) => !n.isRead).length,
+   834→  addNotification: (notification) => {
+   835→    set((s) => {
+   836→      // Avoid duplicates by ID
+   837→      if (s.notifications.some((n) => n.id === notification.id)) {
+   838→        return s;
+   839→      }
+   840→      const updated = [notification, ...s.notifications];
+   841→      saveNotifToStorage(updated);
+   842→      return { notifications: updated };
+   843→    });
+   844→  },
+   845→  addNotifications: (newNotifs) => {
+   846→    set((s) => {
+   847→      const existingIds = new Set(s.notifications.map((n) => n.id));
+   848→      const unique = newNotifs.filter((n) => !existingIds.has(n.id));
+   849→      if (unique.length === 0) return s;
+   850→      const updated = [...unique, ...s.notifications];
+   851→      saveNotifToStorage(updated);
+   852→      return { notifications: updated };
+   853→    });
+   854→  },
+   855→  removeNotification: (id) => {
+   856→    set((s) => {
+   857→      const updated = s.notifications.filter((n) => n.id !== id);
+   858→      saveNotifToStorage(updated);
+   859→      return { notifications: updated };
+   860→    });
+   861→  },
+   862→  hydrateFromStorage: () => {
+   863→    const stored = loadNotifFromStorage();
+   864→    if (stored.length > 0) {
+   865→      set({ notifications: stored });
+   866→    }
+   867→  },
+   868→}));
+   869→
+   870→// ============ SEARCH STORE ============
+   871→interface SearchState {
+   872→  query: string;
+   873→  recentSearches: string[];
+   874→  setQuery: (q: string) => void;
+   875→  addRecentSearch: (q: string) => void;
+   876→  clearRecentSearches: () => void;
+   877→}
+   878→
+   879→const loadRecent = (): string[] => {
+   880→  if (typeof window === 'undefined') return [];
+   881→  try {
+   882→    const stored = localStorage.getItem('dakkho-recent-searches');
+   883→    return stored ? JSON.parse(stored) : [];
+   884→  } catch {
+   885→    return [];
+   886→  }
+   887→};
+   888→
+   889→const saveRecent = (searches: string[]) => {
+   890→  if (typeof window === 'undefined') return;
+   891→  try {
+   892→    localStorage.setItem('dakkho-recent-searches', JSON.stringify(searches));
+   893→  } catch {}
+   894→};
+   895→
+   896→export const useSearchStore = create<SearchState>((set, get) => ({
+   897→  query: '',
+   898→  recentSearches: loadRecent(),
+   899→  setQuery: (q) => set({ query: q }),
+   900→  addRecentSearch: (q) => {
+   901→    if (!q.trim()) return;
+   902→    const current = get().recentSearches.filter((s) => s !== q);
+   903→    const updated = [q, ...current].slice(0, 10);
+   904→    set({ recentSearches: updated });
+   905→    saveRecent(updated);
+   906→  },
+   907→  clearRecentSearches: () => {
+   908→    set({ recentSearches: [] });
+   909→    saveRecent([]);
+   910→  },
+   911→}));
+   912→
+   913→// ============ CONTENT PROTECTION STORE ============
+   914→interface ContentProtectionState {
+   915→  enabled: boolean;
+   916→  noCopy: boolean;
+   917→  noRightClick: boolean;
+   918→  noScreenshot: boolean;
+   919→  noPrint: boolean;
+   920→  customContextMenu: boolean;
+   921→  watermark: boolean;
+   922→  dragProtection: boolean;
+   923→  setEnabled: (v: boolean) => void;
+   924→  setNoCopy: (v: boolean) => void;
+   925→  setNoRightClick: (v: boolean) => void;
+   926→  setNoScreenshot: (v: boolean) => void;
+   927→  setNoPrint: (v: boolean) => void;
+   928→  setCustomContextMenu: (v: boolean) => void;
+   929→  setWatermark: (v: boolean) => void;
+   930→  setDragProtection: (v: boolean) => void;
+   931→}
+   932→
+   933→export const useContentProtectionStore = create<ContentProtectionState>((set) => ({
+   934→  enabled: true,
+   935→  noCopy: false,
+   936→  noRightClick: false,
+   937→  noScreenshot: false,
+   938→  noPrint: true,
+   939→  customContextMenu: true,
+   940→  watermark: false,
+   941→  dragProtection: true,
+   942→  setEnabled: (v) => set({ enabled: v }),
+   943→  setNoCopy: (v) => set({ noCopy: v }),
+   944→  setNoRightClick: (v) => set({ noRightClick: v }),
+   945→  setNoScreenshot: (v) => set({ noScreenshot: v }),
+   946→  setNoPrint: (v) => set({ noPrint: v }),
+   947→  setCustomContextMenu: (v) => set({ customContextMenu: v }),
+   948→  setWatermark: (v) => set({ watermark: v }),
+   949→  setDragProtection: (v) => set({ dragProtection: v }),
+   950→}));
+   951→
+   952→// ============ SERVER CONFIG STORE ============
+   953→export interface ContentProtectionConfig {
+   954→  enabled: boolean;
+   955→  noCopy: boolean;
+   956→  noRightClick: boolean;
+   957→  noScreenshot: boolean;
+   958→  noPrint: boolean;
+   959→  customContextMenu: boolean;
+   960→  watermark: boolean;
+   961→  dragProtection: boolean;
+   962→}
+   963→
+   964→export interface FeaturesConfig {
+   965→  downloads: boolean;
+   966→  bookmarks: boolean;
+   967→  certificates: boolean;
+   968→  liveSessions: boolean;
+   969→  achievements: boolean;
+   970→  assignments: boolean;
+   971→  discussions: boolean;
+   972→  community: boolean;
+   973→  leaderboard: boolean;
+   974→  studyGroups: boolean;
+   975→  peerConnections: boolean;
+   976→  feedback: boolean;
+   977→  pricing: boolean;
+   978→  referral: boolean;
+   979→}
+   980→
+   981→export interface UIConfig {
+   982→  homeSections: string[];
+   983→  sidebarSections: Record<string, boolean>;
+   984→  bottomNavTabs: string[];
+   985→  topBarElements: {
+   986→    search: boolean;
+   987→    notifications: boolean;
+   988→    avatar: boolean;
+   989→    hamburger: boolean;
+   990→  };
+   991→  cardStyle: 'glass' | 'flat' | 'rounded';
+   992→}
+   993→
+   994→export interface ServerConfig {
+   995→  contentProtection: ContentProtectionConfig;
+   996→  features: FeaturesConfig;
+   997→  ui: UIConfig;
+   998→}
+   999→
+  1000→interface ServerConfigState {
+  1001→  config: ServerConfig | null;
+  1002→  isLoading: boolean;
+  1003→  error: string | null;
+  1004→  fetchConfig: () => Promise<void>;
+  1005→  isFeatureEnabled: (feature: string) => boolean;
+  1006→  isHomeSectionVisible: (section: string) => boolean;
+  1007→  isSidebarSectionVisible: (section: string) => boolean;
+  1008→  isBottomNavTabVisible: (tab: string) => boolean;
+  1009→  isTopBarElementVisible: (element: string) => boolean;
+  1010→}
+  1011→
+  1012→const DEFAULT_CONFIG: ServerConfig = {
+  1013→  contentProtection: {
+  1014→    enabled: true, noCopy: true, noRightClick: true,
+  1015→    noScreenshot: true, noPrint: true, customContextMenu: true,
+  1016→    watermark: false, dragProtection: true,
+  1017→  },
+  1018→  features: {
+  1019→    downloads: true, bookmarks: true, certificates: true,
+  1020→    liveSessions: true, achievements: true, assignments: true,
+  1021→    discussions: true, community: true, leaderboard: true,
+  1022→    studyGroups: true, peerConnections: true, feedback: true,
+  1023→    pricing: true, referral: true,
+  1024→  },
+  1025→  ui: {
+  1026→    homeSections: ['hero', 'continue-watching', 'categories', 'new-releases', 'live', 'trending', 'instructors', 'leaderboard', 'recommended'],
+  1027→    sidebarSections: { menu: true, departments: true, semesters: true, exams: true, community: true, general: true },
+  1028→    bottomNavTabs: ['home', 'explore', 'my-courses', 'watch-history', 'profile'],
+  1029→    topBarElements: { search: true, notifications: true, avatar: true, hamburger: true },
+  1030→    cardStyle: 'glass',
+  1031→  },
+  1032→};
+  1033→
+  1034→export const useServerConfigStore = create<ServerConfigState>((set, get) => ({
+  1035→  config: null,
+  1036→  isLoading: false,
+  1037→  error: null,
+  1038→
+  1039→  fetchConfig: async () => {
+  1040→    set({ isLoading: true, error: null });
+  1041→    try {
+  1042→      const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://dakkho-admin-api.dakkho-admin.workers.dev';
+  1043→      const res = await fetch(`${API_BASE}/api/config`);
+  1044→      if (!res.ok) throw new Error('Failed to fetch config');
+  1045→      const data = await res.json();
+  1046→      const rawConfig = data.config || data;
+  1047→      // Deep merge with defaults so partial API responses don't crash
+  1048→      const mergedConfig: ServerConfig = {
+  1049→        contentProtection: { ...DEFAULT_CONFIG.contentProtection, ...(rawConfig?.contentProtection || {}) },
+  1050→        features: { ...DEFAULT_CONFIG.features, ...(rawConfig?.features || {}) },
+  1051→        ui: {
+  1052→          homeSections: rawConfig?.ui?.homeSections || DEFAULT_CONFIG.ui.homeSections,
+  1053→          sidebarSections: { ...DEFAULT_CONFIG.ui.sidebarSections, ...(rawConfig?.ui?.sidebarSections || {}) },
+  1054→          bottomNavTabs: rawConfig?.ui?.bottomNavTabs || DEFAULT_CONFIG.ui.bottomNavTabs,
+  1055→          topBarElements: { ...DEFAULT_CONFIG.ui.topBarElements, ...(rawConfig?.ui?.topBarElements || {}) },
+  1056→          cardStyle: rawConfig?.ui?.cardStyle || DEFAULT_CONFIG.ui.cardStyle,
+  1057→        },
+  1058→      };
+  1059→      set({ config: mergedConfig, isLoading: false });
+  1060→    } catch (error: any) {
+  1061→      console.error('Failed to fetch server config:', error);
+  1062→      set({ config: DEFAULT_CONFIG, isLoading: false, error: error.message });
+  1063→    }
+  1064→  },
+  1065→
+  1066→  isFeatureEnabled: (feature: string) => {
+  1067→    const config = get().config;
+  1068→    const features = config?.features || DEFAULT_CONFIG.features;
+  1069→    return (features as Record<string, boolean>)[feature] ?? true;
+  1070→  },
+  1071→
+  1072→  isHomeSectionVisible: (section: string) => {
+  1073→    const config = get().config;
+  1074→    const sections = config?.ui?.homeSections || DEFAULT_CONFIG.ui.homeSections;
+  1075→    return sections.includes(section);
+  1076→  },
+  1077→
+  1078→  isSidebarSectionVisible: (section: string) => {
+  1079→    const config = get().config;
+  1080→    const sidebarSections = config?.ui?.sidebarSections || DEFAULT_CONFIG.ui.sidebarSections;
+  1081→    return sidebarSections[section] ?? true;
+  1082→  },
+  1083→
+  1084→  isBottomNavTabVisible: (tab: string) => {
+  1085→    const config = get().config;
+  1086→    const tabs = config?.ui?.bottomNavTabs || DEFAULT_CONFIG.ui.bottomNavTabs;
+  1087→    return tabs.includes(tab);
+  1088→  },
+  1089→
+  1090→  isTopBarElementVisible: (element: string) => {
+  1091→    const config = get().config;
+  1092→    const topBarElements = config?.ui?.topBarElements || DEFAULT_CONFIG.ui.topBarElements;
+  1093→    return (topBarElements as Record<string, boolean>)[element] ?? true;
+  1094→  },
+  1095→}));
+  1096→

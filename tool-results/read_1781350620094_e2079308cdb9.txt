@@ -1,0 +1,2002 @@
+     1→     1→/**
+     2→     2→ * Instructor routes — All instructor-facing endpoints
+     3→     3→ *
+     4→     4→ * Migrated from Appwrite to D1 database.
+     5→     5→ * All data access now uses D1 SQL queries instead of Appwrite SDK.
+     6→     6→ *
+     7→     7→ * Auth:
+     8→     8→ *   - instructorAuth ONLY: /auth/check, /auth/logout, /change-password
+     9→     9→ *   - instructorOrAdmin: everything else
+    10→    10→ */
+    11→    11→
+    12→    12→import { Hono } from 'hono';
+    13→    13→import type { Env } from '../env';
+    14→    14→import {
+    15→    15→  instructorAuthMiddleware,
+    16→    16→  instructorOrAdminMiddleware,
+    17→    17→  type InstructorOrAdminAuthVariables,
+    18→    18→} from '../lib/instructor-auth-middleware';
+    19→    19→import { validateInstructorSession, deleteInstructorSession, createInstructorSession } from '../lib/instructor-auth';
+    20→    20→import { authenticateUser, hashPassword, verifyPassword } from '../lib/auth-password';
+    21→    21→import { getErrorMessage, generateId, getSessionExpiry } from '../lib/utils';
+    22→    22→import { getPublicUrl } from '../lib/r2';
+    23→    23→
+    24→    24→const instructorRoutes = new Hono<{ Bindings: Env; Variables: InstructorOrAdminAuthVariables }>();
+    25→    25→
+    26→    26→// ─── Helper: Format instructor row for backward compatibility ───
+    27→    27→
+    28→    28→function formatInstructorRow(row: Record<string, unknown>): Record<string, unknown> {
+    29→    29→  return {
+    30→    30→    ...row,
+    31→    31→    $id: row.id,
+    32→    32→    avatarUrl: row.avatar_url || row.avatarUrl,
+    33→    33→  };
+    34→    34→}
+    35→    35→
+    36→    36→// ─── Helper: Format course row for backward compatibility ───
+    37→    37→
+    38→    38→function formatCourseRow(row: Record<string, unknown>): Record<string, unknown> {
+    39→    39→  return {
+    40→    40→    ...row,
+    41→    41→    $id: row.id,
+    42→    42→    $createdAt: row.created_at,
+    43→    43→    isPublished: row.is_published,
+    44→    44→    price: row.price ?? row.price_bdt ?? 0,
+    45→    45→    instructorId: row.instructor_id,
+    46→    46→  };
+    47→    47→}
+    48→    48→
+    49→    49→// ─── Helper: Format video row for backward compatibility ───
+    50→    50→
+    51→    51→function formatVideoRow(row: Record<string, unknown>): Record<string, unknown> {
+    52→    52→  return {
+    53→    53→    ...row,
+    54→    54→    courseId: row.course_id,
+    55→    55→    videoUrl: row.video_url,
+    56→    56→  };
+    57→    57→}
+    58→    58→
+    59→    59→// ─── Helper: Format enrollment row for backward compatibility ───
+    60→    60→
+    61→    61→function formatEnrollmentRow(row: Record<string, unknown>): Record<string, unknown> {
+    62→    62→  return {
+    63→    63→    ...row,
+    64→    64→    courseId: row.course_id,
+    65→    65→    userId: row.user_id,
+    66→    66→  };
+    67→    67→}
+    68→    68→
+    69→    69→// ─── Helper: Slugify text for URL-safe slugs ───
+    70→    70→
+    71→    71→function slugify(text: string): string {
+    72→    72→  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    73→    73→}
+    74→    74→
+    75→    75→// ─── Helper: Verify instructor owns a course ───
+    76→    76→
+    77→    77→async function verifyCourseOwnership(env: any, courseId: string, instructorId: string): Promise<boolean> {
+    78→    78→  const course = await env.DB.prepare('SELECT instructor_id FROM courses WHERE id = ?').bind(courseId).first<{ instructor_id: string }>();
+    79→    79→  if (!course) return false;
+    80→    80→  if (course.instructor_id === instructorId) return true;
+    81→    81→  // Also check course_instructors junction table
+    82→    82→  const junction = await env.DB.prepare('SELECT id FROM course_instructors WHERE course_id = ? AND instructor_id = ?').bind(courseId, instructorId).first();
+    83→    83→  return !!junction;
+    84→    84→}
+    85→    85→
+    86→    86→// ═══════════════════════════════════════════════════
+    87→    87→// AUTH ROUTES (login = public, check/logout = instructorAuth ONLY)
+    88→    88→// ═══════════════════════════════════════════════════
+    89→    89→
+    90→    90→// POST /auth/login — Instructor login (public, no auth middleware)
+    91→    91→instructorRoutes.post('/auth/login', async (c) => {
+    92→    92→  try {
+    93→    93→    const { email, password } = await c.req.json<{ email: string; password: string }>();
+    94→    94→
+    95→    95→    if (!email || !password) {
+    96→    96→      return c.json({ error: 'Email and password are required' }, 400);
+    97→    97→    }
+    98→    98→
+    99→    99→    // Authenticate user via D1
+   100→   100→    const authResult = await authenticateUser(c.env, email, password);
+   101→   101→
+   102→   102→    if (!authResult.success) {
+   103→   103→      return c.json({ error: 'Invalid email or password' }, 401);
+   104→   104→    }
+   105→   105→
+   106→   106→    const userId = authResult.userId!;
+   107→   107→    const userEmail = authResult.userEmail!;
+   108→   108→    const userName = authResult.userName!;
+   109→   109→    const userRole = authResult.userRole || 'student';
+   110→   110→    const avatarUrl = authResult.avatarUrl || '';
+   111→   111→
+   112→   112→    // Only allow instructor role
+   113→   113→    if (userRole !== 'instructor') {
+   114→   114→      return c.json({ error: 'This login is for instructors only. Please use the student or admin portal.' }, 403);
+   115→   115→    }
+   116→   116→
+   117→   117→    // Create instructor session
+   118→   118→    const token = await createInstructorSession(
+   119→   119→      c.env,
+   120→   120→      userId,
+   121→   121→      userEmail,
+   122→   122→      userName,
+   123→   123→      c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown',
+   124→   124→      c.req.header('user-agent') || 'unknown',
+   125→   125→      avatarUrl
+   126→   126→    );
+   127→   127→
+   128→   128→    // Also fetch the full instructor profile
+   129→   129→    let profile: Record<string, unknown> | null = null;
+   130→   130→    try {
+   131→   131→      const row = await c.env.DB.prepare(
+   132→   132→        'SELECT * FROM instructors WHERE id = ?'
+   133→   133→      ).bind(userId).first();
+   134→   134→      if (row) {
+   135→   135→        profile = formatInstructorRow(row as Record<string, unknown>);
+   136→   136→      }
+   137→   137→    } catch {}
+   138→   138→
+   139→   139→    return c.json({
+   140→   140→      success: true,
+   141→   141→      token,
+   142→   142→      user: {
+   143→   143→        id: userId,
+   144→   144→        email: userEmail,
+   145→   145→        name: userName,
+   146→   146→        role: 'instructor',
+   147→   147→        avatarUrl,
+   148→   148→        ...(profile || {}),
+   149→   149→      },
+   150→   150→    });
+   151→   151→  } catch (error) {
+   152→   152→    const message = getErrorMessage(error);
+   153→   153→    console.error('Instructor login error:', error);
+   154→   154→    return c.json({ error: message }, 401);
+   155→   155→  }
+   156→   156→});
+   157→   157→
+   158→   158→// POST /auth/forgot-password — Instructor forgot password (public)
+   159→   159→instructorRoutes.post('/auth/forgot-password', async (c) => {
+   160→   160→  try {
+   161→   161→    const { email } = await c.req.json<{ email: string }>();
+   162→   162→    if (!email) return c.json({ error: 'Email is required' }, 400);
+   163→   163→
+   164→   164→    // Check if instructor exists in D1
+   165→   165→    const user = await c.env.DB.prepare(
+   166→   166→      "SELECT id, email, name, role FROM users WHERE email = ? AND role = 'instructor'"
+   167→   167→    ).bind(email).first();
+   168→   168→
+   169→   169→    if (!user) {
+   170→   170→      // Always return success to prevent email enumeration
+   171→   171→      return c.json({ success: true, message: 'If an instructor account exists with this email, you will receive a password reset code.' });
+   172→   172→    }
+   173→   173→
+   174→   174→    // Generate 6-digit OTP
+   175→   175→    const otp = String(Math.floor(100000 + Math.random() * 900000));
+   176→   176→    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+   177→   177→
+   178→   178→    await c.env.DB.prepare(`
+   179→   179→      INSERT INTO otp_codes (target, code, type, expires_at, verified, attempts)
+   180→   180→      VALUES (?, ?, 'password_reset', ?, 0, 0)
+   181→   181→    `).bind(email, otp, expiresAt).run();
+   182→   182→
+   183→   183→    // Send OTP email via Resend
+   184→   184→    try {
+   185→   185→      await fetch('https://api.resend.com/emails', {
+   186→   186→        method: 'POST',
+   187→   187→        headers: {
+   188→   188→          'Authorization': `Bearer ${c.env.RESEND_API_KEY}`,
+   189→   189→          'Content-Type': 'application/json',
+   190→   190→        },
+   191→   191→        body: JSON.stringify({
+   192→   192→          from: c.env.RESEND_FROM_EMAIL,
+   193→   193→          to: [email],
+   194→   194→          subject: 'DAKKHO Instructor - Password Reset Code',
+   195→   195→          html: `<div style="font-family:sans-serif;text-align:center;max-width:500px;margin:0 auto;">
+   196→   196→            <div style="background:linear-gradient(135deg,#0a0a0a,#333);padding:24px;border-radius:16px 16px 0 0;">
+   197→   197→              <h1 style="color:white;margin:0;font-size:20px;">DAKKHO Instructor</h1>
+   198→   198→            </div>
+   199→   199→            <div style="padding:24px;background:white;border-radius:0 0 16px 16px;">
+   200→   200→              <h2 style="color:#1e293b;">Password Reset</h2>
+   201→   201→              <p style="color:#64748b;">Your reset code:</p>
+   202→   202→              <div style="background:#f1f5f9;padding:16px;border-radius:12px;margin:16px 0;">
+   203→   203→                <span style="font-size:28px;font-weight:bold;letter-spacing:8px;color:#0a0a0a;">${otp}</span>
+   204→   204→              </div>
+   205→   205→              <p style="color:#94a3b8;font-size:13px;">Expires in 10 minutes. Do not share this code.</p>
+   206→   206→            </div>
+   207→   207→          </div>`,
+   208→   208→        }),
+   209→   209→      });
+   210→   210→    } catch (err) {
+   211→   211→      console.error('Failed to send OTP email:', err);
+   212→   212→    }
+   213→   213→
+   214→   214→    return c.json({ success: true, message: 'If an instructor account exists with this email, you will receive a password reset code.' });
+   215→   215→  } catch {
+   216→   216→    return c.json({ success: true, message: 'If an instructor account exists with this email, you will receive a password reset code.' });
+   217→   217→  }
+   218→   218→});
+   219→   219→
+   220→   220→// POST /auth/reset-password — Reset password with OTP (public)
+   221→   221→instructorRoutes.post('/auth/reset-password', async (c) => {
+   222→   222→  try {
+   223→   223→    const { email, otp, password } = await c.req.json<{ email: string; otp: string; password: string }>();
+   224→   224→    if (!email || !otp || !password) {
+   225→   225→      return c.json({ error: 'email, otp, and password are required' }, 400);
+   226→   226→    }
+   227→   227→    if (password.length < 8) {
+   228→   228→      return c.json({ error: 'Password must be at least 8 characters' }, 400);
+   229→   229→    }
+   230→   230→
+   231→   231→    // Verify OTP
+   232→   232→    const otpRecord = await c.env.DB.prepare(
+   233→   233→      "SELECT id, expires_at, verified FROM otp_codes WHERE target = ? AND code = ? AND type = 'password_reset' ORDER BY created_at DESC LIMIT 1"
+   234→   234→    ).bind(email, otp).first<{ id: number; expires_at: string; verified: number }>();
+   235→   235→
+   236→   236→    if (!otpRecord || otpRecord.verified || new Date(otpRecord.expires_at) < new Date()) {
+   237→   237→      return c.json({ error: 'Invalid or expired OTP code' }, 400);
+   238→   238→    }
+   239→   239→
+   240→   240→    // Mark OTP as used
+   241→   241→    await c.env.DB.prepare('UPDATE otp_codes SET verified = 1 WHERE id = ?').bind(otpRecord.id).run();
+   242→   242→
+   243→   243→    // Find user
+   244→   244→    const user = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: string }>();
+   245→   245→    if (!user) return c.json({ error: 'User not found' }, 404);
+   246→   246→
+   247→   247→    // Update password
+   248→   248→    const passwordHash = await hashPassword(password);
+   249→   249→    await c.env.DB.prepare(
+   250→   250→      'UPDATE users SET password_hash = ?, password_migrated = 1, updated_at = ? WHERE id = ?'
+   251→   251→    ).bind(passwordHash, new Date().toISOString(), user.id).run();
+   252→   252→
+   253→   253→    // Invalidate all sessions
+   254→   254→    try { await c.env.DB.prepare('UPDATE instructor_sessions SET is_active = 0 WHERE user_id = ?').bind(user.id).run(); } catch {}
+   255→   255→
+   256→   256→    return c.json({ success: true, message: 'Password has been reset successfully. Please login with your new password.' });
+   257→   257→  } catch (error) {
+   258→   258→    return c.json({ error: getErrorMessage(error) }, 500);
+   259→   259→  }
+   260→   260→});
+   261→   261→
+   262→   262→// GET /auth/check — Verify instructor session
+   263→   263→instructorRoutes.get('/auth/check', instructorAuthMiddleware, async (c) => {
+   264→   264→  try {
+   265→   265→    const instructorId = c.get('instructorId');
+   266→   266→    const instructorEmail = c.get('instructorEmail');
+   267→   267→    const instructorName = c.get('instructorName');
+   268→   268→    const instructorAvatarUrl = c.get('instructorAvatarUrl');
+   269→   269→
+   270→   270→    return c.json({
+   271→   271→      authenticated: true,
+   272→   272→      user: {
+   273→   273→        id: instructorId,
+   274→   274→        email: instructorEmail,
+   275→   275→        name: instructorName,
+   276→   276→        avatarUrl: instructorAvatarUrl,
+   277→   277→        role: 'instructor',
+   278→   278→      },
+   279→   279→    });
+   280→   280→  } catch (error) {
+   281→   281→    return c.json({ authenticated: false }, 401);
+   282→   282→  }
+   283→   283→});
+   284→   284→
+   285→   285→// DELETE /auth/logout — Instructor logout
+   286→   286→instructorRoutes.delete('/auth/logout', instructorAuthMiddleware, async (c) => {
+   287→   287→  try {
+   288→   288→    const authHeader = c.req.header('Authorization');
+   289→   289→    const token = authHeader?.substring(7) || '';
+   290→   290→
+   291→   291→    await deleteInstructorSession(c.env, token);
+   292→   292→
+   293→   293→    return c.json({ success: true });
+   294→   294→  } catch (error) {
+   295→   295→    return c.json({ error: getErrorMessage(error) }, 500);
+   296→   296→  }
+   297→   297→});
+   298→   298→
+   299→   299→// POST /change-password — Change instructor password (instructorAuth ONLY)
+   300→   300→instructorRoutes.post('/change-password', instructorAuthMiddleware, async (c) => {
+   301→   301→  try {
+   302→   302→    const instructorId = c.get('instructorId');
+   303→   303→    const instructorEmail = c.get('instructorEmail');
+   304→   304→    const { current_password, new_password } = await c.req.json<{ current_password: string; new_password: string }>();
+   305→   305→
+   306→   306→    if (!current_password || !new_password) {
+   307→   307→      return c.json({ error: 'Current and new password are required' }, 400);
+   308→   308→    }
+   309→   309→
+   310→   310→    if (new_password.length < 8) {
+   311→   311→      return c.json({ error: 'New password must be at least 8 characters' }, 400);
+   312→   312→    }
+   313→   313→
+   314→   314→    // Verify current password using D1 lookup + verifyPassword
+   315→   315→    const user = await c.env.DB.prepare(
+   316→   316→      'SELECT id, email, password_hash, password_migrated FROM users WHERE id = ?'
+   317→   317→    ).bind(instructorId).first<{ id: string; email: string; password_hash: string | null; password_migrated: number }>();
+   318→   318→
+   319→   319→    if (!user) {
+   320→   320→      return c.json({ error: 'User not found' }, 404);
+   321→   321→    }
+   322→   322→
+   323→   323→    if (user.password_hash && user.password_migrated === 1) {
+   324→   324→      // Fully migrated — verify with D1 password hash
+   325→   325→      const valid = await verifyPassword(current_password, user.password_hash);
+   326→   326→      if (!valid) {
+   327→   327→        return c.json({ error: 'Current password is incorrect' }, 400);
+   328→   328→      }
+   329→   329→    } else {
+   330→   330→      // Not migrated yet — use authenticateUser which falls back to Appwrite
+   331→   331→      const authResult = await authenticateUser(c.env, instructorEmail, current_password);
+   332→   332→      if (!authResult.success) {
+   333→   333→        return c.json({ error: 'Current password is incorrect' }, 400);
+   334→   334→      }
+   335→   335→    }
+   336→   336→
+   337→   337→    // Hash the new password and update in D1
+   338→   338→    const newPasswordHash = await hashPassword(new_password);
+   339→   339→    await c.env.DB.prepare(
+   340→   340→      'UPDATE users SET password_hash = ?, password_migrated = 1, updated_at = ? WHERE id = ?'
+   341→   341→    ).bind(newPasswordHash, new Date().toISOString(), instructorId).run();
+   342→   342→
+   343→   343→    return c.json({ success: true, message: 'Password changed successfully' });
+   344→   344→  } catch (error) {
+   345→   345→    return c.json({ error: getErrorMessage(error) }, 500);
+   346→   346→  }
+   347→   347→});
+   348→   348→
+   349→   349→// ═══════════════════════════════════════════════════
+   350→   350→// DASHBOARD ROUTE (instructorOrAdmin)
+   351→   351→// ═══════════════════════════════════════════════════
+   352→   352→
+   353→   353→// GET /dashboard — Instructor dashboard stats
+   354→   354→instructorRoutes.get('/dashboard', instructorOrAdminMiddleware, async (c) => {
+   355→   355→  try {
+   356→   356→    const authRole = c.get('authRole');
+   357→   357→    let instructorId: string;
+   358→   358→
+   359→   359→    if (authRole === 'admin') {
+   360→   360→      instructorId = c.req.query('instructorId') || '';
+   361→   361→      if (!instructorId) {
+   362→   362→        return c.json({ error: 'instructorId query param required for admin access' }, 400);
+   363→   363→      }
+   364→   364→    } else {
+   365→   365→      instructorId = c.get('instructorId');
+   366→   366→    }
+   367→   367→
+   368→   368→    // Course count
+   369→   369→    let courseCount = 0;
+   370→   370→    try {
+   371→   371→      const cc = await c.env.DB.prepare('SELECT COUNT(*) as total FROM courses WHERE instructor_id = ?').bind(instructorId).first<{ total: number }>();
+   372→   372→      courseCount = cc?.total || 0;
+   373→   373→    } catch {}
+   374→   374→
+   375→   375→    // Total students (from enrollments across all instructor courses)
+   376→   376→    let totalStudents = 0;
+   377→   377→    try {
+   378→   378→      const ts = await c.env.DB.prepare(
+   379→   379→        'SELECT COUNT(DISTINCT user_id) as total FROM enrollments WHERE course_id IN (SELECT id FROM courses WHERE instructor_id = ?)'
+   380→   380→      ).bind(instructorId).first<{ total: number }>();
+   381→   381→      totalStudents = ts?.total || 0;
+   382→   382→    } catch {}
+   383→   383→
+   384→   384→    // Average rating
+   385→   385→    let avgRating = 0;
+   386→   386→    let totalReviews = 0;
+   387→   387→    try {
+   388→   388→      const rs = await c.env.DB.prepare(
+   389→   389→        'SELECT AVG(rating) as avg, COUNT(*) as count FROM instructor_reviews WHERE instructor_id = ?'
+   390→   390→      ).bind(instructorId).first<{ avg: number; count: number }>();
+   391→   391→      avgRating = rs?.avg ? Math.round(rs.avg * 10) / 10 : 0;
+   392→   392→      totalReviews = rs?.count || 0;
+   393→   393→    } catch {}
+   394→   394→
+   395→   395→    // Total revenue (from payments for instructor's courses)
+   396→   396→    let totalRevenue = 0;
+   397→   397→    try {
+   398→   398→      const rev = await c.env.DB.prepare(
+   399→   399→        "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE course_id IN (SELECT id FROM courses WHERE instructor_id = ?) AND status = 'completed'"
+   400→   400→      ).bind(instructorId).first<{ total: number }>();
+   401→   401→      totalRevenue = rev?.total || 0;
+   402→   402→    } catch {}
+   403→   403→
+   404→   404→    // Upcoming classes count
+   405→   405→    let upcomingClasses = 0;
+   406→   406→    try {
+   407→   407→      const uc = await c.env.DB.prepare(
+   408→   408→        "SELECT COUNT(*) as total FROM live_class_schedules WHERE instructor_id = ? AND scheduled_at > datetime('now') AND is_active = 1"
+   409→   409→      ).bind(instructorId).first<{ total: number }>();
+   410→   410→      upcomingClasses = uc?.total || 0;
+   411→   411→    } catch {}
+   412→   412→
+   413→   413→    return c.json({
+   414→   414→      success: true,
+   415→   415→      dashboard: {
+   416→   416→        courseCount,
+   417→   417→        totalStudents,
+   418→   418→        avgRating,
+   419→   419→        totalReviews,
+   420→   420→        totalRevenue,
+   421→   421→        upcomingClasses,
+   422→   422→      },
+   423→   423→    });
+   424→   424→  } catch (error) {
+   425→   425→    return c.json({ error: getErrorMessage(error) }, 500);
+   426→   426→  }
+   427→   427→});
+   428→   428→
+   429→   429→// ═══════════════════════════════════════════════════
+   430→   430→// PROFILE ROUTES (instructorOrAdmin)
+   431→   431→// ═══════════════════════════════════════════════════
+   432→   432→
+   433→   433→// GET /profile — Get instructor profile from D1 instructors table
+   434→   434→instructorRoutes.get('/profile', instructorOrAdminMiddleware, async (c) => {
+   435→   435→  try {
+   436→   436→    const authRole = c.get('authRole');
+   437→   437→    let instructorId: string;
+   438→   438→
+   439→   439→    if (authRole === 'admin') {
+   440→   440→      // Admin may query by query param
+   441→   441→      instructorId = c.req.query('instructorId') || '';
+   442→   442→      if (!instructorId) {
+   443→   443→        return c.json({ error: 'instructorId query param required for admin access' }, 400);
+   444→   444→      }
+   445→   445→    } else {
+   446→   446→      instructorId = c.get('instructorId');
+   447→   447→    }
+   448→   448→
+   449→   449→    const row = await c.env.DB.prepare(
+   450→   450→      'SELECT * FROM instructors WHERE id = ?'
+   451→   451→    ).bind(instructorId).first();
+   452→   452→
+   453→   453→    if (!row) {
+   454→   454→      return c.json({ error: 'Instructor profile not found' }, 404);
+   455→   455→    }
+   456→   456→
+   457→   457→    const profile = formatInstructorRow(row as Record<string, unknown>);
+   458→   458→
+   459→   459→    return c.json({ success: true, profile });
+   460→   460→  } catch (error) {
+   461→   461→    return c.json({ error: getErrorMessage(error) }, 500);
+   462→   462→  }
+   463→   463→});
+   464→   464→
+   465→   465→// PUT /profile — Update instructor profile (name, bio, avatar, etc.)
+   466→   466→instructorRoutes.put('/profile', instructorOrAdminMiddleware, async (c) => {
+   467→   467→  try {
+   468→   468→    const authRole = c.get('authRole');
+   469→   469→    let instructorId: string;
+   470→   470→
+   471→   471→    if (authRole === 'admin') {
+   472→   472→      instructorId = c.req.query('instructorId') || '';
+   473→   473→      if (!instructorId) {
+   474→   474→        return c.json({ error: 'instructorId query param required for admin access' }, 400);
+   475→   475→      }
+   476→   476→    } else {
+   477→   477→      instructorId = c.get('instructorId');
+   478→   478→    }
+   479→   479→
+   480→   480→    const body = await c.req.json();
+   481→   481→
+   482→   482→    // Map camelCase field names to snake_case D1 columns
+   483→   483→    const fieldMapping: Record<string, string> = {
+   484→   484→      name: 'name',
+   485→   485→      bio: 'bio',
+   486→   486→      avatar: 'avatar_url',
+   487→   487→      avatarUrl: 'avatar_url',
+   488→   488→      specialization: 'specialization',
+   489→   489→      phone: 'phone',
+   490→   490→      department: 'department',
+   491→   491→    };
+   492→   492→
+   493→   493→    const setClauses: string[] = [];
+   494→   494→    const params: unknown[] = [];
+   495→   495→
+   496→   496→    for (const [bodyField, dbColumn] of Object.entries(fieldMapping)) {
+   497→   497→      if (body[bodyField] !== undefined) {
+   498→   498→        setClauses.push(`${dbColumn} = ?`);
+   499→   499→        params.push(body[bodyField]);
+   500→   500→      }
+   501→   501→    }
+   502→   502→
+   503→   503→    if (setClauses.length === 0) {
+   504→   504→      return c.json({ error: 'No valid fields to update' }, 400);
+   505→   505→    }
+   506→   506→
+   507→   507→    // Always update updated_at
+   508→   508→    setClauses.push('updated_at = ?');
+   509→   509→    params.push(new Date().toISOString());
+   510→   510→
+   511→   511→    params.push(instructorId);
+   512→   512→
+   513→   513→    await c.env.DB.prepare(
+   514→   514→      `UPDATE instructors SET ${setClauses.join(', ')} WHERE id = ?`
+   515→   515→    ).bind(...params).run();
+   516→   516→
+   517→   517→    // If name was updated, also update the D1 session
+   518→   518→    if ((body.name !== undefined) && authRole === 'instructor') {
+   519→   519→      try {
+   520→   520→        await c.env.DB.prepare(
+   521→   521→          'UPDATE instructor_sessions SET name = ? WHERE user_id = ? AND is_active = 1'
+   522→   522→        ).bind(String(body.name), instructorId).run();
+   523→   523→      } catch {}
+   524→   524→    }
+   525→   525→
+   526→   526→    // If avatar was updated, also update the D1 session
+   527→   527→    if ((body.avatarUrl !== undefined || body.avatar !== undefined) && authRole === 'instructor') {
+   528→   528→      try {
+   529→   529→        const avatarVal = body.avatarUrl || body.avatar;
+   530→   530→        await c.env.DB.prepare(
+   531→   531→          'UPDATE instructor_sessions SET avatar_url = ? WHERE user_id = ? AND is_active = 1'
+   532→   532→        ).bind(String(avatarVal), instructorId).run();
+   533→   533→      } catch {}
+   534→   534→    }
+   535→   535→
+   536→   536→    // Fetch and return the updated profile
+   537→   537→    const updatedRow = await c.env.DB.prepare(
+   538→   538→      'SELECT * FROM instructors WHERE id = ?'
+   539→   539→    ).bind(instructorId).first();
+   540→   540→
+   541→   541→    const profile = formatInstructorRow(updatedRow as Record<string, unknown>);
+   542→   542→
+   543→   543→    return c.json({ success: true, profile });
+   544→   544→  } catch (error) {
+   545→   545→    return c.json({ error: getErrorMessage(error) }, 500);
+   546→   546→  }
+   547→   547→});
+   548→   548→
+   549→   549→// POST /profile/avatar — Upload instructor avatar to R2
+   550→   550→instructorRoutes.post('/profile/avatar', instructorOrAdminMiddleware, async (c) => {
+   551→   551→  try {
+   552→   552→    const authRole = c.get('authRole');
+   553→   553→    let instructorId: string;
+   554→   554→
+   555→   555→    if (authRole === 'admin') {
+   556→   556→      instructorId = c.req.query('instructorId') || '';
+   557→   557→      if (!instructorId) {
+   558→   558→        return c.json({ error: 'instructorId query param required for admin access' }, 400);
+   559→   559→      }
+   560→   560→    } else {
+   561→   561→      instructorId = c.get('instructorId');
+   562→   562→    }
+   563→   563→
+   564→   564→    const formData = await c.req.formData();
+   565→   565→    const avatarEntry = formData.get('avatar');
+   566→   566→    if (!avatarEntry || typeof avatarEntry === 'string') {
+   567→   567→      return c.json({ error: 'No avatar file provided' }, 400);
+   568→   568→    }
+   569→   569→    const file = avatarEntry as unknown as Blob & { name?: string; type?: string };
+   570→   570→
+   571→   571→    // Clean up old avatar from R2
+   572→   572→    try {
+   573→   573→      const existingRow = await c.env.DB.prepare(
+   574→   574→        'SELECT avatar_url FROM instructors WHERE id = ?'
+   575→   575→      ).bind(instructorId).first<{ avatar_url: string | null }>();
+   576→   576→
+   577→   577→      const oldAvatarUrl = existingRow?.avatar_url;
+   578→   578→      if (oldAvatarUrl) {
+   579→   579→        const uploadMatch = oldAvatarUrl.match(/\/upload\/avatars\/(.+)$/);
+   580→   580→        if (uploadMatch?.[1]) {
+   581→   581→          await c.env.R2_AVATARS.delete(uploadMatch[1]);
+   582→   582→        }
+   583→   583→      }
+   584→   584→    } catch {}
+   585→   585→
+   586→   586→    // Upload to R2 avatars bucket
+   587→   587→    const key = `instructor/${instructorId}/${Date.now()}-${file.name || 'avatar'}`;
+   588→   588→    const arrayBuffer = await file.arrayBuffer();
+   589→   589→    await c.env.R2_AVATARS.put(key, arrayBuffer, {
+   590→   590→      httpMetadata: { contentType: file.type || 'image/png' },
+   591→   591→    });
+   592→   592→
+   593→   593→    const avatarUrl = await getPublicUrl(c.env, 'avatars', key);
+   594→   594→
+   595→   595→    // Update D1 instructors table
+   596→   596→    await c.env.DB.prepare(
+   597→   597→      'UPDATE instructors SET avatar_url = ?, updated_at = ? WHERE id = ?'
+   598→   598→    ).bind(avatarUrl, new Date().toISOString(), instructorId).run();
+   599→   599→
+   600→   600→    // Update D1 session
+   601→   601→    if (authRole === 'instructor') {
+   602→   602→      try {
+   603→   603→        await c.env.DB.prepare(
+   604→   604→          'UPDATE instructor_sessions SET avatar_url = ? WHERE user_id = ? AND is_active = 1'
+   605→   605→        ).bind(avatarUrl, instructorId).run();
+   606→   606→      } catch {}
+   607→   607→    }
+   608→   608→
+   609→   609→    return c.json({ success: true, avatar_url: avatarUrl });
+   610→   610→  } catch (error) {
+   611→   611→    return c.json({ error: getErrorMessage(error) }, 500);
+   612→   612→  }
+   613→   613→});
+   614→   614→
+   615→   615→// ═══════════════════════════════════════════════════
+   616→   616→// COURSES ROUTES (instructorOrAdmin)
+   617→   617→// ═══════════════════════════════════════════════════
+   618→   618→
+   619→   619→// GET /courses — List courses assigned to this instructor
+   620→   620→instructorRoutes.get('/courses', instructorOrAdminMiddleware, async (c) => {
+   621→   621→  try {
+   622→   622→    const authRole = c.get('authRole');
+   623→   623→    let instructorId: string;
+   624→   624→
+   625→   625→    if (authRole === 'admin') {
+   626→   626→      instructorId = c.req.query('instructorId') || '';
+   627→   627→      if (!instructorId) {
+   628→   628→        return c.json({ error: 'instructorId query param required for admin access' }, 400);
+   629→   629→      }
+   630→   630→    } else {
+   631→   631→      instructorId = c.get('instructorId');
+   632→   632→    }
+   633→   633→
+   634→   634→    const limit = parseInt(c.req.query('limit') || '20');
+   635→   635→    const offset = parseInt(c.req.query('offset') || '0');
+   636→   636→
+   637→   637→    // Query D1 courses where instructor_id matches
+   638→   638→    const result = await c.env.DB.prepare(
+   639→   639→      'SELECT * FROM courses WHERE instructor_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+   640→   640→    ).bind(instructorId, limit, offset).all();
+   641→   641→
+   642→   642→    // Also check course_instructors D1 table for courses assigned to this instructor
+   643→   643→    let coursesFromSubjects: string[] = [];
+   644→   644→    try {
+   645→   645→      const subjectResult = await c.env.DB.prepare(
+   646→   646→        'SELECT DISTINCT course_id FROM course_instructors WHERE instructor_id = ?'
+   647→   647→      ).bind(instructorId).all<{ course_id: string }>();
+   648→   648→      coursesFromSubjects = subjectResult.results.map(r => r.course_id);
+   649→   649→    } catch {}
+   650→   650→
+   651→   651→    // Merge with course_subjects results — add courses not already in the main result
+   652→   652→    const existingCourseIds = new Set(result.results.map((r: any) => r.id));
+   653→   653→    const additionalCourses: any[] = [];
+   654→   654→    for (const cid of coursesFromSubjects) {
+   655→   655→      if (!existingCourseIds.has(cid)) {
+   656→   656→        try {
+   657→   657→          const course = await c.env.DB.prepare(
+   658→   658→            'SELECT * FROM courses WHERE id = ?'
+   659→   659→          ).bind(cid).first();
+   660→   660→          if (course) {
+   661→   661→            additionalCourses.push(course);
+   662→   662→          }
+   663→   663→        } catch {}
+   664→   664→      }
+   665→   665→    }
+   666→   666→
+   667→   667→    // Get total count
+   668→   668→    const countResult = await c.env.DB.prepare(
+   669→   669→      'SELECT COUNT(*) as total FROM courses WHERE instructor_id = ?'
+   670→   670→    ).bind(instructorId).first<{ total: number }>();
+   671→   671→    const total = (countResult?.total || 0) + additionalCourses.length;
+   672→   672→
+   673→   673→    // Format all course rows
+   674→   674→    const allCourses = [
+   675→   675→      ...result.results.map((r: any) => formatCourseRow(r)),
+   676→   676→      ...additionalCourses.map((r: any) => formatCourseRow(r)),
+   677→   677→    ];
+   678→   678→
+   679→   679→    return c.json({ courses: allCourses, total });
+   680→   680→  } catch (error) {
+   681→   681→    return c.json({ error: getErrorMessage(error) }, 500);
+   682→   682→  }
+   683→   683→});
+   684→   684→
+   685→   685→// GET /courses/:id — Get course detail with student count
+   686→   686→instructorRoutes.get('/courses/:id', instructorOrAdminMiddleware, async (c) => {
+   687→   687→  try {
+   688→   688→    const courseId = c.req.param('id');
+   689→   689→
+   690→   690→    const row = await c.env.DB.prepare(
+   691→   691→      'SELECT * FROM courses WHERE id = ?'
+   692→   692→    ).bind(courseId).first();
+   693→   693→
+   694→   694→    if (!row) {
+   695→   695→      return c.json({ error: 'Course not found' }, 404);
+   696→   696→    }
+   697→   697→
+   698→   698→    // Get student count from enrollments
+   699→   699→    let studentCount = 0;
+   700→   700→    try {
+   701→   701→      const enrollResult = await c.env.DB.prepare(
+   702→   702→        'SELECT COUNT(*) as total FROM enrollments WHERE course_id = ?'
+   703→   703→      ).bind(courseId).first<{ total: number }>();
+   704→   704→      studentCount = enrollResult?.total || 0;
+   705→   705→    } catch {}
+   706→   706→
+   707→   707→    const course = formatCourseRow(row as Record<string, unknown>);
+   708→   708→
+   709→   709→    return c.json({
+   710→   710→      success: true,
+   711→   711→      course,
+   712→   712→      studentCount,
+   713→   713→    });
+   714→   714→  } catch (error) {
+   715→   715→    return c.json({ error: getErrorMessage(error) }, 500);
+   716→   716→  }
+   717→   717→});
+   718→   718→
+   719→   719→// GET /courses/:id/students — List enrolled students
+   720→   720→instructorRoutes.get('/courses/:id/students', instructorOrAdminMiddleware, async (c) => {
+   721→   721→  try {
+   722→   722→    const courseId = c.req.param('id');
+   723→   723→    const limit = parseInt(c.req.query('limit') || '20');
+   724→   724→    const offset = parseInt(c.req.query('offset') || '0');
+   725→   725→
+   726→   726→    // Get enrollments for this course
+   727→   727→    const enrollResult = await c.env.DB.prepare(
+   728→   728→      'SELECT * FROM enrollments WHERE course_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+   729→   729→    ).bind(courseId, limit, offset).all();
+   730→   730→
+   731→   731→    // Get total count
+   732→   732→    const countResult = await c.env.DB.prepare(
+   733→   733→      'SELECT COUNT(*) as total FROM enrollments WHERE course_id = ?'
+   734→   734→    ).bind(courseId).first<{ total: number }>();
+   735→   735→    const total = countResult?.total || 0;
+   736→   736→
+   737→   737→    // Enrich with student user data from D1
+   738→   738→    const enrichedStudents = [];
+   739→   739→    for (const enrollment of enrollResult.results as Array<Record<string, unknown>>) {
+   740→   740→      const userId = enrollment.user_id as string | undefined;
+   741→   741→      let studentProfile: Record<string, unknown> | null = null;
+   742→   742→      if (userId) {
+   743→   743→        try {
+   744→   744→          const userRow = await c.env.DB.prepare(
+   745→   745→            'SELECT id, name, email, avatar_url FROM users WHERE id = ?'
+   746→   746→          ).bind(userId).first();
+   747→   747→          if (userRow) {
+   748→   748→            studentProfile = userRow as Record<string, unknown>;
+   749→   749→          }
+   750→   750→        } catch {}
+   751→   751→      }
+   752→   752→      const formattedEnrollment = formatEnrollmentRow(enrollment);
+   753→   753→      enrichedStudents.push({
+   754→   754→        ...formattedEnrollment,
+   755→   755→        student: studentProfile ? {
+   756→   756→          id: studentProfile.id || userId,
+   757→   757→          name: studentProfile.name || '',
+   758→   758→          email: studentProfile.email || '',
+   759→   759→          avatarUrl: studentProfile.avatar_url || '',
+   760→   760→        } : { id: userId, name: 'Unknown', email: '', avatarUrl: '' },
+   761→   761→      });
+   762→   762→    }
+   763→   763→
+   764→   764→    return c.json({ students: enrichedStudents, total });
+   765→   765→  } catch (error) {
+   766→   766→    return c.json({ error: getErrorMessage(error) }, 500);
+   767→   767→  }
+   768→   768→});
+   769→   769→
+   770→   770→// GET /courses/:id/videos — List videos for a course
+   771→   771→instructorRoutes.get('/courses/:id/videos', instructorOrAdminMiddleware, async (c) => {
+   772→   772→  try {
+   773→   773→    const courseId = c.req.param('id');
+   774→   774→    const limit = parseInt(c.req.query('limit') || '100');
+   775→   775→    const offset = parseInt(c.req.query('offset') || '0');
+   776→   776→
+   777→   777→    const result = await c.env.DB.prepare(
+   778→   778→      'SELECT * FROM videos WHERE course_id = ? ORDER BY sort_order ASC LIMIT ? OFFSET ?'
+   779→   779→    ).bind(courseId, limit, offset).all();
+   780→   780→
+   781→   781→    // Get total count
+   782→   782→    const countResult = await c.env.DB.prepare(
+   783→   783→      'SELECT COUNT(*) as total FROM videos WHERE course_id = ?'
+   784→   784→    ).bind(courseId).first<{ total: number }>();
+   785→   785→    const total = countResult?.total || 0;
+   786→   786→
+   787→   787→    const videos = result.results.map((r: any) => formatVideoRow(r));
+   788→   788→
+   789→   789→    return c.json({ videos, total });
+   790→   790→  } catch (error) {
+   791→   791→    return c.json({ error: getErrorMessage(error) }, 500);
+   792→   792→  }
+   793→   793→});
+   794→   794→
+   795→   795→// PUT /courses/:id/videos/:videoId — Update video metadata (instructor can update title, sort_order, is_preview, is_published)
+   796→   796→instructorRoutes.put('/courses/:id/videos/:videoId', instructorOrAdminMiddleware, async (c) => {
+   797→   797→  try {
+   798→   798→    const courseId = c.req.param('id');
+   799→   799→    const videoId = c.req.param('videoId');
+   800→   800→    const body = await c.req.json();
+   801→   801→
+   802→   802→    // Verify video belongs to this course
+   803→   803→    const existing = await c.env.DB.prepare(
+   804→   804→      'SELECT id FROM videos WHERE id = ? AND course_id = ?'
+   805→   805→    ).bind(videoId, courseId).first();
+   806→   806→
+   807→   807→    if (!existing) {
+   808→   808→      return c.json({ error: 'Video not found in this course' }, 404);
+   809→   809→    }
+   810→   810→
+   811→   811→    const fieldMapping: Record<string, string> = {
+   812→   812→      title: 'title',
+   813→   813→      sort_order: 'sort_order',
+   814→   814→      sortOrder: 'sort_order',
+   815→   815→      is_preview: 'is_preview',
+   816→   816→      isPreview: 'is_preview',
+   817→   817→      is_published: 'is_published',
+   818→   818→      isPublished: 'is_published',
+   819→   819→      duration: 'duration',
+   820→   820→      thumbnail_url: 'thumbnail_url',
+   821→   821→      thumbnailUrl: 'thumbnail_url',
+   822→   822→    };
+   823→   823→
+   824→   824→    const setClauses: string[] = [];
+   825→   825→    const params: unknown[] = [];
+   826→   826→
+   827→   827→    for (const [bodyField, dbColumn] of Object.entries(fieldMapping)) {
+   828→   828→      if (body[bodyField] !== undefined) {
+   829→   829→        setClauses.push(`${dbColumn} = ?`);
+   830→   830→        params.push(body[bodyField]);
+   831→   831→      }
+   832→   832→    }
+   833→   833→
+   834→   834→    if (setClauses.length === 0) {
+   835→   835→      return c.json({ error: 'No valid fields to update' }, 400);
+   836→   836→    }
+   837→   837→
+   838→   838→    setClauses.push('updated_at = ?');
+   839→   839→    params.push(new Date().toISOString());
+   840→   840→    params.push(videoId);
+   841→   841→
+   842→   842→    await c.env.DB.prepare(
+   843→   843→      `UPDATE videos SET ${setClauses.join(', ')} WHERE id = ?`
+   844→   844→    ).bind(...params).run();
+   845→   845→
+   846→   846→    // Return updated video
+   847→   847→    const updatedRow = await c.env.DB.prepare(
+   848→   848→      'SELECT * FROM videos WHERE id = ?'
+   849→   849→    ).bind(videoId).first();
+   850→   850→
+   851→   851→    const video = formatVideoRow(updatedRow as Record<string, unknown>);
+   852→   852→
+   853→   853→    return c.json({ success: true, video });
+   854→   854→  } catch (error) {
+   855→   855→    return c.json({ error: getErrorMessage(error) }, 500);
+   856→   856→  }
+   857→   857→});
+   858→   858→
+   859→   859→// GET /courses/:id/progress — Aggregate student progress
+   860→   860→instructorRoutes.get('/courses/:id/progress', instructorOrAdminMiddleware, async (c) => {
+   861→   861→  try {
+   862→   862→    const courseId = c.req.param('id');
+   863→   863→    const limit = parseInt(c.req.query('limit') || '50');
+   864→   864→    const offset = parseInt(c.req.query('offset') || '0');
+   865→   865→
+   866→   866→    // Get enrollments for this course
+   867→   867→    const enrollResult = await c.env.DB.prepare(
+   868→   868→      'SELECT * FROM enrollments WHERE course_id = ? LIMIT ? OFFSET ?'
+   869→   869→    ).bind(courseId, limit, offset).all();
+   870→   870→
+   871→   871→    const totalEnrollments = await c.env.DB.prepare(
+   872→   872→      'SELECT COUNT(*) as total FROM enrollments WHERE course_id = ?'
+   873→   873→    ).bind(courseId).first<{ total: number }>();
+   874→   874→
+   875→   875→    // Get video count for this course
+   876→   876→    let videoCount = 0;
+   877→   877→    try {
+   878→   878→      const videoCountResult = await c.env.DB.prepare(
+   879→   879→        'SELECT COUNT(*) as total FROM videos WHERE course_id = ?'
+   880→   880→      ).bind(courseId).first<{ total: number }>();
+   881→   881→      videoCount = videoCountResult?.total || 0;
+   882→   882→    } catch {}
+   883→   883→
+   884→   884→    // Get watch progress for each student with user name
+   885→   885→    const progressList = [];
+   886→   886→    for (const enrollment of enrollResult.results as Array<Record<string, unknown>>) {
+   887→   887→      const userId = enrollment.user_id as string | undefined;
+   888→   888→      let completedVideos = 0;
+   889→   889→      let totalWatchTime = 0;
+   890→   890→      let studentName = 'Unknown';
+   891→   891→      let studentEmail = '';
+   892→   892→
+   893→   893→      if (userId) {
+   894→   894→        try {
+   895→   895→          // Get user profile for name
+   896→   896→          const userRow = await c.env.DB.prepare(
+   897→   897→            'SELECT full_name, email FROM users WHERE id = ?'
+   898→   898→          ).bind(userId).first<{ full_name: string; email: string }>();
+   899→   899→          if (userRow) {
+   900→   900→            studentName = userRow.full_name || 'Unknown';
+   901→   901→            studentEmail = userRow.email || '';
+   902→   902→          }
+   903→   903→        } catch {}
+   904→   904→
+   905→   905→        try {
+   906→   906→          // Get aggregated watch progress for this user + course
+   907→   907→          const wpStats = await c.env.DB.prepare(
+   908→   908→            'SELECT COUNT(*) as total, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as completed, COALESCE(SUM(watch_time), 0) as total_watch FROM watch_progress WHERE user_id = ? AND course_id = ?'
+   909→   909→          ).bind(userId, courseId).first<{ total: number; completed: number; total_watch: number }>();
+   910→   910→
+   911→   911→          completedVideos = wpStats?.completed || 0;
+   912→   912→          totalWatchTime = wpStats?.total_watch || 0;
+   913→   913→        } catch {}
+   914→   914→      }
+   915→   915→
+   916→   916→      const progressPercent = videoCount > 0 ? Math.round((completedVideos / videoCount) * 100) : 0;
+   917→   917→
+   918→   918→      progressList.push({
+   919→   919→        userId,
+   920→   920→        enrollmentId: enrollment.id,
+   921→   921→        studentName,
+   922→   922→        studentEmail,
+   923→   923→        completedVideos,
+   924→   924→        totalVideos: videoCount,
+   925→   925→        progressPercent,
+   926→   926→        totalWatchTime,
+   927→   927→      });
+   928→   928→    }
+   929→   929→
+   930→   930→    // Aggregate stats
+   931→   931→    const avgProgress = progressList.length > 0
+   932→   932→      ? Math.round(progressList.reduce((sum, p) => sum + p.progressPercent, 0) / progressList.length)
+   933→   933→      : 0;
+   934→   934→
+   935→   935→    return c.json({
+   936→   936→      success: true,
+   937→   937→      courseId,
+   938→   938→      totalStudents: totalEnrollments?.total || 0,
+   939→   939→      totalVideos: videoCount,
+   940→   940→      averageProgress: avgProgress,
+   941→   941→      progress: progressList,
+   942→   942→    });
+   943→   943→  } catch (error) {
+   944→   944→    return c.json({ error: getErrorMessage(error) }, 500);
+   945→   945→  }
+   946→   946→});
+   947→   947→
+   948→   948→// GET /courses/:id/analytics — Course analytics
+   949→   949→instructorRoutes.get('/courses/:id/analytics', instructorOrAdminMiddleware, async (c) => {
+   950→   950→  try {
+   951→   951→    const courseId = c.req.param('id');
+   952→   952→
+   953→   953→    // Get enrollment count from D1
+   954→   954→    let enrollmentCount = 0;
+   955→   955→    try {
+   956→   956→      const enrollResult = await c.env.DB.prepare(
+   957→   957→        'SELECT COUNT(*) as total FROM enrollments WHERE course_id = ?'
+   958→   958→      ).bind(courseId).first<{ total: number }>();
+   959→   959→      enrollmentCount = enrollResult?.total || 0;
+   960→   960→    } catch {}
+   961→   961→
+   962→   962→    // Get video count from D1
+   963→   963→    let videoCount = 0;
+   964→   964→    try {
+   965→   965→      const videoResult = await c.env.DB.prepare(
+   966→   966→        'SELECT COUNT(*) as total FROM videos WHERE course_id = ?'
+   967→   967→      ).bind(courseId).first<{ total: number }>();
+   968→   968→      videoCount = videoResult?.total || 0;
+   969→   969→    } catch {}
+   970→   970→
+   971→   971→    // Get recent payments from D1
+   972→   972→    let revenue = 0;
+   973→   973→    let paymentCount = 0;
+   974→   974→    try {
+   975→   975→      const paymentStats = await c.env.DB.prepare(
+   976→   976→        "SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM payments WHERE course_id = ? AND status = 'completed'"
+   977→   977→      ).bind(courseId).first<{ count: number; total: number }>();
+   978→   978→      paymentCount = paymentStats?.count || 0;
+   979→   979→      revenue = paymentStats?.total || 0;
+   980→   980→    } catch {}
+   981→   981→
+   982→   982→    // Get average rating from D1 instructor reviews
+   983→   983→    let avgRating = 0;
+   984→   984→    let reviewCount = 0;
+   985→   985→    try {
+   986→   986→      const ratingStats = await c.env.DB.prepare(
+   987→   987→        'SELECT AVG(rating) as avg, COUNT(*) as count FROM instructor_reviews WHERE course_id = ?'
+   988→   988→      ).bind(courseId).first<{ avg: number; count: number }>();
+   989→   989→      avgRating = ratingStats?.avg ? Math.round(ratingStats.avg * 10) / 10 : 0;
+   990→   990→      reviewCount = ratingStats?.count || 0;
+   991→   991→    } catch {}
+   992→   992→
+   993→   993→    // Get rating distribution for this course
+   994→   994→    let ratingDistribution: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+   995→   995→    try {
+   996→   996→      const distStats = await c.env.DB.prepare(`
+   997→   997→        SELECT
+   998→   998→          SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) as five_star,
+   999→   999→          SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) as four_star,
+  1000→  1000→          SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as three_star,
+  1001→  1001→          SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as two_star,
+  1002→  1002→          SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as one_star
+  1003→  1003→        FROM instructor_reviews WHERE course_id = ?
+  1004→  1004→      `).bind(courseId).first();
+  1005→  1005→      ratingDistribution = {
+  1006→  1006→        5: (distStats?.five_star as number) || 0,
+  1007→  1007→        4: (distStats?.four_star as number) || 0,
+  1008→  1008→        3: (distStats?.three_star as number) || 0,
+  1009→  1009→        2: (distStats?.two_star as number) || 0,
+  1010→  1010→        1: (distStats?.one_star as number) || 0,
+  1011→  1011→      };
+  1012→  1012→    } catch {}
+  1013→  1013→
+  1014→  1014→    return c.json({
+  1015→  1015→      success: true,
+  1016→  1016→      analytics: {
+  1017→  1017→        courseId,
+  1018→  1018→        enrollmentCount,
+  1019→  1019→        videoCount,
+  1020→  1020→        revenue,
+  1021→  1021→        paymentCount,
+  1022→  1022→        avgRating,
+  1023→  1023→        reviewCount,
+  1024→  1024→        ratingDistribution,
+  1025→  1025→      },
+  1026→  1026→    });
+  1027→  1027→  } catch (error) {
+  1028→  1028→    return c.json({ error: getErrorMessage(error) }, 500);
+  1029→  1029→  }
+  1030→  1030→});
+  1031→  1031→
+  1032→  1032→// ═══════════════════════════════════════════════════
+  1033→  1033→// SCHEDULE ROUTES (instructorOrAdmin)
+  1034→  1034→// ═══════════════════════════════════════════════════
+  1035→  1035→
+  1036→  1036→// GET /schedule — Get upcoming schedule from D1 live_class_schedules
+  1037→  1037→instructorRoutes.get('/schedule', instructorOrAdminMiddleware, async (c) => {
+  1038→  1038→  try {
+  1039→  1039→    const authRole = c.get('authRole');
+  1040→  1040→    let instructorId: string;
+  1041→  1041→
+  1042→  1042→    if (authRole === 'admin') {
+  1043→  1043→      instructorId = c.req.query('instructorId') || '';
+  1044→  1044→      if (!instructorId) {
+  1045→  1045→        return c.json({ error: 'instructorId query param required for admin access' }, 400);
+  1046→  1046→      }
+  1047→  1047→    } else {
+  1048→  1048→      instructorId = c.get('instructorId');
+  1049→  1049→    }
+  1050→  1050→
+  1051→  1051→    const limit = parseInt(c.req.query('limit') || '20');
+  1052→  1052→
+  1053→  1053→    const result = await c.env.DB.prepare(
+  1054→  1054→      "SELECT * FROM live_class_schedules WHERE instructor_id = ? AND scheduled_at > datetime('now') AND is_active = 1 ORDER BY scheduled_at ASC LIMIT ?"
+  1055→  1055→    ).bind(instructorId, limit).all();
+  1056→  1056→
+  1057→  1057→    return c.json({ success: true, schedule: result.results });
+  1058→  1058→  } catch (error) {
+  1059→  1059→    return c.json({ error: getErrorMessage(error) }, 500);
+  1060→  1060→  }
+  1061→  1061→});
+  1062→  1062→
+  1063→  1063→// ═══════════════════════════════════════════════════
+  1064→  1064→// REVIEWS ROUTES (instructorOrAdmin)
+  1065→  1065→// ═══════════════════════════════════════════════════
+  1066→  1066→
+  1067→  1067→// GET /reviews — Get reviews from D1 instructor_reviews
+  1068→  1068→instructorRoutes.get('/reviews', instructorOrAdminMiddleware, async (c) => {
+  1069→  1069→  try {
+  1070→  1070→    const authRole = c.get('authRole');
+  1071→  1071→    let instructorId: string;
+  1072→  1072→
+  1073→  1073→    if (authRole === 'admin') {
+  1074→  1074→      instructorId = c.req.query('instructorId') || '';
+  1075→  1075→      if (!instructorId) {
+  1076→  1076→        return c.json({ error: 'instructorId query param required for admin access' }, 400);
+  1077→  1077→      }
+  1078→  1078→    } else {
+  1079→  1079→      instructorId = c.get('instructorId');
+  1080→  1080→    }
+  1081→  1081→
+  1082→  1082→    const page = parseInt(c.req.query('page') || '1');
+  1083→  1083→    const limit = parseInt(c.req.query('limit') || '10');
+  1084→  1084→    const offset = (page - 1) * limit;
+  1085→  1085→
+  1086→  1086→    const reviews = await c.env.DB.prepare(
+  1087→  1087→      `SELECT ir.*, u.full_name as student_name, u.email as student_email, u.avatar_url as student_avatar
+  1088→  1088→       FROM instructor_reviews ir
+  1089→  1089→       LEFT JOIN users u ON ir.user_id = u.id
+  1090→  1090→       WHERE ir.instructor_id = ? ORDER BY ir.created_at DESC LIMIT ? OFFSET ?`
+  1091→  1091→    ).bind(instructorId, limit, offset).all();
+  1092→  1092→
+  1093→  1093→    // Rating stats
+  1094→  1094→    const stats = await c.env.DB.prepare(`
+  1095→  1095→      SELECT 
+  1096→  1096→        AVG(rating) as average_rating,
+  1097→  1097→        COUNT(*) as total_reviews,
+  1098→  1098→        SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) as five_star,
+  1099→  1099→        SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) as four_star,
+  1100→  1100→        SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as three_star,
+  1101→  1101→        SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as two_star,
+  1102→  1102→        SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as one_star
+  1103→  1103→      FROM instructor_reviews WHERE instructor_id = ?
+  1104→  1104→    `).bind(instructorId).first();
+  1105→  1105→
+  1106→  1106→    const totalReviews = (stats?.total_reviews as number) || 0;
+  1107→  1107→    const distribution = {
+  1108→  1108→      5: (stats?.five_star as number) || 0,
+  1109→  1109→      4: (stats?.four_star as number) || 0,
+  1110→  1110→      3: (stats?.three_star as number) || 0,
+  1111→  1111→      2: (stats?.two_star as number) || 0,
+  1112→  1112→      1: (stats?.one_star as number) || 0,
+  1113→  1113→    };
+  1114→  1114→
+  1115→  1115→    return c.json({
+  1116→  1116→      success: true,
+  1117→  1117→      reviews: reviews.results,
+  1118→  1118→      stats: {
+  1119→  1119→        average_rating: totalReviews > 0 ? Math.round((stats?.average_rating as number) * 10) / 10 : 0,
+  1120→  1120→        total_reviews: totalReviews,
+  1121→  1121→        rating_distribution: distribution,
+  1122→  1122→      },
+  1123→  1123→      page,
+  1124→  1124→      limit,
+  1125→  1125→    });
+  1126→  1126→  } catch (error) {
+  1127→  1127→    return c.json({ error: getErrorMessage(error) }, 500);
+  1128→  1128→  }
+  1129→  1129→});
+  1130→  1130→
+  1131→  1131→// ═══════════════════════════════════════════════════
+  1132→  1132→// INSTRUCTOR CRUD ROUTES (instructorOrAdmin)
+  1133→  1133→// ═══════════════════════════════════════════════════
+  1134→  1134→
+  1135→  1135→// Helper: Get instructor ID from auth context (instructor or admin with query param)
+  1136→  1136→function getInstructorId(c: any): { instructorId: string; error: ReturnType<typeof c.json> | null } {
+  1137→  1137→  const authRole = c.get('authRole');
+  1138→  1138→  if (authRole === 'admin') {
+  1139→  1139→    const id = c.req.query('instructorId') || '';
+  1140→  1140→    if (!id) {
+  1141→  1141→      return { instructorId: '', error: c.json({ error: 'instructorId query param required for admin access' }, 400) };
+  1142→  1142→    }
+  1143→  1143→    return { instructorId: id, error: null };
+  1144→  1144→  }
+  1145→  1145→  return { instructorId: c.get('instructorId'), error: null };
+  1146→  1146→}
+  1147→  1147→
+  1148→  1148→// 1. POST /courses — Create a new course
+  1149→  1149→instructorRoutes.post('/courses', instructorOrAdminMiddleware, async (c) => {
+  1150→  1150→  try {
+  1151→  1151→    const { instructorId, error: idError } = getInstructorId(c);
+  1152→  1152→    if (idError) return idError;
+  1153→  1153→
+  1154→  1154→    const body = await c.req.json();
+  1155→  1155→    const { title, description, level, language, price, technology_id, category_id, tags, semester, what_you_learn, subject_ids } = body;
+  1156→  1156→
+  1157→  1157→    if (!title) {
+  1158→  1158→      return c.json({ error: 'title is required' }, 400);
+  1159→  1159→    }
+  1160→  1160→
+  1161→  1161→    const courseId = generateId();
+  1162→  1162→    const slug = slugify(title);
+  1163→  1163→    const now = new Date().toISOString();
+  1164→  1164→
+  1165→  1165→    // Create course
+  1166→  1166→    await c.env.DB.prepare(`
+  1167→  1167→      INSERT INTO courses (id, title, slug, description, instructor_id, technology_id, category_id, level, language, price, tags, semester, what_you_learn, is_published, created_at, updated_at)
+  1168→  1168→      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+  1169→  1169→    `).bind(
+  1170→  1170→      courseId,
+  1171→  1171→      title,
+  1172→  1172→      slug,
+  1173→  1173→      description || null,
+  1174→  1174→      instructorId,
+  1175→  1175→      technology_id || null,
+  1176→  1176→      category_id || null,
+  1177→  1177→      level || 'beginner',
+  1178→  1178→      language || 'bangla',
+  1179→  1179→      price || 0,
+  1180→  1180→      tags || null,
+  1181→  1181→      semester || null,
+  1182→  1182→      what_you_learn || null,
+  1183→  1183→      now,
+  1184→  1184→      now
+  1185→  1185→    ).run();
+  1186→  1186→
+  1187→  1187→    // Create course_instructors junction entry
+  1188→  1188→    try {
+  1189→  1189→      await c.env.DB.prepare(`
+  1190→  1190→        INSERT INTO course_instructors (course_id, instructor_id, sort_order, created_at)
+  1191→  1191→        VALUES (?, ?, 0, ?)
+  1192→  1192→      `).bind(courseId, instructorId, now).run();
+  1193→  1193→    } catch {}
+  1194→  1194→
+  1195→  1195→    // Link subjects if provided (subject_ids array)
+  1196→  1196→    if (Array.isArray(subject_ids) && subject_ids.length > 0) {
+  1197→  1197→      try {
+  1198→  1198→        for (let i = 0; i < subject_ids.length; i++) {
+  1199→  1199→          const subjectId = subject_ids[i];
+  1200→  1200→          await c.env.DB.prepare(`
+  1201→  1201→            INSERT OR IGNORE INTO course_subjects (course_id, subject_id, sort_order, created_at)
+  1202→  1202→            VALUES (?, ?, ?, ?)
+  1203→  1203→          `).bind(courseId, subjectId, i, now).run();
+  1204→  1204→        }
+  1205→  1205→      } catch {}
+  1206→  1206→    }
+  1207→  1207→
+  1208→  1208→    // Auto-create default course packages (single + friend)
+  1209→  1209→    const packageName = title || 'Course';
+  1210→  1210→    try {
+  1211→  1211→      await c.env.DB.prepare(`
+  1212→  1212→        INSERT INTO course_packages (course_id, package_type, display_name, description, price, duration_months, max_users, is_auto_assign, is_active, created_by, created_at, updated_at)
+  1213→  1213→        VALUES (?, 'single', ?, 'Single user access', ?, 6, 1, 1, 1, ?, ?, ?)
+  1214→  1214→      `).bind(courseId, `${packageName} - Single`, price || 0, instructorId, now, now).run();
+  1215→  1215→    } catch {}
+  1216→  1216→    try {
+  1217→  1217→      await c.env.DB.prepare(`
+  1218→  1218→        INSERT INTO course_packages (course_id, package_type, display_name, description, price, duration_months, max_users, is_auto_assign, is_active, created_by, created_at, updated_at)
+  1219→  1219→        VALUES (?, 'friend', ?, 'Friend pack - 2 users', ?, 6, 2, 1, 1, ?, ?, ?)
+  1220→  1220→      `).bind(courseId, `${packageName} - Friend Pack`, (price || 0) * 1.5, instructorId, now, now).run();
+  1221→  1221→    } catch {}
+  1222→  1222→
+  1223→  1223→    // Fetch and return the created course
+  1224→  1224→    const row = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(courseId).first();
+  1225→  1225→    const course = formatCourseRow(row as Record<string, unknown>);
+  1226→  1226→
+  1227→  1227→    return c.json({ success: true, course }, 201);
+  1228→  1228→  } catch (error) {
+  1229→  1229→    return c.json({ error: getErrorMessage(error) }, 500);
+  1230→  1230→  }
+  1231→  1231→});
+  1232→  1232→
+  1233→  1233→// 2. PUT /courses/:id — Update own course
+  1234→  1234→instructorRoutes.put('/courses/:id', instructorOrAdminMiddleware, async (c) => {
+  1235→  1235→  try {
+  1236→  1236→    const courseId = c.req.param('id');
+  1237→  1237→    const { instructorId, error: idError } = getInstructorId(c);
+  1238→  1238→    if (idError) return idError;
+  1239→  1239→
+  1240→  1240→    // Verify ownership
+  1241→  1241→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1242→  1242→    if (!isOwner) {
+  1243→  1243→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1244→  1244→    }
+  1245→  1245→
+  1246→  1246→    const body = await c.req.json();
+  1247→  1247→
+  1248→  1248→    // If is_published changed to 1, validate that course has at least 1 video
+  1249→  1249→    if (body.is_published === 1 || body.isPublished === 1) {
+  1250→  1250→      try {
+  1251→  1251→        const videoCount = await c.env.DB.prepare(
+  1252→  1252→          'SELECT COUNT(*) as total FROM videos WHERE course_id = ?'
+  1253→  1253→        ).bind(courseId).first<{ total: number }>();
+  1254→  1254→        if (!videoCount || videoCount.total === 0) {
+  1255→  1255→          return c.json({ error: 'Cannot publish course without at least 1 video' }, 400);
+  1256→  1256→        }
+  1257→  1257→      } catch {}
+  1258→  1258→    }
+  1259→  1259→
+  1260→  1260→    const fieldMapping: Record<string, string> = {
+  1261→  1261→      title: 'title',
+  1262→  1262→      description: 'description',
+  1263→  1263→      level: 'level',
+  1264→  1264→      language: 'language',
+  1265→  1265→      price: 'price',
+  1266→  1266→      technology_id: 'technology_id',
+  1267→  1267→      technologyId: 'technology_id',
+  1268→  1268→      category_id: 'category_id',
+  1269→  1269→      categoryId: 'category_id',
+  1270→  1270→      tags: 'tags',
+  1271→  1271→      semester: 'semester',
+  1272→  1272→      what_you_learn: 'what_you_learn',
+  1273→  1273→      whatYouLearn: 'what_you_learn',
+  1274→  1274→      is_published: 'is_published',
+  1275→  1275→      isPublished: 'is_published',
+  1276→  1276→      thumbnail_url: 'thumbnail_url',
+  1277→  1277→      thumbnailUrl: 'thumbnail_url',
+  1278→  1278→    };
+  1279→  1279→
+  1280→  1280→    const setClauses: string[] = [];
+  1281→  1281→    const params: unknown[] = [];
+  1282→  1282→
+  1283→  1283→    for (const [bodyField, dbColumn] of Object.entries(fieldMapping)) {
+  1284→  1284→      if (body[bodyField] !== undefined) {
+  1285→  1285→        setClauses.push(`${dbColumn} = ?`);
+  1286→  1286→        params.push(body[bodyField]);
+  1287→  1287→      }
+  1288→  1288→    }
+  1289→  1289→
+  1290→  1290→    if (setClauses.length === 0) {
+  1291→  1291→      return c.json({ error: 'No valid fields to update' }, 400);
+  1292→  1292→    }
+  1293→  1293→
+  1294→  1294→    // Always update updated_at
+  1295→  1295→    setClauses.push('updated_at = ?');
+  1296→  1296→    params.push(new Date().toISOString());
+  1297→  1297→    params.push(courseId);
+  1298→  1298→
+  1299→  1299→    await c.env.DB.prepare(
+  1300→  1300→      `UPDATE courses SET ${setClauses.join(', ')} WHERE id = ?`
+  1301→  1301→    ).bind(...params).run();
+  1302→  1302→
+  1303→  1303→    // Return updated course
+  1304→  1304→    const updatedRow = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(courseId).first();
+  1305→  1305→    const course = formatCourseRow(updatedRow as Record<string, unknown>);
+  1306→  1306→
+  1307→  1307→    return c.json({ success: true, course });
+  1308→  1308→  } catch (error) {
+  1309→  1309→    return c.json({ error: getErrorMessage(error) }, 500);
+  1310→  1310→  }
+  1311→  1311→});
+  1312→  1312→
+  1313→  1313→// 3. DELETE /courses/:id — Delete own draft course
+  1314→  1314→instructorRoutes.delete('/courses/:id', instructorOrAdminMiddleware, async (c) => {
+  1315→  1315→  try {
+  1316→  1316→    const courseId = c.req.param('id');
+  1317→  1317→    const { instructorId, error: idError } = getInstructorId(c);
+  1318→  1318→    if (idError) return idError;
+  1319→  1319→
+  1320→  1320→    // Verify ownership
+  1321→  1321→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1322→  1322→    if (!isOwner) {
+  1323→  1323→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1324→  1324→    }
+  1325→  1325→
+  1326→  1326→    // Check if course is draft
+  1327→  1327→    const course = await c.env.DB.prepare(
+  1328→  1328→      'SELECT is_published FROM courses WHERE id = ?'
+  1329→  1329→    ).bind(courseId).first<{ is_published: number }>();
+  1330→  1330→    if (!course) {
+  1331→  1331→      return c.json({ error: 'Course not found' }, 404);
+  1332→  1332→    }
+  1333→  1333→    if (course.is_published === 1) {
+  1334→  1334→      return c.json({ error: 'Cannot delete a published course' }, 400);
+  1335→  1335→    }
+  1336→  1336→
+  1337→  1337→    // Check if course has enrollments
+  1338→  1338→    try {
+  1339→  1339→      const enrollCount = await c.env.DB.prepare(
+  1340→  1340→        'SELECT COUNT(*) as total FROM enrollments WHERE course_id = ?'
+  1341→  1341→      ).bind(courseId).first<{ total: number }>();
+  1342→  1342→      if (enrollCount && enrollCount.total > 0) {
+  1343→  1343→        return c.json({ error: 'Cannot delete course with existing enrollments' }, 400);
+  1344→  1344→      }
+  1345→  1345→    } catch {}
+  1346→  1346→
+  1347→  1347→    // Delete related records
+  1348→  1348→    const relatedTables = [
+  1349→  1349→      'DELETE FROM videos WHERE course_id = ?',
+  1350→  1350→      'DELETE FROM lessons WHERE course_id = ?',
+  1351→  1351→      'DELETE FROM chapters WHERE course_id = ?',
+  1352→  1352→      'DELETE FROM course_resources WHERE course_id = ?',
+  1353→  1353→      'DELETE FROM course_instructors WHERE course_id = ?',
+  1354→  1354→      'DELETE FROM course_categories WHERE course_id = ?',
+  1355→  1355→      'DELETE FROM course_subjects WHERE course_id = ?',
+  1356→  1356→      'DELETE FROM course_learning_points WHERE course_id = ?',
+  1357→  1357→      'DELETE FROM course_packages WHERE course_id = ?',
+  1358→  1358→    ];
+  1359→  1359→
+  1360→  1360→    for (const sql of relatedTables) {
+  1361→  1361→      try {
+  1362→  1362→        await c.env.DB.prepare(sql).bind(courseId).run();
+  1363→  1363→      } catch {}
+  1364→  1364→    }
+  1365→  1365→
+  1366→  1366→    // Delete the course itself
+  1367→  1367→    await c.env.DB.prepare('DELETE FROM courses WHERE id = ?').bind(courseId).run();
+  1368→  1368→
+  1369→  1369→    return c.json({ success: true, message: 'Course deleted successfully' });
+  1370→  1370→  } catch (error) {
+  1371→  1371→    return c.json({ error: getErrorMessage(error) }, 500);
+  1372→  1372→  }
+  1373→  1373→});
+  1374→  1374→
+  1375→  1375→// 4. GET /courses/:id/curriculum — Get full curriculum
+  1376→  1376→instructorRoutes.get('/courses/:id/curriculum', instructorOrAdminMiddleware, async (c) => {
+  1377→  1377→  try {
+  1378→  1378→    const courseId = c.req.param('id');
+  1379→  1379→    const { instructorId, error: idError } = getInstructorId(c);
+  1380→  1380→    if (idError) return idError;
+  1381→  1381→
+  1382→  1382→    // Verify ownership
+  1383→  1383→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1384→  1384→    if (!isOwner) {
+  1385→  1385→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1386→  1386→    }
+  1387→  1387→
+  1388→  1388→    // Get course
+  1389→  1389→    const courseRow = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(courseId).first();
+  1390→  1390→    if (!courseRow) {
+  1391→  1391→      return c.json({ error: 'Course not found' }, 404);
+  1392→  1392→    }
+  1393→  1393→    const course = formatCourseRow(courseRow as Record<string, unknown>);
+  1394→  1394→
+  1395→  1395→    // Get chapters
+  1396→  1396→    let chapters: any[] = [];
+  1397→  1397→    try {
+  1398→  1398→      const chapterResult = await c.env.DB.prepare(
+  1399→  1399→        'SELECT * FROM chapters WHERE course_id = ? ORDER BY sort_order ASC'
+  1400→  1400→      ).bind(courseId).all();
+  1401→  1401→      chapters = chapterResult.results as any[];
+  1402→  1402→    } catch {}
+  1403→  1403→
+  1404→  1404→    // For each chapter, get its lessons
+  1405→  1405→    const chaptersWithLessons = [];
+  1406→  1406→    for (const chapter of chapters) {
+  1407→  1407→      let lessons: any[] = [];
+  1408→  1408→      try {
+  1409→  1409→        const lessonResult = await c.env.DB.prepare(
+  1410→  1410→          'SELECT * FROM lessons WHERE chapter_id = ? ORDER BY sort_order ASC'
+  1411→  1411→        ).bind(chapter.id).all();
+  1412→  1412→        lessons = lessonResult.results as any[];
+  1413→  1413→      } catch {}
+  1414→  1414→      chaptersWithLessons.push({
+  1415→  1415→        ...chapter,
+  1416→  1416→        $id: chapter.id,
+  1417→  1417→        lessons,
+  1418→  1418→      });
+  1419→  1419→    }
+  1420→  1420→
+  1421→  1421→    // Get course resources
+  1422→  1422→    let resources: any[] = [];
+  1423→  1423→    try {
+  1424→  1424→      const resourceResult = await c.env.DB.prepare(
+  1425→  1425→        'SELECT * FROM course_resources WHERE course_id = ? ORDER BY sort_order ASC'
+  1426→  1426→      ).bind(courseId).all();
+  1427→  1427→      resources = resourceResult.results as any[];
+  1428→  1428→    } catch {}
+  1429→  1429→
+  1430→  1430→    return c.json({
+  1431→  1431→      success: true,
+  1432→  1432→      course,
+  1433→  1433→      chapters: chaptersWithLessons,
+  1434→  1434→      resources,
+  1435→  1435→    });
+  1436→  1436→  } catch (error) {
+  1437→  1437→    return c.json({ error: getErrorMessage(error) }, 500);
+  1438→  1438→  }
+  1439→  1439→});
+  1440→  1440→
+  1441→  1441→// 5. POST /courses/:id/chapters — Create chapter
+  1442→  1442→instructorRoutes.post('/courses/:id/chapters', instructorOrAdminMiddleware, async (c) => {
+  1443→  1443→  try {
+  1444→  1444→    const courseId = c.req.param('id');
+  1445→  1445→    const { instructorId, error: idError } = getInstructorId(c);
+  1446→  1446→    if (idError) return idError;
+  1447→  1447→
+  1448→  1448→    // Verify ownership
+  1449→  1449→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1450→  1450→    if (!isOwner) {
+  1451→  1451→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1452→  1452→    }
+  1453→  1453→
+  1454→  1454→    const body = await c.req.json();
+  1455→  1455→    const { title, subject_id, description, sort_order } = body;
+  1456→  1456→
+  1457→  1457→    if (!title) {
+  1458→  1458→      return c.json({ error: 'title is required' }, 400);
+  1459→  1459→    }
+  1460→  1460→
+  1461→  1461→    const chapterId = generateId();
+  1462→  1462→    const slug = slugify(title);
+  1463→  1463→    const now = new Date().toISOString();
+  1464→  1464→
+  1465→  1465→    // Get max sort_order if not provided
+  1466→  1466→    let sortOrder = sort_order;
+  1467→  1467→    if (sortOrder === undefined || sortOrder === null) {
+  1468→  1468→      try {
+  1469→  1469→        const maxSort = await c.env.DB.prepare(
+  1470→  1470→          'SELECT MAX(sort_order) as max_order FROM chapters WHERE course_id = ?'
+  1471→  1471→        ).bind(courseId).first<{ max_order: number | null }>();
+  1472→  1472→        sortOrder = (maxSort?.max_order ?? -1) + 1;
+  1473→  1473→      } catch {
+  1474→  1474→        sortOrder = 0;
+  1475→  1475→      }
+  1476→  1476→    }
+  1477→  1477→
+  1478→  1478→    await c.env.DB.prepare(`
+  1479→  1479→      INSERT INTO chapters (id, course_id, subject_id, title, slug, description, sort_order, created_at, updated_at)
+  1480→  1480→      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  1481→  1481→    `).bind(
+  1482→  1482→      chapterId,
+  1483→  1483→      courseId,
+  1484→  1484→      subject_id || null,
+  1485→  1485→      title,
+  1486→  1486→      slug,
+  1487→  1487→      description || null,
+  1488→  1488→      sortOrder,
+  1489→  1489→      now,
+  1490→  1490→      now
+  1491→  1491→    ).run();
+  1492→  1492→
+  1493→  1493→    const row = await c.env.DB.prepare('SELECT * FROM chapters WHERE id = ?').bind(chapterId).first();
+  1494→  1494→    const chapter = { ...(row as Record<string, unknown>), $id: (row as any).id };
+  1495→  1495→
+  1496→  1496→    return c.json({ success: true, chapter }, 201);
+  1497→  1497→  } catch (error) {
+  1498→  1498→    return c.json({ error: getErrorMessage(error) }, 500);
+  1499→  1499→  }
+  1500→  1500→});
+  1501→  1501→
+  1502→  1502→// 6. PUT /courses/:id/chapters/:chapterId — Update chapter
+  1503→  1503→instructorRoutes.put('/courses/:id/chapters/:chapterId', instructorOrAdminMiddleware, async (c) => {
+  1504→  1504→  try {
+  1505→  1505→    const courseId = c.req.param('id');
+  1506→  1506→    const chapterId = c.req.param('chapterId');
+  1507→  1507→    const { instructorId, error: idError } = getInstructorId(c);
+  1508→  1508→    if (idError) return idError;
+  1509→  1509→
+  1510→  1510→    // Verify ownership
+  1511→  1511→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1512→  1512→    if (!isOwner) {
+  1513→  1513→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1514→  1514→    }
+  1515→  1515→
+  1516→  1516→    // Verify chapter belongs to course
+  1517→  1517→    const existingChapter = await c.env.DB.prepare(
+  1518→  1518→      'SELECT id FROM chapters WHERE id = ? AND course_id = ?'
+  1519→  1519→    ).bind(chapterId, courseId).first();
+  1520→  1520→    if (!existingChapter) {
+  1521→  1521→      return c.json({ error: 'Chapter not found in this course' }, 404);
+  1522→  1522→    }
+  1523→  1523→
+  1524→  1524→    const body = await c.req.json();
+  1525→  1525→    const fieldMapping: Record<string, string> = {
+  1526→  1526→      title: 'title',
+  1527→  1527→      subject_id: 'subject_id',
+  1528→  1528→      subjectId: 'subject_id',
+  1529→  1529→      description: 'description',
+  1530→  1530→      sort_order: 'sort_order',
+  1531→  1531→      sortOrder: 'sort_order',
+  1532→  1532→    };
+  1533→  1533→
+  1534→  1534→    const setClauses: string[] = [];
+  1535→  1535→    const params: unknown[] = [];
+  1536→  1536→
+  1537→  1537→    for (const [bodyField, dbColumn] of Object.entries(fieldMapping)) {
+  1538→  1538→      if (body[bodyField] !== undefined) {
+  1539→  1539→        setClauses.push(`${dbColumn} = ?`);
+  1540→  1540→        params.push(body[bodyField]);
+  1541→  1541→      }
+  1542→  1542→    }
+  1543→  1543→
+  1544→  1544→    if (setClauses.length === 0) {
+  1545→  1545→      return c.json({ error: 'No valid fields to update' }, 400);
+  1546→  1546→    }
+  1547→  1547→
+  1548→  1548→    setClauses.push('updated_at = ?');
+  1549→  1549→    params.push(new Date().toISOString());
+  1550→  1550→    params.push(chapterId);
+  1551→  1551→
+  1552→  1552→    await c.env.DB.prepare(
+  1553→  1553→      `UPDATE chapters SET ${setClauses.join(', ')} WHERE id = ?`
+  1554→  1554→    ).bind(...params).run();
+  1555→  1555→
+  1556→  1556→    const updatedRow = await c.env.DB.prepare('SELECT * FROM chapters WHERE id = ?').bind(chapterId).first();
+  1557→  1557→    const chapter = { ...(updatedRow as Record<string, unknown>), $id: (updatedRow as any).id };
+  1558→  1558→
+  1559→  1559→    return c.json({ success: true, chapter });
+  1560→  1560→  } catch (error) {
+  1561→  1561→    return c.json({ error: getErrorMessage(error) }, 500);
+  1562→  1562→  }
+  1563→  1563→});
+  1564→  1564→
+  1565→  1565→// 7. DELETE /courses/:id/chapters/:chapterId — Delete chapter
+  1566→  1566→instructorRoutes.delete('/courses/:id/chapters/:chapterId', instructorOrAdminMiddleware, async (c) => {
+  1567→  1567→  try {
+  1568→  1568→    const courseId = c.req.param('id');
+  1569→  1569→    const chapterId = c.req.param('chapterId');
+  1570→  1570→    const { instructorId, error: idError } = getInstructorId(c);
+  1571→  1571→    if (idError) return idError;
+  1572→  1572→
+  1573→  1573→    // Verify ownership
+  1574→  1574→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1575→  1575→    if (!isOwner) {
+  1576→  1576→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1577→  1577→    }
+  1578→  1578→
+  1579→  1579→    // Verify chapter belongs to course
+  1580→  1580→    const existingChapter = await c.env.DB.prepare(
+  1581→  1581→      'SELECT id FROM chapters WHERE id = ? AND course_id = ?'
+  1582→  1582→    ).bind(chapterId, courseId).first();
+  1583→  1583→    if (!existingChapter) {
+  1584→  1584→      return c.json({ error: 'Chapter not found in this course' }, 404);
+  1585→  1585→    }
+  1586→  1586→
+  1587→  1587→    // Delete all lessons in this chapter
+  1588→  1588→    try {
+  1589→  1589→      await c.env.DB.prepare('DELETE FROM lessons WHERE chapter_id = ?').bind(chapterId).run();
+  1590→  1590→    } catch {}
+  1591→  1591→
+  1592→  1592→    // Delete the chapter
+  1593→  1593→    await c.env.DB.prepare('DELETE FROM chapters WHERE id = ?').bind(chapterId).run();
+  1594→  1594→
+  1595→  1595→    return c.json({ success: true, message: 'Chapter deleted successfully' });
+  1596→  1596→  } catch (error) {
+  1597→  1597→    return c.json({ error: getErrorMessage(error) }, 500);
+  1598→  1598→  }
+  1599→  1599→});
+  1600→  1600→
+  1601→  1601→// 8. POST /courses/:id/lessons — Create lesson
+  1602→  1602→instructorRoutes.post('/courses/:id/lessons', instructorOrAdminMiddleware, async (c) => {
+  1603→  1603→  try {
+  1604→  1604→    const courseId = c.req.param('id');
+  1605→  1605→    const { instructorId, error: idError } = getInstructorId(c);
+  1606→  1606→    if (idError) return idError;
+  1607→  1607→
+  1608→  1608→    // Verify ownership
+  1609→  1609→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1610→  1610→    if (!isOwner) {
+  1611→  1611→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1612→  1612→    }
+  1613→  1613→
+  1614→  1614→    const body = await c.req.json();
+  1615→  1615→    const { title, chapter_id, subject_id, description, lesson_type, sort_order, is_preview, duration, video_url, thumbnail_url, document_url } = body;
+  1616→  1616→
+  1617→  1617→    if (!title || !chapter_id) {
+  1618→  1618→      return c.json({ error: 'title and chapter_id are required' }, 400);
+  1619→  1619→    }
+  1620→  1620→
+  1621→  1621→    // Verify chapter belongs to this course
+  1622→  1622→    const chapterCheck = await c.env.DB.prepare(
+  1623→  1623→      'SELECT id, subject_id FROM chapters WHERE id = ? AND course_id = ?'
+  1624→  1624→    ).bind(chapter_id, courseId).first<{ id: string; subject_id: string | null }>();
+  1625→  1625→    if (!chapterCheck) {
+  1626→  1626→      return c.json({ error: 'Chapter not found in this course' }, 404);
+  1627→  1627→    }
+  1628→  1628→
+  1629→  1629→    // Auto-inherit subject_id from chapter if not provided
+  1630→  1630→    const finalSubjectId = subject_id || chapterCheck.subject_id || null;
+  1631→  1631→
+  1632→  1632→    const lessonId = generateId();
+  1633→  1633→    const slug = slugify(title);
+  1634→  1634→    const now = new Date().toISOString();
+  1635→  1635→
+  1636→  1636→    // Get max sort_order if not provided
+  1637→  1637→    let sortOrder = sort_order;
+  1638→  1638→    if (sortOrder === undefined || sortOrder === null) {
+  1639→  1639→      try {
+  1640→  1640→        const maxSort = await c.env.DB.prepare(
+  1641→  1641→          'SELECT MAX(sort_order) as max_order FROM lessons WHERE chapter_id = ?'
+  1642→  1642→        ).bind(chapter_id).first<{ max_order: number | null }>();
+  1643→  1643→        sortOrder = (maxSort?.max_order ?? -1) + 1;
+  1644→  1644→      } catch {
+  1645→  1645→        sortOrder = 0;
+  1646→  1646→      }
+  1647→  1647→    }
+  1648→  1648→
+  1649→  1649→    await c.env.DB.prepare(`
+  1650→  1650→      INSERT INTO lessons (id, chapter_id, course_id, subject_id, title, slug, description, lesson_type, sort_order, is_preview, duration, video_url, thumbnail_url, document_url, created_at, updated_at)
+  1651→  1651→      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  1652→  1652→    `).bind(
+  1653→  1653→      lessonId,
+  1654→  1654→      chapter_id,
+  1655→  1655→      courseId,
+  1656→  1656→      finalSubjectId,
+  1657→  1657→      title,
+  1658→  1658→      slug,
+  1659→  1659→      description || null,
+  1660→  1660→      lesson_type || 'video',
+  1661→  1661→      sortOrder,
+  1662→  1662→      is_preview || 0,
+  1663→  1663→      duration || 0,
+  1664→  1664→      video_url || null,
+  1665→  1665→      thumbnail_url || null,
+  1666→  1666→      document_url || null,
+  1667→  1667→      now,
+  1668→  1668→      now
+  1669→  1669→    ).run();
+  1670→  1670→
+  1671→  1671→    const row = await c.env.DB.prepare('SELECT * FROM lessons WHERE id = ?').bind(lessonId).first();
+  1672→  1672→    const lesson = { ...(row as Record<string, unknown>), $id: (row as any).id };
+  1673→  1673→
+  1674→  1674→    return c.json({ success: true, lesson }, 201);
+  1675→  1675→  } catch (error) {
+  1676→  1676→    return c.json({ error: getErrorMessage(error) }, 500);
+  1677→  1677→  }
+  1678→  1678→});
+  1679→  1679→
+  1680→  1680→// 9. PUT /courses/:id/lessons/:lessonId — Update lesson
+  1681→  1681→instructorRoutes.put('/courses/:id/lessons/:lessonId', instructorOrAdminMiddleware, async (c) => {
+  1682→  1682→  try {
+  1683→  1683→    const courseId = c.req.param('id');
+  1684→  1684→    const lessonId = c.req.param('lessonId');
+  1685→  1685→    const { instructorId, error: idError } = getInstructorId(c);
+  1686→  1686→    if (idError) return idError;
+  1687→  1687→
+  1688→  1688→    // Verify ownership
+  1689→  1689→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1690→  1690→    if (!isOwner) {
+  1691→  1691→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1692→  1692→    }
+  1693→  1693→
+  1694→  1694→    // Verify lesson belongs to course
+  1695→  1695→    const existingLesson = await c.env.DB.prepare(
+  1696→  1696→      'SELECT id FROM lessons WHERE id = ? AND course_id = ?'
+  1697→  1697→    ).bind(lessonId, courseId).first();
+  1698→  1698→    if (!existingLesson) {
+  1699→  1699→      return c.json({ error: 'Lesson not found in this course' }, 404);
+  1700→  1700→    }
+  1701→  1701→
+  1702→  1702→    const body = await c.req.json();
+  1703→  1703→    const fieldMapping: Record<string, string> = {
+  1704→  1704→      title: 'title',
+  1705→  1705→      chapter_id: 'chapter_id',
+  1706→  1706→      chapterId: 'chapter_id',
+  1707→  1707→      subject_id: 'subject_id',
+  1708→  1708→      subjectId: 'subject_id',
+  1709→  1709→      description: 'description',
+  1710→  1710→      lesson_type: 'lesson_type',
+  1711→  1711→      lessonType: 'lesson_type',
+  1712→  1712→      sort_order: 'sort_order',
+  1713→  1713→      sortOrder: 'sort_order',
+  1714→  1714→      is_preview: 'is_preview',
+  1715→  1715→      isPreview: 'is_preview',
+  1716→  1716→      duration: 'duration',
+  1717→  1717→      video_url: 'video_url',
+  1718→  1718→      videoUrl: 'video_url',
+  1719→  1719→      thumbnail_url: 'thumbnail_url',
+  1720→  1720→      thumbnailUrl: 'thumbnail_url',
+  1721→  1721→      document_url: 'document_url',
+  1722→  1722→      documentUrl: 'document_url',
+  1723→  1723→    };
+  1724→  1724→
+  1725→  1725→    const setClauses: string[] = [];
+  1726→  1726→    const params: unknown[] = [];
+  1727→  1727→
+  1728→  1728→    for (const [bodyField, dbColumn] of Object.entries(fieldMapping)) {
+  1729→  1729→      if (body[bodyField] !== undefined) {
+  1730→  1730→        setClauses.push(`${dbColumn} = ?`);
+  1731→  1731→        params.push(body[bodyField]);
+  1732→  1732→      }
+  1733→  1733→    }
+  1734→  1734→
+  1735→  1735→    if (setClauses.length === 0) {
+  1736→  1736→      return c.json({ error: 'No valid fields to update' }, 400);
+  1737→  1737→    }
+  1738→  1738→
+  1739→  1739→    setClauses.push('updated_at = ?');
+  1740→  1740→    params.push(new Date().toISOString());
+  1741→  1741→    params.push(lessonId);
+  1742→  1742→
+  1743→  1743→    await c.env.DB.prepare(
+  1744→  1744→      `UPDATE lessons SET ${setClauses.join(', ')} WHERE id = ?`
+  1745→  1745→    ).bind(...params).run();
+  1746→  1746→
+  1747→  1747→    const updatedRow = await c.env.DB.prepare('SELECT * FROM lessons WHERE id = ?').bind(lessonId).first();
+  1748→  1748→    const lesson = { ...(updatedRow as Record<string, unknown>), $id: (updatedRow as any).id };
+  1749→  1749→
+  1750→  1750→    return c.json({ success: true, lesson });
+  1751→  1751→  } catch (error) {
+  1752→  1752→    return c.json({ error: getErrorMessage(error) }, 500);
+  1753→  1753→  }
+  1754→  1754→});
+  1755→  1755→
+  1756→  1756→// 10. DELETE /courses/:id/lessons/:lessonId — Delete lesson
+  1757→  1757→instructorRoutes.delete('/courses/:id/lessons/:lessonId', instructorOrAdminMiddleware, async (c) => {
+  1758→  1758→  try {
+  1759→  1759→    const courseId = c.req.param('id');
+  1760→  1760→    const lessonId = c.req.param('lessonId');
+  1761→  1761→    const { instructorId, error: idError } = getInstructorId(c);
+  1762→  1762→    if (idError) return idError;
+  1763→  1763→
+  1764→  1764→    // Verify ownership
+  1765→  1765→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1766→  1766→    if (!isOwner) {
+  1767→  1767→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1768→  1768→    }
+  1769→  1769→
+  1770→  1770→    // Verify lesson belongs to course
+  1771→  1771→    const existingLesson = await c.env.DB.prepare(
+  1772→  1772→      'SELECT id FROM lessons WHERE id = ? AND course_id = ?'
+  1773→  1773→    ).bind(lessonId, courseId).first();
+  1774→  1774→    if (!existingLesson) {
+  1775→  1775→      return c.json({ error: 'Lesson not found in this course' }, 404);
+  1776→  1776→    }
+  1777→  1777→
+  1778→  1778→    await c.env.DB.prepare('DELETE FROM lessons WHERE id = ?').bind(lessonId).run();
+  1779→  1779→
+  1780→  1780→    return c.json({ success: true, message: 'Lesson deleted successfully' });
+  1781→  1781→  } catch (error) {
+  1782→  1782→    return c.json({ error: getErrorMessage(error) }, 500);
+  1783→  1783→  }
+  1784→  1784→});
+  1785→  1785→
+  1786→  1786→// 11. GET /courses/:id/resources — List resources
+  1787→  1787→instructorRoutes.get('/courses/:id/resources', instructorOrAdminMiddleware, async (c) => {
+  1788→  1788→  try {
+  1789→  1789→    const courseId = c.req.param('id');
+  1790→  1790→    const { instructorId, error: idError } = getInstructorId(c);
+  1791→  1791→    if (idError) return idError;
+  1792→  1792→
+  1793→  1793→    // Verify ownership
+  1794→  1794→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1795→  1795→    if (!isOwner) {
+  1796→  1796→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1797→  1797→    }
+  1798→  1798→
+  1799→  1799→    let resources: any[] = [];
+  1800→  1800→    try {
+  1801→  1801→      const result = await c.env.DB.prepare(
+  1802→  1802→        'SELECT * FROM course_resources WHERE course_id = ? ORDER BY sort_order ASC'
+  1803→  1803→      ).bind(courseId).all();
+  1804→  1804→      resources = result.results as any[];
+  1805→  1805→    } catch {}
+  1806→  1806→
+  1807→  1807→    return c.json({ success: true, resources });
+  1808→  1808→  } catch (error) {
+  1809→  1809→    return c.json({ error: getErrorMessage(error) }, 500);
+  1810→  1810→  }
+  1811→  1811→});
+  1812→  1812→
+  1813→  1813→// 12. POST /courses/:id/resources — Upload resource
+  1814→  1814→instructorRoutes.post('/courses/:id/resources', instructorOrAdminMiddleware, async (c) => {
+  1815→  1815→  try {
+  1816→  1816→    const courseId = c.req.param('id');
+  1817→  1817→    const { instructorId, error: idError } = getInstructorId(c);
+  1818→  1818→    if (idError) return idError;
+  1819→  1819→
+  1820→  1820→    // Verify ownership
+  1821→  1821→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1822→  1822→    if (!isOwner) {
+  1823→  1823→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1824→  1824→    }
+  1825→  1825→
+  1826→  1826→    const formData = await c.req.formData();
+  1827→  1827→    const title = formData.get('title') as string;
+  1828→  1828→    const description = formData.get('description') as string | null;
+  1829→  1829→    const file_type = (formData.get('file_type') as string) || 'pdf';
+  1830→  1830→    const chapter_id = (formData.get('chapter_id') as string) || null;
+  1831→  1831→    const lesson_id = (formData.get('lesson_id') as string) || null;
+  1832→  1832→
+  1833→  1833→    if (!title) {
+  1834→  1834→      return c.json({ error: 'title is required' }, 400);
+  1835→  1835→    }
+  1836→  1836→
+  1837→  1837→    // Get file from form data
+  1838→  1838→    const fileEntry = formData.get('file');
+  1839→  1839→    if (!fileEntry || typeof fileEntry === 'string') {
+  1840→  1840→      return c.json({ error: 'No file provided' }, 400);
+  1841→  1841→    }
+  1842→  1842→    const file = fileEntry as unknown as Blob & { name?: string; type?: string };
+  1843→  1843→
+  1844→  1844→    // Upload to R2_RESOURCES bucket
+  1845→  1845→    const key = `course-resources/${courseId}/${Date.now()}-${file.name || 'resource'}`;
+  1846→  1846→    const arrayBuffer = await file.arrayBuffer();
+  1847→  1847→    await c.env.R2_RESOURCES.put(key, arrayBuffer, {
+  1848→  1848→      httpMetadata: { contentType: file.type || 'application/octet-stream' },
+  1849→  1849→    });
+  1850→  1850→
+  1851→  1851→    const fileUrl = await getPublicUrl(c.env, 'resources', key);
+  1852→  1852→
+  1853→  1853→    // Save record to course_resources table
+  1854→  1854→    const resourceId = generateId();
+  1855→  1855→    const now = new Date().toISOString();
+  1856→  1856→
+  1857→  1857→    await c.env.DB.prepare(`
+  1858→  1858→      INSERT INTO course_resources (id, course_id, chapter_id, lesson_id, title, description, file_url, file_type, file_size, sort_order, uploaded_by, created_at, updated_at)
+  1859→  1859→      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+  1860→  1860→    `).bind(
+  1861→  1861→      resourceId,
+  1862→  1862→      courseId,
+  1863→  1863→      chapter_id,
+  1864→  1864→      lesson_id,
+  1865→  1865→      title,
+  1866→  1866→      description || null,
+  1867→  1867→      fileUrl,
+  1868→  1868→      file_type,
+  1869→  1869→      file.size || 0,
+  1870→  1870→      instructorId,
+  1871→  1871→      now,
+  1872→  1872→      now
+  1873→  1873→    ).run();
+  1874→  1874→
+  1875→  1875→    const row = await c.env.DB.prepare('SELECT * FROM course_resources WHERE id = ?').bind(resourceId).first();
+  1876→  1876→    const resource = { ...(row as Record<string, unknown>), $id: (row as any).id };
+  1877→  1877→
+  1878→  1878→    return c.json({ success: true, resource }, 201);
+  1879→  1879→  } catch (error) {
+  1880→  1880→    return c.json({ error: getErrorMessage(error) }, 500);
+  1881→  1881→  }
+  1882→  1882→});
+  1883→  1883→
+  1884→  1884→// 13. DELETE /courses/:id/resources/:resourceId — Delete resource
+  1885→  1885→instructorRoutes.delete('/courses/:id/resources/:resourceId', instructorOrAdminMiddleware, async (c) => {
+  1886→  1886→  try {
+  1887→  1887→    const courseId = c.req.param('id');
+  1888→  1888→    const resourceId = c.req.param('resourceId');
+  1889→  1889→    const { instructorId, error: idError } = getInstructorId(c);
+  1890→  1890→    if (idError) return idError;
+  1891→  1891→
+  1892→  1892→    // Verify ownership
+  1893→  1893→    const isOwner = await verifyCourseOwnership(c.env, courseId, instructorId);
+  1894→  1894→    if (!isOwner) {
+  1895→  1895→      return c.json({ error: 'You do not own this course or it does not exist' }, 403);
+  1896→  1896→    }
+  1897→  1897→
+  1898→  1898→    // Verify resource belongs to course
+  1899→  1899→    const existingResource = await c.env.DB.prepare(
+  1900→  1900→      'SELECT id, file_url FROM course_resources WHERE id = ? AND course_id = ?'
+  1901→  1901→    ).bind(resourceId, courseId).first<{ id: string; file_url: string }>();
+  1902→  1902→    if (!existingResource) {
+  1903→  1903→      return c.json({ error: 'Resource not found in this course' }, 404);
+  1904→  1904→    }
+  1905→  1905→
+  1906→  1906→    // Delete from R2_RESOURCES
+  1907→  1907→    try {
+  1908→  1908→      const fileUrl = existingResource.file_url;
+  1909→  1909→      if (fileUrl) {
+  1910→  1910→        // Extract the key from the full URL
+  1911→  1911→        const urlParts = fileUrl.match(/\.r2\.dev\/(.+)$/);
+  1912→  1912→        if (urlParts?.[1]) {
+  1913→  1913→          await c.env.R2_RESOURCES.delete(urlParts[1]);
+  1914→  1914→        }
+  1915→  1915→      }
+  1916→  1916→    } catch {}
+  1917→  1917→
+  1918→  1918→    // Delete from course_resources table
+  1919→  1919→    await c.env.DB.prepare('DELETE FROM course_resources WHERE id = ?').bind(resourceId).run();
+  1920→  1920→
+  1921→  1921→    return c.json({ success: true, message: 'Resource deleted successfully' });
+  1922→  1922→  } catch (error) {
+  1923→  1923→    return c.json({ error: getErrorMessage(error) }, 500);
+  1924→  1924→  }
+  1925→  1925→});
+  1926→  1926→
+  1927→  1927→// ═══════════════════════════════════════════════════
+  1928→  1928→// NOTIFICATIONS ROUTES (instructorOrAdmin)
+  1929→  1929→// ═══════════════════════════════════════════════════
+  1930→  1930→
+  1931→  1931→// GET /notifications — Get notifications for instructor from D1
+  1932→  1932→instructorRoutes.get('/notifications', instructorOrAdminMiddleware, async (c) => {
+  1933→  1933→  try {
+  1934→  1934→    const authRole = c.get('authRole');
+  1935→  1935→    let instructorId: string;
+  1936→  1936→
+  1937→  1937→    if (authRole === 'admin') {
+  1938→  1938→      instructorId = c.req.query('instructorId') || '';
+  1939→  1939→      if (!instructorId) {
+  1940→  1940→        return c.json({ error: 'instructorId query param required for admin access' }, 400);
+  1941→  1941→      }
+  1942→  1942→    } else {
+  1943→  1943→      instructorId = c.get('instructorId');
+  1944→  1944→    }
+  1945→  1945→
+  1946→  1946→    const limit = parseInt(c.req.query('limit') || '20');
+  1947→  1947→    const offset = parseInt(c.req.query('offset') || '0');
+  1948→  1948→    const unreadOnly = c.req.query('unread') === 'true';
+  1949→  1949→
+  1950→  1950→    let query = 'SELECT * FROM notifications WHERE user_id = ?';
+  1951→  1951→    const params: unknown[] = [instructorId];
+  1952→  1952→
+  1953→  1953→    if (unreadOnly) {
+  1954→  1954→      query += ' AND read = 0';
+  1955→  1955→    }
+  1956→  1956→
+  1957→  1957→    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  1958→  1958→    params.push(limit, offset);
+  1959→  1959→
+  1960→  1960→    const result = await c.env.DB.prepare(query).bind(...params).all();
+  1961→  1961→
+  1962→  1962→    // Get total count
+  1963→  1963→    let countQuery = 'SELECT COUNT(*) as total FROM notifications WHERE user_id = ?';
+  1964→  1964→    const countParams: unknown[] = [instructorId];
+  1965→  1965→    if (unreadOnly) {
+  1966→  1966→      countQuery += ' AND read = 0';
+  1967→  1967→    }
+  1968→  1968→    const countResult = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ total: number }>();
+  1969→  1969→    const total = countResult?.total || 0;
+  1970→  1970→
+  1971→  1971→    return c.json({ success: true, notifications: result.results, total });
+  1972→  1972→  } catch (error) {
+  1973→  1973→    return c.json({ error: getErrorMessage(error) }, 500);
+  1974→  1974→  }
+  1975→  1975→});
+  1976→  1976→
+  1977→  1977→// PUT /notifications/:id/read — Mark notification as read in D1
+  1978→  1978→instructorRoutes.put('/notifications/:id/read', instructorOrAdminMiddleware, async (c) => {
+  1979→  1979→  try {
+  1980→  1980→    const notificationId = c.req.param('id');
+  1981→  1981→
+  1982→  1982→    await c.env.DB.prepare(
+  1983→  1983→      'UPDATE notifications SET read = 1 WHERE id = ?'
+  1984→  1984→    ).bind(notificationId).run();
+  1985→  1985→
+  1986→  1986→    return c.json({ success: true, message: 'Notification marked as read' });
+  1987→  1987→  } catch (error) {
+  1988→  1988→    return c.json({ error: getErrorMessage(error) }, 500);
+  1989→  1989→  }
+  1990→  1990→});
+  1991→  1991→
+  1992→  1992→// PUT /notifications/read-all — Mark all notifications as read
+  1993→  1993→instructorRoutes.put('/notifications/read-all', instructorOrAdminMiddleware, async (c) => {
+  1994→  1994→  try {
+  1995→  1995→    const authRole = c.get('authRole');
+  1996→  1996→    let instructorId: string;
+  1997→  1997→
+  1998→  1998→    if (authRole === 'admin') {
+  1999→  1999→      instructorId = c.req.query('instructorId') || '';
+  2000→  2000→      if (!instructorId) {
+
+[showing lines 1-2000 of 2002; use offset=2001 with limit to continue reading]

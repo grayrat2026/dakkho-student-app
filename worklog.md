@@ -1,79 +1,137 @@
-# Work Log — Instructor & Admin Site Fixes
+# Dakkho Project Worklog
 
 ---
 Task ID: 1
-Agent: Main Agent
-Task: Fix instructor and admin site routing and page availability issues
+Agent: Main
+Task: Coupon Decimal Price Rounding Fix
 
 Work Log:
-- Investigated both apps' routing architecture (SPA with catch-all [...slug] routes)
-- Instructor app: Missing trailingSlash in next.config.ts causing 404 on Cloudflare Pages refresh
-- Instructor app: parsePath bug in store.ts (parts[4] should be parts[3] for schedule-live)
-- Instructor app: pushState/replaceState not triggering page updates (only popstate was handled)
-- Admin app: 3 missing pages (subjects, about, support) from generateStaticParams
-- Admin app: Same pushState routing bug as instructor
-- Admin app: Root page.tsx had outdated 12-entry pageComponents map
-- Admin app: Build script was deleting _routes.json (breaking SPA routing on Cloudflare Pages)
-- Admin app: support-panel.tsx had wrong auth token key, raw fetch instead of apiUpload, wrong attachment URL
-- Instructor app: useDeleteVideo used wrong endpoint path (missing /courses/{id}/ prefix)
-- Instructor app: useCreateVideo sent camelCase instead of snake_case to API
-- Instructor app: useSubjectChapters ignored subjectId filter
-- Instructor app: CourseDetail showed duration as "120h" instead of proper format
+- Fixed SubscriptionPage.tsx getDiscountedPrice() — wrapped discount calculations with Math.round()
+- 569.06 BDT → 569 BDT, 678.697 → 679 (standard rounding)
+- Worker already had Math.round() on finalAmount (line 1852)
+- Also fixed savings display from .toFixed(0) to Math.round()
 
 Stage Summary:
-- All source code fixes applied and pushed to GitHub
-- Both apps rebuilt and pushed to deployment repos
-- Admin deployment repo: grayrat2026/dakkho-admin-web
-- Instructor deployment repo: grayrat2026/dakkho-instructor-web
-- Cloudflare Pages projects need manual reconfiguration to use new deployment repos
+- Student app coupon prices now round to whole numbers
+- PipraPay will receive whole number amounts for auto-verification
 
 ---
-Task ID: 1
-Agent: Main Agent
-Task: Fix instructor site 404 on refresh + admin panel routing + admin pages
+Task ID: 2
+Agent: Main
+Task: .dev.vars Gitignore Fix
 
 Work Log:
-- Analyzed the root cause of 404 on refresh: Cloudflare Pages _worker.js was always serving root index.html instead of route-specific HTML
-- Updated _worker.js in both admin and instructor apps to try serving route-specific HTML first (e.g., /courses/index.html for /courses), then fall back to root index.html
-- Fixed admin AdminClientPage component to use URL pathname as source of truth instead of RSC data
-- Added useState initialization from window.location.pathname and useEffect sync on mount
-- Deployed both apps via wrangler pages deploy --branch=main for production deployment
-- Tested all 26 admin pages with direct page loads - all working
-- Tested all instructor pages with direct page loads - all working
-- Updated GitHub repos with latest code
+- Student app: git rm --cached .dev.vars (was tracked despite .gitignore)
+- Worker: Added .dev.vars to .gitignore, git rm --cached .dev.vars
+- Both repos committed and pushed to GitHub
 
 Stage Summary:
-- Instructor site: All pages load correctly on refresh, no more 404s
-- Admin panel: All 26 pages (dashboard, users, courses, videos, instructors, categories, subjects, technologies, institutes, institute-requests, coupons, discounts, payments, packages, enrollments, events, live-classes, support, achievements, push, notifications, config, email, analytics, settings, about) load correctly on direct page load
-- Routing fix: _worker.js updated to serve route-specific HTML + client-side URL-based page detection
-- Both apps deployed to production on Cloudflare Pages
+- .dev.vars no longer tracked in either repo
+- File content was only NEXTJS_ENV=development (low risk)
+
 ---
-Task ID: 1-9
-Agent: Main Agent
-Task: Fix routing, enhance CourseSettings, add video search + PDF upload to CourseSubject, add multi-tech subjects, build & deploy
+Task ID: 3
+Agent: Subagent (full-stack-developer)
+Task: Split instructor.ts into sub-routes
 
 Work Log:
-- Fixed 404 on refresh for both instructor and admin apps by rewriting _worker.js to always fall back to index.html for SPA routing
-- Created _routes.json for instructor app (was missing)
-- Updated package.json build scripts to copy _routes.json from public/
-- Enhanced CourseSettings page: added Course ID, creation date, last updated, price, language metadata section; added courseId fallback from URL; added "no course selected" empty state
-- Enhanced CourseSubject page: added "Search My Uploaded Videos" feature that searches instructor's uploaded videos by title; added Attachment/PDF/Note upload with drag-and-drop UI; added document_url support in create/update lesson hooks; added PDF badge display on lesson rows
-- Added `useSearchInstructorVideos` hook to api-hooks.ts
-- Updated `useCreateLesson` and `useUpdateLesson` to support `documentUrl` field
-- Added video search endpoint `GET /instructor/videos/search` to worker API
-- Created `subject_technologies` junction table migration SQL and executed on D1
-- Updated subjects API to support multi-technology: GET returns technology_ids/names, POST/PUT accept technology_ids array, added GET/POST/DELETE for /:subjectId/technologies
-- Updated admin subjects-table.tsx: multi-select technology picker, display multiple technology badges, send technology_ids in save payload
-- Built and deployed worker, instructor app, and admin app to Cloudflare
-- Pushed all changes to GitHub
+- Created /worker/src/routes/instructor/ directory
+- Split into: index.ts, helpers.ts, auth.ts, courses.ts, dashboard.ts, analytics.ts, upload.ts, profile.ts, live.ts
+- Added rate limiting to auth routes (login, forgot-password)
+- Deleted original instructor.ts
+- Added rateLimit() helper to lib/rate-limit.ts
 
 Stage Summary:
-- Instructor 404 on refresh: FIXED ✅ (all routes return 200)
-- Admin 404 on refresh: FIXED ✅ (all routes return 200)
-- CourseSettings: Enhanced with metadata, no blank state ✅
-- CourseSubject: Video search + PDF upload + attachment support ✅
-- Multi-tech subjects: Junction table created, API updated, admin UI updated ✅
-- All apps deployed and APIs verified working
-- Worker: https://dakkho-admin-api.dakkho-admin.workers.dev
-- Instructor: https://dakkho-instructor.pages.dev
-- Admin: https://dakkho-admin.pages.dev
+- 3200+ line monolith → 9 focused files
+- Auth routes now rate-limited
+
+---
+Task ID: 4
+Agent: Subagent (full-stack-developer)
+Task: Split student-api.ts into sub-routes
+
+Work Log:
+- Created /worker/src/routes/student/ directory
+- Split into: index.ts, helpers.ts, auth.ts, public.ts, courses.ts, enrollments.ts, payments.ts, video.ts, profile.ts, coupons.ts
+- Added rate limiting to signup, login, payments/create, coupons/validate
+- Deleted original student-api.ts and stale student.ts
+- Updated src/index.ts import
+
+Stage Summary:
+- 3500+ line monolith → 10 focused files
+- Key sensitive routes now rate-limited
+
+---
+Task ID: 5
+Agent: Subagent (full-stack-developer)
+Task: D1 Query Optimization + HLS Token Security
+
+Work Log:
+- Added 5 performance indexes to schema.sql and migration-indexes.sql
+- Ran D1 migration — 5 indexes created successfully
+- Replaced base64-only HLS tokens with HMAC-SHA256 signed tokens
+- Increased session expiry from 10min → 30min, KV TTL 15min → 35min
+- Increased segment expiry from 5min → 10min
+- Added IP binding to tokens (logged, not enforced for mobile users)
+- Added rate limiting to video streaming session creation
+- Added 5-min KV caching to analytics endpoints
+
+Stage Summary:
+- HLS tokens now cryptographically signed (Web Crypto HMAC-SHA256)
+- 30min sessions, 10min segments for smoother playback
+- D1 queries optimized with composite indexes
+- Analytics cached in KV (5min TTL)
+
+---
+Task ID: 6
+Agent: Subagent (full-stack-developer)
+Task: Instructor Token Security + LiveKit + Audit
+
+Work Log:
+- Changed all localStorage token operations to sessionStorage in instructor app
+- Auth Zustand persist store now uses sessionStorage
+- api-client.ts token reads now use sessionStorage
+- Created LiveKit route module with JWT token generation (Web Crypto API)
+- Added LIVEKIT_API_KEY and LIVEKIT_API_SECRET to Worker env bindings
+- Set LiveKit secrets via Cloudflare API
+- Enhanced audit logging in instructors.ts (distinguish APPROVE vs DEACTIVATE)
+
+Stage Summary:
+- Instructor tokens cleared on tab close (more secure)
+- LiveKit integration ready with real credentials
+- Audit logging more granular for instructor actions
+
+---
+Task ID: 7
+Agent: Subagent (general-purpose)
+Task: Chunked Upload + Verification + LiveKit Secrets
+
+Work Log:
+- Created chunked upload system: initiate → upload chunks (50MB) → complete
+- Temp chunks in R2, combined on completion
+- Registered in instructor routes
+- Verified split files compile (tsc --noEmit)
+- Set LIVEKIT_API_KEY and LIVEKIT_API_SECRET via Cloudflare API
+
+Stage Summary:
+- Large video uploads (500MB+) now supported via chunked upload
+- All TypeScript compiles cleanly
+
+---
+Task ID: 8
+Agent: Subagent (general-purpose)
+Task: Build, Deploy, Git Push
+
+Work Log:
+- Deployed Worker API: https://dakkho-admin-api.dakkho-admin.workers.dev
+- Fixed stale student.ts shadowing new student/index.ts
+- Worker commit: fba0aea (32 files, 6302 insertions, 7630 deletions)
+- Student app commit: 01ae301, deployed to Cloudflare Pages
+- Instructor app commit: ce4c6b6, deployed to Cloudflare Pages
+- Fixed build issues in student app (missing stubs, exports)
+- D1 migration: 5 indexes created successfully
+
+Stage Summary:
+- All 3 apps deployed and live
+- Worker API verified working
+- D1 indexes in production

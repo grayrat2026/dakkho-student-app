@@ -1,0 +1,1326 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useRef, useCallback } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import {
+     6→  Play,
+     7→  Pause,
+     8→  Volume2,
+     9→  VolumeX,
+    10→  Volume1,
+    11→  Maximize,
+    12→  Minimize,
+    13→  SkipForward,
+    14→  SkipBack,
+    15→  Check,
+    16→  MessageSquare,
+    17→  BookOpen,
+    18→  ListVideo,
+    19→  Clock,
+    20→  ChevronLeft,
+    21→  Settings,
+    22→  ChevronUp,
+    23→  Plus,
+    24→  Trash2,
+    25→  Reply,
+    26→  Send,
+    27→  X,
+    28→  Loader2,
+    29→  AlertCircle,
+    30→} from 'lucide-react';
+    31→import { useNavigationStore, useWatchProgressStore } from '@/lib/store';
+    32→import { formatDuration } from '@/lib/mock-data';
+    33→import { courseApi, videoApi, instructorApi } from '@/lib/api-client';
+    34→import { GlassCard } from '../shared/GlassCard';
+    35→import { GradientButton } from '../shared/GradientButton';
+    36→import { ProgressBar } from '../shared/ProgressBar';
+    37→import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+    38→
+    39→// --- Types ---
+    40→interface VideoNote {
+    41→  id: string;
+    42→  timestamp: number;
+    43→  text: string;
+    44→}
+    45→
+    46→interface QAItem {
+    47→  id: string;
+    48→  author: string;
+    49→  avatar: string;
+    50→  question: string;
+    51→  timestamp: string;
+    52→  upvotes: number;
+    53→  replies: ReplyItem[];
+    54→  upvoted: boolean;
+    55→}
+    56→
+    57→interface ReplyItem {
+    58→  id: string;
+    59→  author: string;
+    60→  text: string;
+    61→  timestamp: string;
+    62→}
+    63→
+    64→interface ChapterMarker {
+    65→  time: number;
+    66→  label: string;
+    67→}
+    68→
+    69→interface InstructorData {
+    70→  id: string;
+    71→  name: string;
+    72→  title?: string;
+    73→  avatar_url?: string;
+    74→  [key: string]: unknown;
+    75→}
+    76→
+    77→// --- Helpers ---
+    78→function formatTime(seconds: number): string {
+    79→  const h = Math.floor(seconds / 3600);
+    80→  const m = Math.floor((seconds % 3600) / 60);
+    81→  const s = Math.floor(seconds % 60);
+    82→  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    83→  return `${m}:${s.toString().padStart(2, '0')}`;
+    84→}
+    85→
+    86→const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+    87→const QUALITY_OPTIONS = ['Auto', '1080p', '720p', '480p'] as const;
+    88→
+    89→// --- Mock Q&A Data ---
+    90→const MOCK_QA: QAItem[] = [
+    91→  {
+    92→    id: 'qa1',
+    93→    author: 'Tanvir Hasan',
+    94→    avatar: '',
+    95→    question: 'Can you explain the difference between let and var in JavaScript?',
+    96→    timestamp: '2h ago',
+    97→    upvotes: 12,
+    98→    upvoted: false,
+    99→    replies: [
+   100→      { id: 'r1', author: 'Engr. Karim Uddin', text: 'Great question! let is block-scoped while var is function-scoped. This means let variables are only accessible within the block they are declared in.', timestamp: '1h ago' },
+   101→    ],
+   102→  },
+   103→  {
+   104→    id: 'qa2',
+   105→    author: 'Nusrat Jahan',
+   106→    avatar: '',
+   107→    question: 'What is the best way to practice the concepts from this video?',
+   108→    timestamp: '5h ago',
+   109→    upvotes: 8,
+   110→    upvoted: false,
+   111→    replies: [],
+   112→  },
+   113→  {
+   114→    id: 'qa3',
+   115→    author: 'Rafi Ahmed',
+   116→    avatar: '',
+   117→    question: 'Is there a project assignment for this section?',
+   118→    timestamp: '1d ago',
+   119→    upvotes: 15,
+   120→    upvoted: true,
+   121→    replies: [
+   122→      { id: 'r2', author: 'Engr. Karim Uddin', text: 'Yes! Check the resources section for the mini-project assignment.', timestamp: '22h ago' },
+   123→      { id: 'r3', author: 'Sadia Islam', text: 'I completed it last week. Very helpful for understanding the concepts!', timestamp: '20h ago' },
+   124→    ],
+   125→  },
+   126→];
+   127→
+   128→export function VideoPlayerPage() {
+   129→  const { pageParams, navigate, goBack } = useNavigationStore();
+   130→  const { updateProgress, getProgress } = useWatchProgressStore();
+   131→
+   132→  // --- Route params ---
+   133→  const videoId = pageParams.videoId as string;
+   134→  const courseId = pageParams.courseId as string;
+   135→
+   136→  // --- API-fetched data ---
+   137→  const [course, setCourse] = useState<any>(null);
+   138→  const [videos, setVideos] = useState<any[]>([]);
+   139→  const [instructor, setInstructor] = useState<InstructorData | null>(null);
+   140→  const [dataLoading, setDataLoading] = useState(true);
+   141→  const [dataError, setDataError] = useState<string | null>(null);
+   142→
+   143→  // --- Stream URL ---
+   144→  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+   145→  const [streamLoading, setStreamLoading] = useState(false);
+   146→  const [streamError, setStreamError] = useState<string | null>(null);
+   147→
+   148→  // --- Derived data (depends on fetched videos/course) ---
+   149→  const currentVideo = videos.find((v) => v.id === videoId);
+   150→  const watchProgress = getProgress(videoId);
+   151→  const currentIndex = videos.findIndex((v) => v.id === videoId);
+   152→  const nextVideo = currentIndex < videos.length - 1 ? videos[currentIndex + 1] : null;
+   153→
+   154→  // --- Video State ---
+   155→  const videoDuration = currentVideo?.duration ?? 0;
+   156→  const initialPosition = (watchProgress?.lastPosition && watchProgress.lastPosition > 10 && !watchProgress.completed)
+   157→    ? watchProgress.lastPosition
+   158→    : 0;
+   159→
+   160→  const [isPlaying, setIsPlaying] = useState(false);
+   161→  const [currentTime, setCurrentTime] = useState(initialPosition);
+   162→  const [volume, setVolume] = useState(80);
+   163→  const [isMuted, setIsMuted] = useState(false);
+   164→  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+   165→  const [quality, setQuality] = useState<string>('Auto');
+   166→  const [isFullscreen, setIsFullscreen] = useState(false);
+   167→  const [buffered, setBuffered] = useState(Math.min(initialPosition + 30, videoDuration));
+   168→
+   169→  // --- Resume Dialog (computed from initial state, no effect needed) ---
+   170→  const [resumeDialogDismissed, setResumeDialogDismissed] = useState(false);
+   171→  const showResumeDialog = !resumeDialogDismissed && initialPosition > 10;
+   172→
+   173→  // --- Controls Visibility ---
+   174→  const [controlsVisible, setControlsVisible] = useState(true);
+   175→  const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   176→
+   177→  // --- Next Episode ---
+   178→  const [showNextEpisode, setShowNextEpisode] = useState(false);
+   179→  const [nextEpisodeCountdown, setNextEpisodeCountdown] = useState(5);
+   180→  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+   181→
+   182→  // --- Tabs ---
+   183→  const [activeTab, setActiveTab] = useState<'upnext' | 'notes' | 'qa'>('upnext');
+   184→
+   185→  // --- Notes ---
+   186→  const [notes, setNotes] = useState<VideoNote[]>([]);
+   187→  const [newNoteText, setNewNoteText] = useState('');
+   188→
+   189→  // --- Q&A ---
+   190→  const [qaItems, setQaItems] = useState<QAItem[]>(MOCK_QA);
+   191→  const [newQuestion, setNewQuestion] = useState('');
+   192→  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+   193→  const [replyText, setReplyText] = useState('');
+   194→
+   195→  // --- Refs ---
+   196→  const playerRef = useRef<HTMLDivElement>(null);
+   197→  const simulatedTimeRef = useRef(initialPosition);
+   198→
+   199→  // --- Chapter markers (mock, evenly spaced) ---
+   200→  const chapterMarkers: ChapterMarker[] = videoDuration > 0 ? [
+   201→    { time: 0, label: 'Introduction' },
+   202→    { time: videoDuration * 0.15, label: 'Core Concepts' },
+   203→    { time: videoDuration * 0.35, label: 'Deep Dive' },
+   204→    { time: videoDuration * 0.55, label: 'Practical Example' },
+   205→    { time: videoDuration * 0.75, label: 'Summary' },
+   206→  ] : [];
+   207→
+   208→  // --- Fetch course + videos + instructor on mount ---
+   209→  useEffect(() => {
+   210→    if (!courseId) {
+   211→      setDataError('No course ID provided.');
+   212→      setDataLoading(false);
+   213→      return;
+   214→    }
+   215→
+   216→    let cancelled = false;
+   217→
+   218→    async function fetchData() {
+   219→      setDataLoading(true);
+   220→      setDataError(null);
+   221→
+   222→      try {
+   223→        // Fetch course and videos in parallel
+   224→        const [courseRes, videosRes] = await Promise.all([
+   225→          courseApi.get(courseId),
+   226→          courseApi.videos(courseId),
+   227→        ]);
+   228→
+   229→        if (cancelled) return;
+   230→
+   231→        const courseData = courseRes.course;
+   232→        const videoList = videosRes.videos || [];
+   233→
+   234→        setCourse(courseData);
+   235→        setVideos(videoList);
+   236→
+   237→        // Fetch instructor if course has instructorId
+   238→        if (courseData?.instructorId) {
+   239→          try {
+   240→            const instructorRes = await instructorApi.get(courseData.instructorId);
+   241→            if (!cancelled && instructorRes.instructor) {
+   242→              setInstructor(instructorRes.instructor as InstructorData);
+   243→            }
+   244→          } catch {
+   245→            // Instructor fetch is non-critical; silently fail
+   246→          }
+   247→        }
+   248→      } catch (err: any) {
+   249→        if (!cancelled) {
+   250→          setDataError(err?.message || 'Failed to load course data. Please try again.');
+   251→        }
+   252→      } finally {
+   253→        if (!cancelled) {
+   254→          setDataLoading(false);
+   255→        }
+   256→      }
+   257→    }
+   258→
+   259→    fetchData();
+   260→    return () => { cancelled = true; };
+   261→  }, [courseId]);
+   262→
+   263→  // --- Fetch stream URL when play is pressed ---
+   264→  const fetchStreamUrl = useCallback(async (videoKey: string) => {
+   265→    if (streamUrl || streamLoading) return;
+   266→    setStreamLoading(true);
+   267→    setStreamError(null);
+   268→    try {
+   269→      const res = await videoApi.streamUrl(videoKey);
+   270→      setStreamUrl(res.url);
+   271→    } catch (err: any) {
+   272→      setStreamError(err?.message || 'Failed to load video stream.');
+   273→    } finally {
+   274→      setStreamLoading(false);
+   275→    }
+   276→  }, [streamUrl, streamLoading]);
+   277→
+   278→  // Keep simulatedTimeRef in sync with currentTime via effect
+   279→  useEffect(() => {
+   280→    simulatedTimeRef.current = currentTime;
+   281→  }, [currentTime]);
+   282→
+   283→  // --- Handlers ---
+   284→  const togglePlay = () => {
+   285→    if (!isPlaying && currentVideo?.videoKey && !streamUrl) {
+   286→      // Try to get stream URL on first play
+   287→      fetchStreamUrl(currentVideo.videoKey);
+   288→    }
+   289→    setIsPlaying((prev) => !prev);
+   290→  };
+   291→
+   292→  const skip = (seconds: number) => {
+   293→    const newTime = Math.max(0, Math.min(simulatedTimeRef.current + seconds, videoDuration));
+   294→    simulatedTimeRef.current = newTime;
+   295→    setCurrentTime(newTime);
+   296→  };
+   297→
+   298→  const changeVolume = (delta: number) => {
+   299→    setVolume((prev) => {
+   300→      const next = Math.max(0, Math.min(prev + delta, 100));
+   301→      if (next === 0) setIsMuted(true);
+   302→      else setIsMuted(false);
+   303→      return next;
+   304→    });
+   305→  };
+   306→
+   307→  const changeSpeed = (direction: 1 | -1) => {
+   308→    setPlaybackSpeed((prev) => {
+   309→      const idx = PLAYBACK_SPEEDS.indexOf(prev as typeof PLAYBACK_SPEEDS[number]);
+   310→      const newIdx = Math.max(0, Math.min(idx + direction, PLAYBACK_SPEEDS.length - 1));
+   311→      return PLAYBACK_SPEEDS[newIdx];
+   312→    });
+   313→  };
+   314→
+   315→  const toggleFullscreen = () => {
+   316→    if (!playerRef.current) return;
+   317→    if (!document.fullscreenElement) {
+   318→      playerRef.current.requestFullscreen().catch(() => {});
+   319→    } else {
+   320→      document.exitFullscreen().catch(() => {});
+   321→    }
+   322→  };
+   323→
+   324→  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+   325→    const rect = e.currentTarget.getBoundingClientRect();
+   326→    const x = e.clientX - rect.left;
+   327→    const pct = x / rect.width;
+   328→    const newTime = pct * videoDuration;
+   329→    simulatedTimeRef.current = newTime;
+   330→    setCurrentTime(newTime);
+   331→  };
+   332→
+   333→  const handlePlayNext = () => {
+   334→    setIsPlaying(false);
+   335→    setShowNextEpisode(false);
+   336→    // Reset stream state for new video
+   337→    setStreamUrl(null);
+   338→    setStreamError(null);
+   339→    if (countdownRef.current) {
+   340→      clearInterval(countdownRef.current);
+   341→      countdownRef.current = null;
+   342→    }
+   343→    simulatedTimeRef.current = 0;
+   344→    setCurrentTime(0);
+   345→    if (nextVideo) {
+   346→      navigate('video-player', { videoId: nextVideo.id, courseId });
+   347→    }
+   348→  };
+   349→
+   350→  const handleMarkComplete = () => {
+   351→    updateProgress(videoId, {
+   352→      courseId,
+   353→      progress: 100,
+   354→      completed: true,
+   355→      lastPosition: currentVideo?.duration || 0,
+   356→    });
+   357→  };
+   358→
+   359→  const handleResume = () => {
+   360→    setResumeDialogDismissed(true);
+   361→    setIsPlaying(true);
+   362→    if (currentVideo?.videoKey && !streamUrl) {
+   363→      fetchStreamUrl(currentVideo.videoKey);
+   364→    }
+   365→  };
+   366→
+   367→  const handleStartOver = () => {
+   368→    simulatedTimeRef.current = 0;
+   369→    setCurrentTime(0);
+   370→    setResumeDialogDismissed(true);
+   371→    setIsPlaying(true);
+   372→    if (currentVideo?.videoKey && !streamUrl) {
+   373→      fetchStreamUrl(currentVideo.videoKey);
+   374→    }
+   375→  };
+   376→
+   377→  // --- Notes ---
+   378→  const addNote = () => {
+   379→    if (!newNoteText.trim()) return;
+   380→    const note: VideoNote = {
+   381→      id: `note-${Date.now()}`,
+   382→      timestamp: simulatedTimeRef.current,
+   383→      text: newNoteText.trim(),
+   384→    };
+   385→    setNotes((prev) => [...prev, note]);
+   386→    setNewNoteText('');
+   387→  };
+   388→
+   389→  const deleteNote = (id: string) => {
+   390→    setNotes((prev) => prev.filter((n) => n.id !== id));
+   391→  };
+   392→
+   393→  const jumpToNote = (timestamp: number) => {
+   394→    simulatedTimeRef.current = timestamp;
+   395→    setCurrentTime(timestamp);
+   396→  };
+   397→
+   398→  // --- Q&A ---
+   399→  const toggleUpvote = (id: string) => {
+   400→    setQaItems((prev) =>
+   401→      prev.map((item) =>
+   402→        item.id === id
+   403→          ? { ...item, upvoted: !item.upvoted, upvotes: item.upvoted ? item.upvotes - 1 : item.upvotes + 1 }
+   404→          : item
+   405→      )
+   406→    );
+   407→  };
+   408→
+   409→  const addQuestion = () => {
+   410→    if (!newQuestion.trim()) return;
+   411→    const item: QAItem = {
+   412→      id: `qa-${Date.now()}`,
+   413→      author: 'You',
+   414→      avatar: '',
+   415→      question: newQuestion.trim(),
+   416→      timestamp: 'Just now',
+   417→      upvotes: 0,
+   418→      upvoted: false,
+   419→      replies: [],
+   420→    };
+   421→    setQaItems((prev) => [item, ...prev]);
+   422→    setNewQuestion('');
+   423→  };
+   424→
+   425→  const addReply = (qaId: string) => {
+   426→    if (!replyText.trim()) return;
+   427→    const reply: ReplyItem = {
+   428→      id: `reply-${Date.now()}`,
+   429→      author: 'You',
+   430→      text: replyText.trim(),
+   431→      timestamp: 'Just now',
+   432→    };
+   433→    setQaItems((prev) =>
+   434→      prev.map((item) =>
+   435→        item.id === qaId ? { ...item, replies: [...item.replies, reply] } : item
+   436→      )
+   437→    );
+   438→    setReplyText('');
+   439→    setReplyingTo(null);
+   440→  };
+   441→
+   442→  const showControls = () => {
+   443→    setControlsVisible(true);
+   444→    if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+   445→    if (isPlaying) {
+   446→      controlsTimerRef.current = setTimeout(() => setControlsVisible(false), 3000);
+   447→    }
+   448→  };
+   449→
+   450→  // --- Simulated playback with auto-save and next episode detection ---
+   451→  useEffect(() => {
+   452→    if (!isPlaying || videoDuration <= 0) return;
+   453→
+   454→    const tickInterval = setInterval(() => {
+   455→      simulatedTimeRef.current = Math.min(simulatedTimeRef.current + playbackSpeed, videoDuration);
+   456→      const newTime = simulatedTimeRef.current;
+   457→      setCurrentTime(newTime);
+   458→      setBuffered(Math.min(newTime + 30, videoDuration));
+   459→
+   460→      // Auto-save progress every ~5 seconds (every 5 ticks)
+   461→      if (Math.floor(newTime) % 5 === 0) {
+   462→        const progress = Math.min((newTime / videoDuration) * 100, 100);
+   463→        const isCompleted = progress >= 95;
+   464→        updateProgress(videoId, {
+   465→          courseId,
+   466→          progress: isCompleted ? 100 : Math.round(progress),
+   467→          completed: isCompleted,
+   468→          lastPosition: newTime,
+   469→        });
+   470→      }
+   471→
+   472→      // Next episode auto-play detection
+   473→      if (newTime >= videoDuration && nextVideo) {
+   474→        setShowNextEpisode(true);
+   475→        setNextEpisodeCountdown(5);
+   476→      }
+   477→    }, 1000);
+   478→
+   479→    return () => clearInterval(tickInterval);
+   480→  }, [isPlaying, videoDuration, playbackSpeed, videoId, courseId, updateProgress, nextVideo]);
+   481→
+   482→  // --- Next episode countdown timer ---
+   483→  useEffect(() => {
+   484→    if (!showNextEpisode) return;
+   485→
+   486→    countdownRef.current = setInterval(() => {
+   487→      setNextEpisodeCountdown((prev) => {
+   488→        if (prev <= 1) {
+   489→          // Time's up - navigate to next
+   490→          if (countdownRef.current) clearInterval(countdownRef.current);
+   491→          // We use a microtask to avoid calling navigate during render
+   492→          queueMicrotask(() => handlePlayNext());
+   493→          return 0;
+   494→        }
+   495→        return prev - 1;
+   496→      });
+   497→    }, 1000);
+   498→
+   499→    return () => {
+   500→      if (countdownRef.current) {
+   501→        clearInterval(countdownRef.current);
+   502→        countdownRef.current = null;
+   503→      }
+   504→    };
+   505→  }, [showNextEpisode]);
+   506→
+   507→  // --- Keyboard shortcuts ---
+   508→  useEffect(() => {
+   509→    const handleKey = (e: KeyboardEvent) => {
+   510→      const target = e.target as HTMLElement;
+   511→      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+   512→
+   513→      switch (e.key) {
+   514→        case ' ':
+   515→          e.preventDefault();
+   516→          togglePlay();
+   517→          break;
+   518→        case 'ArrowLeft':
+   519→          e.preventDefault();
+   520→          simulatedTimeRef.current = Math.max(0, simulatedTimeRef.current - 10);
+   521→          setCurrentTime(simulatedTimeRef.current);
+   522→          break;
+   523→        case 'ArrowRight':
+   524→          e.preventDefault();
+   525→          simulatedTimeRef.current = Math.min(simulatedTimeRef.current + 10, videoDuration);
+   526→          setCurrentTime(simulatedTimeRef.current);
+   527→          break;
+   528→        case 'ArrowUp':
+   529→          e.preventDefault();
+   530→          setVolume((prev) => {
+   531→            const next = Math.min(prev + 10, 100);
+   532→            setIsMuted(next === 0);
+   533→            return next;
+   534→          });
+   535→          break;
+   536→        case 'ArrowDown':
+   537→          e.preventDefault();
+   538→          setVolume((prev) => {
+   539→            const next = Math.max(prev - 10, 0);
+   540→            setIsMuted(next === 0);
+   541→            return next;
+   542→          });
+   543→          break;
+   544→        case 'f':
+   545→        case 'F':
+   546→          e.preventDefault();
+   547→          if (playerRef.current) {
+   548→            if (!document.fullscreenElement) {
+   549→              playerRef.current.requestFullscreen().catch(() => {});
+   550→            } else {
+   551→              document.exitFullscreen().catch(() => {});
+   552→            }
+   553→          }
+   554→          break;
+   555→        case 'm':
+   556→        case 'M':
+   557→          e.preventDefault();
+   558→          setIsMuted((prev) => !prev);
+   559→          break;
+   560→        case '[':
+   561→          e.preventDefault();
+   562→          setPlaybackSpeed((prev) => {
+   563→            const idx = PLAYBACK_SPEEDS.indexOf(prev as typeof PLAYBACK_SPEEDS[number]);
+   564→            return PLAYBACK_SPEEDS[Math.max(0, idx - 1)];
+   565→          });
+   566→          break;
+   567→        case ']':
+   568→          e.preventDefault();
+   569→          setPlaybackSpeed((prev) => {
+   570→            const idx = PLAYBACK_SPEEDS.indexOf(prev as typeof PLAYBACK_SPEEDS[number]);
+   571→            return PLAYBACK_SPEEDS[Math.min(idx + 1, PLAYBACK_SPEEDS.length - 1)];
+   572→          });
+   573→          break;
+   574→      }
+   575→    };
+   576→    document.addEventListener('keydown', handleKey);
+   577→    return () => document.removeEventListener('keydown', handleKey);
+   578→  }, [videoDuration, streamUrl, streamLoading, currentVideo]);
+   579→
+   580→  // --- Fullscreen change listener ---
+   581→  useEffect(() => {
+   582→    const handleFsChange = () => {
+   583→      setIsFullscreen(!!document.fullscreenElement);
+   584→    };
+   585→    document.addEventListener('fullscreenchange', handleFsChange);
+   586→    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+   587→  }, []);
+   588→
+   589→  // --- Derived values ---
+   590→  const currentProgress = watchProgress?.progress ?? 0;
+   591→  const progressPercent = videoDuration > 0 ? (currentTime / videoDuration) * 100 : 0;
+   592→  const bufferedPercent = videoDuration > 0 ? (buffered / videoDuration) * 100 : 0;
+   593→  const effectiveVolume = isMuted ? 0 : volume;
+   594→
+   595→  const VolumeIcon = effectiveVolume === 0 ? VolumeX : effectiveVolume < 50 ? Volume1 : Volume2;
+   596→
+   597→  // --- Loading state ---
+   598→  if (dataLoading) {
+   599→    return (
+   600→      <div className="flex flex-col items-center justify-center py-24 gap-4">
+   601→        <Loader2 className="w-10 h-10 text-sky-500 animate-spin" />
+   602→        <p className="text-sm text-muted-foreground font-semibold">Loading video...</p>
+   603→      </div>
+   604→    );
+   605→  }
+   606→
+   607→  // --- Error / not-found state ---
+   608→  if (dataError || !course || !currentVideo) {
+   609→    return (
+   610→      <div className="flex flex-col items-center justify-center py-16 gap-4">
+   611→        <AlertCircle className="w-12 h-12 text-red-400" />
+   612→        <p className="text-lg font-bold">
+   613→          {dataError || 'Video not found'}
+   614→        </p>
+   615→        <p className="text-sm text-muted-foreground">
+   616→          The course or video you are looking for could not be loaded.
+   617→        </p>
+   618→        <GradientButton onClick={goBack} className="mt-2">
+   619→          Go Back
+   620→        </GradientButton>
+   621→      </div>
+   622→    );
+   623→  }
+   624→
+   625→  const thumbnailColors = ['from-sky-400 to-blue-600', 'from-emerald-400 to-teal-600', 'from-purple-400 to-indigo-600'];
+   626→  const colorClass = thumbnailColors[currentIndex % thumbnailColors.length];
+   627→
+   628→  return (
+   629→    <div>
+   630→      {/* Back button */}
+   631→      <motion.button
+   632→        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
+   633→        onClick={() => navigate('course-detail', { courseId })}
+   634→        initial={{ opacity: 0, x: -10 }}
+   635→        animate={{ opacity: 1, x: 0 }}
+   636→        whileHover={{ x: -3 }}
+   637→      >
+   638→        <ChevronLeft className="w-4 h-4" />
+   639→        Back to Course
+   640→      </motion.button>
+   641→
+   642→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   643→        {/* Video player area */}
+   644→        <div className="lg:col-span-2">
+   645→          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+   646→            {/* Video player */}
+   647→            <GlassCard className="overflow-hidden mb-4 p-0">
+   648→              <div
+   649→                ref={playerRef}
+   650→                className={`relative aspect-video ${streamUrl ? 'bg-black' : 'bg-gradient-to-br ' + colorClass} flex items-center justify-center cursor-pointer`}
+   651→                onMouseMove={showControls}
+   652→                onTouchStart={showControls}
+   653→                onClick={(e) => {
+   654→                  const target = e.target as HTMLElement;
+   655→                  if (!target.closest('[data-controls]')) {
+   656→                    togglePlay();
+   657→                  }
+   658→                }}
+   659→              >
+   660→                {/* Real video element when stream URL is available */}
+   661→                {streamUrl && (
+   662→                  <video
+   663→                    ref={(el) => {
+   664→                      if (el && streamUrl) {
+   665→                        el.src = streamUrl;
+   666→                        if (isPlaying) {
+   667→                          el.play().catch(() => {});
+   668→                        } else {
+   669→                          el.pause();
+   670→                        }
+   671→                        el.currentTime = currentTime;
+   672→                        el.volume = effectiveVolume / 100;
+   673→                        el.playbackRate = playbackSpeed;
+   674→                      }
+   675→                    }}
+   676→                    className="absolute inset-0 w-full h-full object-contain"
+   677→                    playsInline
+   678→                    onTimeUpdate={(e) => {
+   679→                      const video = e.target as HTMLVideoElement;
+   680→                      setCurrentTime(video.currentTime);
+   681→                      setBuffered(Math.min(video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0, videoDuration));
+   682→                    }}
+   683→                    onEnded={() => {
+   684→                      if (nextVideo) {
+   685→                        setShowNextEpisode(true);
+   686→                        setNextEpisodeCountdown(5);
+   687→                      }
+   688→                    }}
+   689→                    onLoadedMetadata={(e) => {
+   690→                      // Video loaded, update duration if needed
+   691→                    }}
+   692→                  />
+   693→                )}
+   694→
+   695→                {/* Placeholder when no stream URL */}
+   696→                {!streamUrl && (
+   697→                  <div className="absolute inset-0 flex items-center justify-center">
+   698→                    <Play className="w-16 h-16 text-white/20" />
+   699→                  </div>
+   700→                )}
+   701→
+   702→                {/* Stream loading indicator */}
+   703→                {streamLoading && (
+   704→                  <div className="absolute inset-0 flex items-center justify-center z-10 bg-black/30">
+   705→                    <div className="flex flex-col items-center gap-3">
+   706→                      <Loader2 className="w-8 h-8 text-white animate-spin" />
+   707→                      <span className="text-white/80 text-xs font-semibold">Loading stream...</span>
+   708→                    </div>
+   709→                  </div>
+   710→                )}
+   711→
+   712→                {/* Stream error indicator */}
+   713→                {streamError && !streamLoading && (
+   714→                  <div className="absolute top-3 left-3 z-30 bg-red-500/80 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-2">
+   715→                    <AlertCircle className="w-3.5 h-3.5" />
+   716→                    <span>{streamError}</span>
+   717→                    <button
+   718→                      className="ml-1 underline hover:no-underline"
+   719→                      onClick={(e) => {
+   720→                        e.stopPropagation();
+   721→                        setStreamError(null);
+   722→                        if (currentVideo?.videoKey) fetchStreamUrl(currentVideo.videoKey);
+   723→                      }}
+   724→                    >
+   725→                      Retry
+   726→                    </button>
+   727→                  </div>
+   728→                )}
+   729→
+   730→                {/* Center play/pause overlay */}
+   731→                <AnimatePresence>
+   732→                  {!isPlaying && !streamLoading && (
+   733→                    <motion.div
+   734→                      className="absolute inset-0 flex items-center justify-center z-10"
+   735→                      initial={{ opacity: 0 }}
+   736→                      animate={{ opacity: 1 }}
+   737→                      exit={{ opacity: 0 }}
+   738→                      transition={{ duration: 0.2 }}
+   739→                    >
+   740→                      <motion.div
+   741→                        className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center"
+   742→                        whileHover={{ scale: 1.1 }}
+   743→                        whileTap={{ scale: 0.9 }}
+   744→                      >
+   745→                        <Play className="w-10 h-10 text-white ml-1" fill="currentColor" />
+   746→                      </motion.div>
+   747→                    </motion.div>
+   748→                  )}
+   749→                </AnimatePresence>
+   750→
+   751→                {/* Controls overlay */}
+   752→                <AnimatePresence>
+   753→                  {controlsVisible && (
+   754→                    <motion.div
+   755→                      data-controls
+   756→                      className="absolute bottom-0 left-0 right-0 z-20"
+   757→                      initial={{ opacity: 0, y: 10 }}
+   758→                      animate={{ opacity: 1, y: 0 }}
+   759→                      exit={{ opacity: 0, y: 10 }}
+   760→                      transition={{ duration: 0.2 }}
+   761→                    >
+   762→                      {/* Gradient backdrop */}
+   763→                      <div className="bg-gradient-to-t from-black/80 via-black/40 to-transparent pt-16 pb-3 px-4">
+   764→                        {/* Progress bar with chapter markers */}
+   765→                        <div className="relative w-full mb-3 group/progress">
+   766→                          {/* Chapter marker dots */}
+   767→                          {chapterMarkers.map((marker, i) => {
+   768→                            const pct = videoDuration > 0 ? (marker.time / videoDuration) * 100 : 0;
+   769→                            return (
+   770→                              <div
+   771→                                key={i}
+   772→                                className="absolute top-1/2 -translate-y-1/2 z-10 group"
+   773→                                style={{ left: `${pct}%` }}
+   774→                              >
+   775→                                <div className="w-2 h-2 rounded-full bg-sky-300 shadow-sm shadow-sky-300/50 -translate-x-1/2 cursor-pointer" />
+   776→                                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[10px] px-2 py-0.5 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+   777→                                  {marker.label}
+   778→                                </div>
+   779→                              </div>
+   780→                            );
+   781→                          })}
+   782→
+   783→                          {/* Progress track */}
+   784→                          <div
+   785→                            className="w-full h-1.5 group-hover/progress:h-2.5 transition-all bg-white/20 rounded-full cursor-pointer relative"
+   786→                            onClick={handleProgressClick}
+   787→                          >
+   788→                            {/* Buffered */}
+   789→                            <div
+   790→                              className="absolute top-0 left-0 h-full bg-white/30 rounded-full transition-all"
+   791→                              style={{ width: `${bufferedPercent}%` }}
+   792→                            />
+   793→                            {/* Progress */}
+   794→                            <motion.div
+   795→                              className="absolute top-0 left-0 h-full bg-sky-400 rounded-full"
+   796→                              style={{ width: `${progressPercent}%` }}
+   797→                            />
+   798→                            {/* Scrubber dot */}
+   799→                            <div
+   800→                              className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-sky-400 rounded-full shadow-lg shadow-sky-400/50 opacity-0 group-hover/progress:opacity-100 transition-opacity -translate-x-1/2"
+   801→                              style={{ left: `${progressPercent}%` }}
+   802→                            />
+   803→                          </div>
+   804→                        </div>
+   805→
+   806→                        {/* Controls row */}
+   807→                        <div className="flex items-center justify-between text-white">
+   808→                          <div className="flex items-center gap-2 sm:gap-3">
+   809→                            {/* Skip back */}
+   810→                            <button
+   811→                              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+   812→                              onClick={(e) => { e.stopPropagation(); skip(-10); }}
+   813→                              title="Skip back 10s"
+   814→                            >
+   815→                              <SkipBack className="w-4 h-4" />
+   816→                            </button>
+   817→
+   818→                            {/* Play/Pause */}
+   819→                            <button
+   820→                              className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+   821→                              onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+   822→                              title={isPlaying ? 'Pause' : 'Play'}
+   823→                            >
+   824→                              {isPlaying ? (
+   825→                                <Pause className="w-5 h-5" fill="currentColor" />
+   826→                              ) : (
+   827→                                <Play className="w-5 h-5 ml-0.5" fill="currentColor" />
+   828→                              )}
+   829→                            </button>
+   830→
+   831→                            {/* Skip forward */}
+   832→                            <button
+   833→                              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+   834→                              onClick={(e) => { e.stopPropagation(); skip(10); }}
+   835→                              title="Skip forward 10s"
+   836→                            >
+   837→                              <SkipForward className="w-4 h-4" />
+   838→                            </button>
+   839→
+   840→                            {/* Volume */}
+   841→                            <div className="flex items-center gap-1 group/vol">
+   842→                              <button
+   843→                                className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+   844→                                onClick={(e) => { e.stopPropagation(); setIsMuted((prev) => !prev); }}
+   845→                                title={isMuted ? 'Unmute' : 'Mute'}
+   846→                              >
+   847→                                <VolumeIcon className="w-4 h-4" />
+   848→                              </button>
+   849→                              <div className="hidden sm:flex items-center w-0 group-hover/vol:w-20 transition-all overflow-hidden">
+   850→                                <input
+   851→                                  type="range"
+   852→                                  min={0}
+   853→                                  max={100}
+   854→                                  value={effectiveVolume}
+   855→                                  onChange={(e) => {
+   856→                                    const v = Number(e.target.value);
+   857→                                    setVolume(v);
+   858→                                    setIsMuted(v === 0);
+   859→                                  }}
+   860→                                  onClick={(e) => e.stopPropagation()}
+   861→                                  className="w-full h-1 accent-sky-400 cursor-pointer"
+   862→                                />
+   863→                              </div>
+   864→                            </div>
+   865→
+   866→                            {/* Time display */}
+   867→                            <span className="text-xs font-mono ml-1">
+   868→                              {formatTime(currentTime)} / {formatTime(videoDuration)}
+   869→                            </span>
+   870→                          </div>
+   871→
+   872→                          <div className="flex items-center gap-1 sm:gap-2">
+   873→                            {/* Playback speed */}
+   874→                            <Popover>
+   875→                              <PopoverTrigger asChild>
+   876→                                <button
+   877→                                  className="px-2 py-1 text-xs font-bold rounded-lg hover:bg-white/10 transition-colors"
+   878→                                  onClick={(e) => e.stopPropagation()}
+   879→                                  title="Playback speed"
+   880→                                >
+   881→                                  {playbackSpeed}x
+   882→                                </button>
+   883→                              </PopoverTrigger>
+   884→                              <PopoverContent className="w-36 p-1 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-white/40 dark:border-white/10">
+   885→                                {PLAYBACK_SPEEDS.map((speed) => (
+   886→                                  <button
+   887→                                    key={speed}
+   888→                                    className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
+   889→                                      playbackSpeed === speed
+   890→                                        ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 font-bold'
+   891→                                        : 'hover:bg-muted/50'
+   892→                                    }`}
+   893→                                    onClick={() => setPlaybackSpeed(speed)}
+   894→                                  >
+   895→                                    {speed}x
+   896→                                  </button>
+   897→                                ))}
+   898→                              </PopoverContent>
+   899→                            </Popover>
+   900→
+   901→                            {/* Quality selector */}
+   902→                            <Popover>
+   903→                              <PopoverTrigger asChild>
+   904→                                <button
+   905→                                  className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+   906→                                  onClick={(e) => e.stopPropagation()}
+   907→                                  title="Quality"
+   908→                                >
+   909→                                  <Settings className="w-4 h-4" />
+   910→                                </button>
+   911→                              </PopoverTrigger>
+   912→                              <PopoverContent className="w-36 p-1 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-white/40 dark:border-white/10">
+   913→                                {QUALITY_OPTIONS.map((q) => (
+   914→                                  <button
+   915→                                    key={q}
+   916→                                    className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
+   917→                                      quality === q
+   918→                                        ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 font-bold'
+   919→                                        : 'hover:bg-muted/50'
+   920→                                    }`}
+   921→                                    onClick={() => setQuality(q)}
+   922→                                  >
+   923→                                    {q}
+   924→                                    {q === 'Auto' && (
+   925→                                      <span className="text-xs text-muted-foreground ml-1">(HD)</span>
+   926→                                    )}
+   927→                                  </button>
+   928→                                ))}
+   929→                              </PopoverContent>
+   930→                            </Popover>
+   931→
+   932→                            {/* Fullscreen */}
+   933→                            <button
+   934→                              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+   935→                              onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
+   936→                              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+   937→                            >
+   938→                              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+   939→                            </button>
+   940→                          </div>
+   941→                        </div>
+   942→                      </div>
+   943→                    </motion.div>
+   944→                  )}
+   945→                </AnimatePresence>
+   946→
+   947→                {/* Next Episode Overlay */}
+   948→                <AnimatePresence>
+   949→                  {showNextEpisode && nextVideo && (
+   950→                    <motion.div
+   951→                      data-controls
+   952→                      className="absolute bottom-20 right-4 z-30 bg-black/80 backdrop-blur-xl border border-white/20 rounded-2xl p-4 min-w-[240px]"
+   953→                      initial={{ opacity: 0, y: 20, scale: 0.9 }}
+   954→                      animate={{ opacity: 1, y: 0, scale: 1 }}
+   955→                      exit={{ opacity: 0, y: 20, scale: 0.9 }}
+   956→                    >
+   957→                      <p className="text-white text-sm font-bold mb-1">Up Next</p>
+   958→                      <p className="text-white/80 text-xs mb-2 line-clamp-1">{nextVideo.title}</p>
+   959→                      <p className="text-sky-400 text-xs font-bold mb-3">
+   960→                        Playing in {nextEpisodeCountdown}s...
+   961→                      </p>
+   962→                      <div className="flex gap-2">
+   963→                        <button
+   964→                          className="px-3 py-1.5 bg-sky-500 text-white text-xs font-bold rounded-lg hover:bg-sky-400 transition-colors"
+   965→                          onClick={(e) => { e.stopPropagation(); handlePlayNext(); }}
+   966→                        >
+   967→                          Play Now
+   968→                        </button>
+   969→                        <button
+   970→                          className="px-3 py-1.5 bg-white/10 text-white text-xs font-bold rounded-lg hover:bg-white/20 transition-colors"
+   971→                          onClick={(e) => { e.stopPropagation(); setShowNextEpisode(false); }}
+   972→                        >
+   973→                          Cancel
+   974→                        </button>
+   975→                      </div>
+   976→                    </motion.div>
+   977→                  )}
+   978→                </AnimatePresence>
+   979→
+   980→                {/* Resume Dialog */}
+   981→                <AnimatePresence>
+   982→                  {showResumeDialog && (
+   983→                    <motion.div
+   984→                      data-controls
+   985→                      className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm flex items-center justify-center"
+   986→                      initial={{ opacity: 0 }}
+   987→                      animate={{ opacity: 1 }}
+   988→                      exit={{ opacity: 0 }}
+   989→                    >
+   990→                      <motion.div
+   991→                        className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-2xl p-6 max-w-sm mx-4"
+   992→                        initial={{ scale: 0.9, y: 20 }}
+   993→                        animate={{ scale: 1, y: 0 }}
+   994→                        exit={{ scale: 0.9, y: 20 }}
+   995→                      >
+   996→                        <h3 className="text-lg font-extrabold text-foreground mb-2">Resume Watching?</h3>
+   997→                        <p className="text-sm text-muted-foreground mb-4">
+   998→                          You left off at {formatTime(watchProgress?.lastPosition ?? 0)}
+   999→                        </p>
+  1000→                        <div className="flex gap-3">
+  1001→                          <GradientButton onClick={handleResume} size="sm">
+  1002→                            Resume
+  1003→                          </GradientButton>
+  1004→                          <GradientButton
+  1005→                            onClick={handleStartOver}
+  1006→                            size="sm"
+  1007→                            className="bg-muted/50 text-foreground hover:bg-muted/70 shadow-transparent"
+  1008→                            variant="primary"
+  1009→                          >
+  1010→                            Start Over
+  1011→                          </GradientButton>
+  1012→                        </div>
+  1013→                      </motion.div>
+  1014→                    </motion.div>
+  1015→                  )}
+  1016→                </AnimatePresence>
+  1017→
+  1018→                {/* Keyboard shortcuts hint */}
+  1019→                <AnimatePresence>
+  1020→                  {controlsVisible && !isPlaying && (
+  1021→                    <motion.div
+  1022→                      className="absolute top-3 right-3 z-20 text-white/40 text-[10px] hidden sm:block"
+  1023→                      initial={{ opacity: 0 }}
+  1024→                      animate={{ opacity: 1 }}
+  1025→                      exit={{ opacity: 0 }}
+  1026→                    >
+  1027→                      Space: Play/Pause | Arrows: Seek/Vol | F: Fullscreen | M: Mute | [ ]: Speed
+  1028→                    </motion.div>
+  1029→                  )}
+  1030→                </AnimatePresence>
+  1031→              </div>
+  1032→            </GlassCard>
+  1033→
+  1034→            {/* Video info */}
+  1035→            <div className="mb-4">
+  1036→              <h1 className="text-lg font-extrabold text-foreground mb-1">{currentVideo.title}</h1>
+  1037→              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+  1038→                {instructor && <span>{instructor.name}</span>}
+  1039→                <span>&bull;</span>
+  1040→                <span>{course.title}</span>
+  1041→              </div>
+  1042→            </div>
+  1043→
+  1044→            {/* Mark complete + Next Video */}
+  1045→            <div className="flex items-center gap-3 mb-4">
+  1046→              <GradientButton
+  1047→                onClick={handleMarkComplete}
+  1048→                variant={(watchProgress?.completed || currentProgress >= 100) ? 'success' : 'primary'}
+  1049→                size="sm"
+  1050→              >
+  1051→                <Check className="w-4 h-4" />
+  1052→                {(watchProgress?.completed || currentProgress >= 100) ? 'Completed' : 'Mark as Complete'}
+  1053→              </GradientButton>
+  1054→              {nextVideo && (
+  1055→                <GradientButton
+  1056→                  onClick={() => navigate('video-player', { videoId: nextVideo.id, courseId })}
+  1057→                  size="sm"
+  1058→                  className="bg-muted/50 text-foreground hover:bg-muted/70 shadow-transparent"
+  1059→                  variant="primary"
+  1060→                >
+  1061→                  <SkipForward className="w-4 h-4" />
+  1062→                  Next Video
+  1063→                </GradientButton>
+  1064→              )}
+  1065→            </div>
+  1066→
+  1067→            {/* Progress */}
+  1068→            <GlassCard className="p-4 mb-4">
+  1069→              <div className="flex items-center justify-between mb-2">
+  1070→                <span className="text-sm font-semibold">Your Progress</span>
+  1071→                <span className="text-sm font-bold text-sky-500">{Math.round(currentProgress)}%</span>
+  1072→              </div>
+  1073→              <ProgressBar value={currentProgress} size="md" />
+  1074→            </GlassCard>
+  1075→          </motion.div>
+  1076→        </div>
+  1077→
+  1078→        {/* Sidebar tabs */}
+  1079→        <div>
+  1080→          <GlassCard className="overflow-hidden">
+  1081→            {/* Tabs */}
+  1082→            <div className="flex border-b border-white/20 dark:border-white/5">
+  1083→              {[
+  1084→                { key: 'upnext' as const, icon: ListVideo, label: 'Up Next' },
+  1085→                { key: 'notes' as const, icon: BookOpen, label: 'Notes' },
+  1086→                { key: 'qa' as const, icon: MessageSquare, label: 'Q&A' },
+  1087→              ].map((tab) => (
+  1088→                <button
+  1089→                  key={tab.key}
+  1090→                  className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold transition-colors ${
+  1091→                    activeTab === tab.key
+  1092→                      ? 'text-sky-500 border-b-2 border-sky-500'
+  1093→                      : 'text-muted-foreground'
+  1094→                  }`}
+  1095→                  onClick={() => setActiveTab(tab.key)}
+  1096→                >
+  1097→                  <tab.icon className="w-3.5 h-3.5" />
+  1098→                  {tab.label}
+  1099→                </button>
+  1100→              ))}
+  1101→            </div>
+  1102→
+  1103→            <div className="max-h-[500px] overflow-y-auto">
+  1104→              {/* Up Next Tab */}
+  1105→              {activeTab === 'upnext' && (
+  1106→                <div className="p-2">
+  1107→                  {videos.map((video, i) => {
+  1108→                    const isActive = video.id === videoId;
+  1109→                    const vProgress = getProgress(video.id);
+  1110→                    return (
+  1111→                      <motion.div
+  1112→                        key={video.id}
+  1113→                        className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${
+  1114→                          isActive ? 'bg-sky-50 dark:bg-sky-900/20' : 'hover:bg-muted/30'
+  1115→                        }`}
+  1116→                        onClick={() => navigate('video-player', { videoId: video.id, courseId })}
+  1117→                        initial={{ opacity: 0, x: 10 }}
+  1118→                        animate={{ opacity: 1, x: 0 }}
+  1119→                        transition={{ delay: i * 0.02 }}
+  1120→                      >
+  1121→                        <div
+  1122→                          className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+  1123→                            isActive
+  1124→                              ? 'bg-sky-500 text-white'
+  1125→                              : vProgress?.completed
+  1126→                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-500'
+  1127→                                : 'bg-muted text-muted-foreground'
+  1128→                          }`}
+  1129→                        >
+  1130→                          {vProgress?.completed ? <Check className="w-4 h-4" /> : i + 1}
+  1131→                        </div>
+  1132→                        <div className="flex-1 min-w-0">
+  1133→                          <p
+  1134→                            className={`text-sm font-semibold line-clamp-1 ${
+  1135→                              isActive ? 'text-sky-600 dark:text-sky-400' : 'text-foreground'
+  1136→                            }`}
+  1137→                          >
+  1138→                            {video.title}
+  1139→                          </p>
+  1140→                          <div className="flex items-center gap-2 mt-0.5">
+  1141→                            <Clock className="w-3 h-3 text-muted-foreground" />
+  1142→                            <span className="text-xs text-muted-foreground">{formatDuration(video.duration)}</span>
+  1143→                          </div>
+  1144→                        </div>
+  1145→                        {isActive && (
+  1146→                          <div className="w-2 h-2 rounded-full bg-sky-500 animate-pulse flex-shrink-0" />
+  1147→                        )}
+  1148→                      </motion.div>
+  1149→                    );
+  1150→                  })}
+  1151→                </div>
+  1152→              )}
+  1153→
+  1154→              {/* Notes Tab */}
+  1155→              {activeTab === 'notes' && (
+  1156→                <div className="p-4">
+  1157→                  {/* Add note input */}
+  1158→                  <div className="flex gap-2 mb-4">
+  1159→                    <input
+  1160→                      type="text"
+  1161→                      placeholder="Add a note at current time..."
+  1162→                      value={newNoteText}
+  1163→                      onChange={(e) => setNewNoteText(e.target.value)}
+  1164→                      onKeyDown={(e) => { if (e.key === 'Enter') addNote(); }}
+  1165→                      className="flex-1 px-3 py-2 text-sm rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+  1166→                    />
+  1167→                    <button
+  1168→                      className="p-2 rounded-xl bg-sky-500 text-white hover:bg-sky-400 transition-colors flex-shrink-0"
+  1169→                      onClick={addNote}
+  1170→                      title="Add note"
+  1171→                    >
+  1172→                      <Plus className="w-4 h-4" />
+  1173→                    </button>
+  1174→                  </div>
+  1175→
+  1176→                  {notes.length === 0 ? (
+  1177→                    <div className="text-center text-sm text-muted-foreground py-6">
+  1178→                      <BookOpen className="w-8 h-8 mx-auto mb-2 text-muted-foreground/50" />
+  1179→                      <p>No notes yet</p>
+  1180→                      <p className="text-xs">Take notes while watching the video</p>
+  1181→                    </div>
+  1182→                  ) : (
+  1183→                    <div className="space-y-2">
+  1184→                      {notes.map((note) => (
+  1185→                        <motion.div
+  1186→                          key={note.id}
+  1187→                          className="flex items-start gap-2 p-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10"
+  1188→                          initial={{ opacity: 0, y: 5 }}
+  1189→                          animate={{ opacity: 1, y: 0 }}
+  1190→                        >
+  1191→                          <button
+  1192→                            className="text-xs font-mono text-sky-500 font-bold whitespace-nowrap mt-0.5 hover:underline flex-shrink-0"
+  1193→                            onClick={() => jumpToNote(note.timestamp)}
+  1194→                          >
+  1195→                            {formatTime(note.timestamp)}
+  1196→                          </button>
+  1197→                          <p className="text-sm text-foreground flex-1 min-w-0">{note.text}</p>
+  1198→                          <button
+  1199→                            className="p-1 text-muted-foreground hover:text-red-500 transition-colors flex-shrink-0"
+  1200→                            onClick={() => deleteNote(note.id)}
+  1201→                          >
+  1202→                            <Trash2 className="w-3.5 h-3.5" />
+  1203→                          </button>
+  1204→                        </motion.div>
+  1205→                      ))}
+  1206→                    </div>
+  1207→                  )}
+  1208→                </div>
+  1209→              )}
+  1210→
+  1211→              {/* Q&A Tab */}
+  1212→              {activeTab === 'qa' && (
+  1213→                <div className="p-4">
+  1214→                  {/* Add question */}
+  1215→                  <div className="flex gap-2 mb-4">
+  1216→                    <input
+  1217→                      type="text"
+  1218→                      placeholder="Ask a question..."
+  1219→                      value={newQuestion}
+  1220→                      onChange={(e) => setNewQuestion(e.target.value)}
+  1221→                      onKeyDown={(e) => { if (e.key === 'Enter') addQuestion(); }}
+  1222→                      className="flex-1 px-3 py-2 text-sm rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+  1223→                    />
+  1224→                    <button
+  1225→                      className="p-2 rounded-xl bg-sky-500 text-white hover:bg-sky-400 transition-colors flex-shrink-0"
+  1226→                      onClick={addQuestion}
+  1227→                      title="Post question"
+  1228→                    >
+  1229→                      <Send className="w-4 h-4" />
+  1230→                    </button>
+  1231→                  </div>
+  1232→
+  1233→                  {/* Questions list */}
+  1234→                  <div className="space-y-3">
+  1235→                    {qaItems.map((item) => (
+  1236→                      <motion.div
+  1237→                        key={item.id}
+  1238→                        className="p-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10"
+  1239→                        initial={{ opacity: 0, y: 5 }}
+  1240→                        animate={{ opacity: 1, y: 0 }}
+  1241→                      >
+  1242→                        <div className="flex items-start gap-2">
+  1243→                          {/* Upvote */}
+  1244→                          <div className="flex flex-col items-center flex-shrink-0">
+  1245→                            <button
+  1246→                              className={`p-0.5 rounded hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors ${
+  1247→                                item.upvoted ? 'text-sky-500' : 'text-muted-foreground'
+  1248→                              }`}
+  1249→                              onClick={() => toggleUpvote(item.id)}
+  1250→                            >
+  1251→                              <ChevronUp className="w-4 h-4" />
+  1252→                            </button>
+  1253→                            <span className="text-xs font-bold text-muted-foreground">{item.upvotes}</span>
+  1254→                          </div>
+  1255→
+  1256→                          <div className="flex-1 min-w-0">
+  1257→                            <div className="flex items-center gap-2 mb-1">
+  1258→                              <span className="text-xs font-bold text-foreground">{item.author}</span>
+  1259→                              <span className="text-[10px] text-muted-foreground">{item.timestamp}</span>
+  1260→                            </div>
+  1261→                            <p className="text-sm text-foreground">{item.question}</p>
+  1262→
+  1263→                            {/* Replies */}
+  1264→                            {item.replies.length > 0 && (
+  1265→                              <div className="mt-2 ml-2 space-y-2 border-l-2 border-white/30 dark:border-white/10 pl-3">
+  1266→                                {item.replies.map((reply) => (
+  1267→                                  <div key={reply.id}>
+  1268→                                    <div className="flex items-center gap-2 mb-0.5">
+  1269→                                      <span className="text-xs font-bold text-foreground">{reply.author}</span>
+  1270→                                      <span className="text-[10px] text-muted-foreground">{reply.timestamp}</span>
+  1271→                                    </div>
+  1272→                                    <p className="text-xs text-muted-foreground">{reply.text}</p>
+  1273→                                  </div>
+  1274→                                ))}
+  1275→                              </div>
+  1276→                            )}
+  1277→
+  1278→                            {/* Reply input */}
+  1279→                            {replyingTo === item.id ? (
+  1280→                              <div className="flex gap-2 mt-2">
+  1281→                                <input
+  1282→                                  type="text"
+  1283→                                  placeholder="Write a reply..."
+  1284→                                  value={replyText}
+  1285→                                  onChange={(e) => setReplyText(e.target.value)}
+  1286→                                  onKeyDown={(e) => { if (e.key === 'Enter') addReply(item.id); }}
+  1287→                                  className="flex-1 px-2 py-1 text-xs rounded-lg bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+  1288→                                  autoFocus
+  1289→                                />
+  1290→                                <button
+  1291→                                  className="p-1 text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20 rounded-lg"
+  1292→                                  onClick={() => addReply(item.id)}
+  1293→                                >
+  1294→                                  <Send className="w-3 h-3" />
+  1295→                                </button>
+  1296→                                <button
+  1297→                                  className="p-1 text-muted-foreground hover:bg-muted/30 rounded-lg"
+  1298→                                  onClick={() => { setReplyingTo(null); setReplyText(''); }}
+  1299→                                >
+  1300→                                  <X className="w-3 h-3" />
+  1301→                                </button>
+  1302→                              </div>
+  1303→                            ) : (
+  1304→                              <button
+  1305→                                className="flex items-center gap-1 mt-2 text-xs text-muted-foreground hover:text-sky-500 transition-colors"
+  1306→                                onClick={() => setReplyingTo(item.id)}
+  1307→                              >
+  1308→                                <Reply className="w-3 h-3" />
+  1309→                                Reply
+  1310→                              </button>
+  1311→                            )}
+  1312→                          </div>
+  1313→                        </div>
+  1314→                      </motion.div>
+  1315→                    ))}
+  1316→                  </div>
+  1317→                </div>
+  1318→              )}
+  1319→            </div>
+  1320→          </GlassCard>
+  1321→        </div>
+  1322→      </div>
+  1323→    </div>
+  1324→  );
+  1325→}
+  1326→

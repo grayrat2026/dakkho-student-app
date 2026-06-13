@@ -1,0 +1,190 @@
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:97:    const allowedFields = ['title', 'slug', 'description', 'thumbnail_url', 'preview_video_url', 'category_id', 'instructor_id', 'technology_id', 'level', 'language', 'duration', 'total_videos', 'rating', 'total_reviews', 'total_students', 'price', 'is_featured', 'is_published', 'tags', 'semester', 'what_you_learn'];
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:103:      INSERT INTO courses (id, title, slug, description, thumbnail_url, preview_video_url, category_id, instructor_id, technology_id, level, language, duration, total_videos, rating, total_reviews, total_students, price, is_featured, is_published, tags, semester, what_you_learn)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:122:      data.price || 0,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:174:    const coursePrice = (data.price as number) || 0;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:178:        INSERT INTO course_packages (course_id, package_type, price, duration_months, max_users, is_auto_assign, is_active, created_by)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:180:      `).bind(id, coursePrice, c.get('user')?.id || null).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:182:      // Friend pack (2 users, 20% discount per user)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:183:      const friendPackPrice = Math.round(coursePrice * 1.6); // 2 users at ~80% each
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:185:        INSERT INTO course_packages (course_id, package_type, price, duration_months, max_users, is_auto_assign, is_active, created_by)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:187:      `).bind(id, friendPackPrice, c.get('user')?.id || null).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:213:    const allowedFields = ['title', 'slug', 'description', 'thumbnail_url', 'preview_video_url', 'category_id', 'instructor_id', 'technology_id', 'level', 'language', 'duration', 'total_videos', 'rating', 'total_reviews', 'total_students', 'price', 'is_featured', 'is_published', 'tags', 'semester', 'what_you_learn'];
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:286:    // Auto-create packages if course has none, or update auto-generated package prices when course price changes
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:292:      const coursePrice = (updates.price as number) ?? ((updated as any)?.price || 0);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:297:          INSERT INTO course_packages (course_id, package_type, price, duration_months, max_users, is_auto_assign, is_active, created_by)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:299:        `).bind(String(courseId), coursePrice).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:301:        const friendPackPrice = Math.round(coursePrice * 1.6);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:303:          INSERT INTO course_packages (course_id, package_type, price, duration_months, max_users, is_auto_assign, is_active, created_by)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:305:        `).bind(String(courseId), friendPackPrice).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:306:      } else if (updates.price !== undefined) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:307:        // Price changed — update auto-assigned single pack price
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:309:          "UPDATE course_packages SET price = ?, updated_at = datetime('now') WHERE course_id = ? AND package_type = 'single' AND is_auto_assign = 1"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:310:        ).bind(coursePrice, String(courseId)).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:312:        // Update friend pack price proportionally
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:313:        const friendPackPrice = Math.round(coursePrice * 1.6);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:315:          "UPDATE course_packages SET price = ?, updated_at = datetime('now') WHERE course_id = ? AND package_type = 'friend' AND is_auto_assign = 1"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/courses.ts:316:        ).bind(friendPackPrice, String(courseId)).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:2: * Coupons Admin Routes — CRUD for discount coupons
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:12:const couponRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:14:couponRoutes.use('*', adminAuthMiddleware);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:16:// GET / — List all coupons
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:17:couponRoutes.get('/', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:24:    let query = 'SELECT * FROM coupons';
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:25:    let countQuery = 'SELECT COUNT(*) as total FROM coupons';
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:40:    return c.json({ coupons: result.results, total });
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:46:// POST / — Create coupon
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:47:couponRoutes.post('/', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:50:    const { code, discount_type, discount_value, max_discount, min_purchase, usage_limit, per_user_limit, valid_from, valid_until, applicable_courses, applicable_technologies } = data;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:52:    if (!code || !discount_type || !discount_value || !valid_from || !valid_until) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:53:      return c.json({ error: 'code, discount_type, discount_value, valid_from, valid_until required' }, 400);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:57:    const existing = await c.env.DB.prepare('SELECT id FROM coupons WHERE code = ?').bind(code).first();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:59:      return c.json({ error: 'Coupon code already exists' }, 400);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:64:      INSERT INTO coupons (code, discount_type, discount_value, max_discount, min_purchase, usage_limit, per_user_limit, valid_from, valid_until, applicable_courses, applicable_technologies, is_active, created_by)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:67:      code, discount_type, discount_value, max_discount || null, min_purchase || 0,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:74:    await logAudit(c.env, user.id, 'CREATE_COUPON', 'coupons', String((result.meta as any)?.last_row_id), data);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:76:    return c.json({ success: true, message: 'Coupon created successfully' });
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:82:// PUT /:id — Update coupon
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:83:couponRoutes.put('/:id', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:92:    const allowedFields = ['discount_type', 'discount_value', 'max_discount', 'min_purchase', 'usage_limit', 'per_user_limit', 'valid_from', 'valid_until', 'is_active'];
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:118:      `UPDATE coupons SET ${updates.join(', ')} WHERE id = ?`
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:121:    await logAudit(c.env, user.id, 'UPDATE_COUPON', 'coupons', id, data);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:129:// DELETE /:id — Deactivate coupon (soft delete)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:130:couponRoutes.delete('/:id', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:136:      "UPDATE coupons SET is_active = 0, updated_at = datetime('now') WHERE id = ?"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:139:    await logAudit(c.env, user.id, 'DEACTIVATE_COUPON', 'coupons', id);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/coupons.ts:147:export default couponRoutes;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:46:    `CREATE TABLE IF NOT EXISTS courses (id TEXT PRIMARY KEY, title TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, description TEXT, thumbnail_url TEXT, preview_video_url TEXT, category_id TEXT, instructor_id TEXT, technology_id INTEGER, level TEXT DEFAULT 'beginner', language TEXT DEFAULT 'bangla', duration INTEGER DEFAULT 0, total_videos INTEGER DEFAULT 0, rating REAL DEFAULT 0, total_reviews INTEGER DEFAULT 0, total_students INTEGER DEFAULT 0, price REAL DEFAULT 0, is_featured INTEGER DEFAULT 0, is_published INTEGER DEFAULT 0, tags TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')))`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:55:    `CREATE TABLE IF NOT EXISTS course_packages (id INTEGER PRIMARY KEY AUTOINCREMENT, course_id TEXT NOT NULL, package_type TEXT NOT NULL, price REAL NOT NULL, duration_months INTEGER DEFAULT 6, max_users INTEGER DEFAULT 1, is_auto_assign INTEGER DEFAULT 1, is_active INTEGER DEFAULT 1, created_by TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')))`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:57:    `CREATE TABLE IF NOT EXISTS coupons (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL UNIQUE, discount_type TEXT NOT NULL, discount_value REAL NOT NULL, max_discount REAL, min_purchase REAL DEFAULT 0, usage_limit INTEGER, usage_count INTEGER DEFAULT 0, per_user_limit INTEGER DEFAULT 1, valid_from TEXT NOT NULL, valid_until TEXT NOT NULL, applicable_courses TEXT, applicable_technologies TEXT, is_active INTEGER DEFAULT 1, created_by TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')))`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:58:    `CREATE TABLE IF NOT EXISTS discounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, name_bn TEXT, description TEXT, discount_type TEXT NOT NULL, discount_value REAL NOT NULL, applicable_type TEXT NOT NULL, applicable_ids TEXT, valid_from TEXT NOT NULL, valid_until TEXT NOT NULL, is_auto_apply INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1, created_by TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')))`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:177:    `CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:178:    `CREATE INDEX IF NOT EXISTS idx_coupons_active ON coupons(is_active)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:179:    `CREATE INDEX IF NOT EXISTS idx_coupons_valid ON coupons(valid_from, valid_until)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:180:    `CREATE INDEX IF NOT EXISTS idx_discounts_active ON discounts(is_active)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:181:    `CREATE INDEX IF NOT EXISTS idx_discounts_valid ON discounts(valid_from, valid_until)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:271:    `INSERT OR IGNORE INTO about_faq (question, answer, sort_order, is_active) VALUES ('Is DAKKHO free to use?', 'Many courses on DAKKHO are completely free. Premium courses are available at affordable prices with financial aid options for deserving students. We believe quality education should be accessible to everyone.', 2, 1)`,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:303:      SELECT c.id, c.price FROM courses c
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:311:      const coursePrice = course.price || 0;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:323:      // Single package (1 user — original price)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:325:        INSERT INTO course_packages (course_id, package_type, price, duration_months, max_users, is_auto_assign, is_active, created_by, display_name, description)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:327:      `).bind(courseId, coursePrice).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:330:      const duoPackPrice = Math.round(coursePrice * 1.15);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:332:        INSERT INTO course_packages (course_id, package_type, price, duration_months, max_users, is_auto_assign, is_active, created_by, display_name, description)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migrate.ts:334:      `).bind(courseId, duoPackPrice).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/index.ts:31:import couponRoutes from './routes/coupons';
+/home/z/my-project/dakkho-worker-fresh/worker/src/index.ts:32:import discountRoutes from './routes/discounts';
+/home/z/my-project/dakkho-worker-fresh/worker/src/index.ts:115:app.route('/admin/coupons', couponRoutes);
+/home/z/my-project/dakkho-worker-fresh/worker/src/index.ts:116:app.route('/admin/discounts', discountRoutes);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migration.ts:66:  price_bdt REAL DEFAULT 0,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migration.ts:67:  discount_price REAL DEFAULT 0,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migration.ts:386:              const priceBdt = doc.price_bdt || doc.price || 0;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migration.ts:387:              const isFree = doc.is_free !== undefined ? (doc.is_free ? 1 : 0) : (priceBdt === 0 ? 1 : 0);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migration.ts:390:                INSERT OR IGNORE INTO courses (id, title, title_en, description, subject_code, slug, thumbnail_url, banner_url, is_free, price_bdt, is_featured, is_trending, status, is_published, total_duration_minutes, total_chapters, total_videos, enrollment_count, rating_avg, rating_count, tags, preview_video_url, category_id, instructor_id, level, language, technology, appwrite_id, created_at, updated_at)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/migration.ts:402:                priceBdt,
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:207:  price: number;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:332:  price: number;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:355:export interface CouponRow {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:358:  discount_type: string;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:359:  discount_value: number;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:360:  max_discount: number | null;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:375:export interface DiscountRow {
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:380:  discount_type: string;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/types.ts:381:  discount_value: number;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:245:// ─── Coupons ───
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:247:studentApiRoutes.get('/coupons/validate', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:251:      return c.json({ error: 'Coupon code required' }, 400);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:254:    const coupon = await c.env.DB.prepare(
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:255:      'SELECT * FROM coupons WHERE code = ? AND is_active = 1'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:258:    if (!coupon) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:259:      return c.json({ valid: false, error: 'Invalid coupon code' }, 404);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:262:    const cp = coupon as any;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:266:      return c.json({ valid: false, error: 'Coupon has expired or is not yet active' });
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:270:      return c.json({ valid: false, error: 'Coupon usage limit reached' });
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:275:      coupon: {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:277:        discount_type: cp.discount_type,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:278:        discount_value: cp.discount_value,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:279:        max_discount: cp.max_discount,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:297:    // Get course price
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:299:      'SELECT id, price FROM courses WHERE id = ? AND is_published = 1'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:300:    ).bind(courseId).first<{ id: string; price: number }>();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:307:      'SELECT * FROM course_packages WHERE course_id = ? AND is_active = 1 ORDER BY price ASC'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:311:    if (course.price > 0) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:318:          INSERT INTO course_packages (course_id, package_type, price, duration_months, max_users, is_auto_assign, is_active, display_name, description)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:320:        `).bind(courseId, course.price).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:324:      // Ensure Duo package exists (original price + 15% extra)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:326:        const duoPrice = Math.round(course.price * 1.15);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:328:          INSERT INTO course_packages (course_id, package_type, price, duration_months, max_users, is_auto_assign, is_active, display_name, description)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:330:        `).bind(courseId, duoPrice).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:337:          'SELECT * FROM course_packages WHERE course_id = ? AND is_active = 1 AND package_type IN (\"single\", \"dual\") ORDER BY price ASC'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:360:      SELECT up.*, cp.package_type, cp.price, cp.duration_months, cp.course_id, cp.max_users,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:947:        "SELECT up.*, cp.package_type, cp.price, cp.duration_months FROM user_packages up JOIN course_packages cp ON up.package_id = cp.id WHERE up.user_id = ? AND up.status = 'active' ORDER BY up.activated_at DESC"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1027:        "SELECT up.*, cp.package_type, cp.price, cp.duration_months FROM user_packages up JOIN course_packages cp ON up.package_id = cp.id WHERE up.user_id = ? AND up.status = 'active' ORDER BY up.activated_at DESC"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1734:    `).bind(auth.userId, package_id, p.course_id, p.price, trx_id, phone || null, proof_url || null, submitMetadata).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1808:    const { packageId, couponCode, duoMemberEmail } = await c.req.json();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1832:    let finalAmount = p.price;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1834:    // Validate coupon if provided
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1835:    if (couponCode) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1836:      const coupon = await c.env.DB.prepare(
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1837:        'SELECT * FROM coupons WHERE code = ? AND is_active = 1'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1838:      ).bind(couponCode).first();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1840:      if (coupon) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1841:        const cp = coupon as any;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1845:            if (cp.discount_type === 'percentage') {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1846:              const discount = finalAmount * (cp.discount_value / 100);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1847:              finalAmount = Math.max(0, finalAmount - (cp.max_discount ? Math.min(discount, cp.max_discount) : discount));
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1848:            } else if (cp.discount_type === 'flat') {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1849:              finalAmount = Math.max(0, finalAmount - cp.discount_value);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1853:            // Increment coupon usage
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1855:              'UPDATE coupons SET usage_count = usage_count + 1 WHERE code = ?'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1856:            ).bind(couponCode).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:1878:      JSON.stringify({ couponCode: couponCode || null, originalPrice: p.price, discountedPrice: finalAmount, duoMemberEmail: duoMemberEmail || null })
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3037:             c.description as course_description, c.price as course_price,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3138:      'SELECT id, price FROM courses WHERE id = ? AND is_published = 1'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3157:      if (pkg.price > 0) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3163:      // Check if course price is 0
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3164:      const coursePrice = (course as any).price;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3165:      if (coursePrice > 0) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student-api.ts:3168:          'SELECT * FROM course_packages WHERE course_id = ? AND price = 0 AND is_active = 1 LIMIT 1'
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:2: * Discounts Admin Routes — CRUD for auto-apply discounts
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:12:const discountRoutes = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:14:discountRoutes.use('*', adminAuthMiddleware);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:16:// GET / — List discounts
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:17:discountRoutes.get('/', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:24:    let query = 'SELECT * FROM discounts';
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:25:    let countQuery = 'SELECT COUNT(*) as total FROM discounts';
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:40:    return c.json({ discounts: result.results, total });
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:46:// POST / — Create discount
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:47:discountRoutes.post('/', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:50:    const { name, name_bn, description, discount_type, discount_value, applicable_type, applicable_ids, valid_from, valid_until, is_auto_apply } = data;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:52:    if (!name || !discount_type || !discount_value || !applicable_type || !valid_from || !valid_until) {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:53:      return c.json({ error: 'name, discount_type, discount_value, applicable_type, valid_from, valid_until required' }, 400);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:58:      INSERT INTO discounts (name, name_bn, description, discount_type, discount_value, applicable_type, applicable_ids, valid_from, valid_until, is_auto_apply, is_active, created_by)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:61:      name, name_bn || null, description || null, discount_type, discount_value,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:66:    await logAudit(c.env, user.id, 'CREATE_DISCOUNT', 'discounts', String((result.meta as any)?.last_row_id), data);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:68:    return c.json({ success: true, message: 'Discount created successfully' });
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:74:// PUT /:id — Update discount
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:75:discountRoutes.put('/:id', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:84:    const allowedFields = ['name', 'name_bn', 'description', 'discount_type', 'discount_value', 'applicable_type', 'valid_from', 'valid_until', 'is_auto_apply', 'is_active'];
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:105:      `UPDATE discounts SET ${updates.join(', ')} WHERE id = ?`
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:108:    await logAudit(c.env, user.id, 'UPDATE_DISCOUNT', 'discounts', id, data);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:116:// DELETE /:id — Deactivate discount
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:117:discountRoutes.delete('/:id', async (c) => {
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:123:      "UPDATE discounts SET is_active = 0, updated_at = datetime('now') WHERE id = ?"
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:126:    await logAudit(c.env, user.id, 'DEACTIVATE_DISCOUNT', 'discounts', id);
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/discounts.ts:134:export default discountRoutes;
+/home/z/my-project/dakkho-worker-fresh/worker/src/lib/rate-limit.ts:17:  coupon: { windowMs: 15 * 60 * 1000, maxRequests: 10 },    // 10 coupon validations per 15 min
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student.ts:188:    price: Number(doc.price || 0),
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student.ts:2037:  const coursePrice = courseDoc ? (courseDoc.price as number | null) : null;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/student.ts:2038:  const isFreeCourse = !coursePrice || coursePrice === 0;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/packages.ts:56:      INSERT INTO course_packages (course_id, package_type, price, duration_months, max_users, is_auto_assign, is_active, created_by, display_name, description)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/packages.ts:61:      data.price || 0,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/packages.ts:99:    const allowedFields = ['course_id', 'package_type', 'price', 'duration_months', 'max_users', 'is_auto_assign', 'is_active', 'display_name', 'description'];
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:44:    price: row.price ?? row.price_bdt ?? 0,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:1155:    const { title, description, level, language, price, technology_id, category_id, tags, semester, what_you_learn, subject_ids } = body;
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:1167:      INSERT INTO courses (id, title, slug, description, instructor_id, technology_id, category_id, level, language, price, tags, semester, what_you_learn, is_published, created_at, updated_at)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:1179:      price || 0,
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:1212:        INSERT INTO course_packages (course_id, package_type, display_name, description, price, duration_months, max_users, is_auto_assign, is_active, created_by, created_at, updated_at)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:1214:      `).bind(courseId, `${packageName} - Single`, price || 0, instructorId, now, now).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:1218:        INSERT INTO course_packages (course_id, package_type, display_name, description, price, duration_months, max_users, is_auto_assign, is_active, created_by, created_at, updated_at)
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:1220:      `).bind(courseId, `${packageName} - Friend Pack`, (price || 0) * 1.5, instructorId, now, now).run();
+/home/z/my-project/dakkho-worker-fresh/worker/src/routes/instructor.ts:1265:      price: 'price',

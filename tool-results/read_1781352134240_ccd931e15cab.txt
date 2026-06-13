@@ -1,0 +1,2002 @@
+     1→/**
+     2→ * DAKKHO Student Routes — Cloudflare Workers + Hono
+     3→ *
+     4→ * Mounted at /student — separate from /api for cleaner separation.
+     5→ * Uses Appwrite for data storage, D1 for sessions, R2 for avatars.
+     6→ */
+     7→
+     8→import { Hono } from 'hono';
+     9→import type { Env } from '../env';
+    10→import {
+    11→  validateStudentSession,
+    12→  createStudentSession,
+    13→  deleteStudentSession,
+    14→  updateEmailVerifiedForUser,
+    15→} from '../lib/student-auth';
+    16→import {
+    17→  createSession,
+    18→  getAccount,
+    19→  deleteSession,
+    20→  listDocuments,
+    21→  getDocument,
+    22→  createDocument,
+    23→  updateDocument,
+    24→  deleteDocument,
+    25→  Query,
+    26→} from '../lib/appwrite';
+    27→import { APPWRITE_COLLECTIONS, DEFAULT_CONFIG, type ServerConfig } from '../lib/types';
+    28→import { getErrorMessage } from '../lib/utils';
+    29→import { uploadFile, getBucketForType, getPublicUrl, getFile } from '../lib/r2';
+    30→import { createAndSendOTP, verifyOTP } from '../lib/otp';
+    31→import { getStreakInfo, recordActivity, getStreakCalendar } from '../lib/streak';
+    32→import { checkAndUnlockAchievements, getUserAchievements } from '../lib/achievements';
+    33→import { RATE_LIMITS, rateLimitMiddleware } from '../lib/rate-limit';
+    34→import {
+    35→  notifyAchievementUnlocked,
+    36→  notifyStreakMilestone,
+    37→  notifyPaymentStatus,
+    38→} from '../lib/auto-notifications';
+    39→
+    40→const studentRoutes = new Hono<{ Bindings: Env }>();
+    41→
+    42→// ─── Helper: Get student auth from header ───
+    43→
+    44→async function getStudentAuth(
+    45→  c: any
+    46→): Promise<{ authorized: boolean; userId?: string; email?: string; emailVerified?: boolean }> {
+    47→  const authHeader = c.req.header('Authorization');
+    48→  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    49→    return { authorized: false };
+    50→  }
+    51→  const token = authHeader.substring(7);
+    52→  const result = await validateStudentSession(c.env, token);
+    53→  return result;
+    54→}
+    55→
+    56→// ─── Helper: Require email verification ───
+    57→// Returns auth if verified, or responds with 403 if not.
+    58→// Use this as a gate for write-sensitive endpoints.
+    59→
+    60→async function requireEmailVerified(
+    61→  c: any
+    62→): Promise<{ authorized: boolean; userId?: string; email?: string; emailVerified?: boolean } | Response> {
+    63→  const auth = await getStudentAuth(c);
+    64→  if (!auth.authorized) {
+    65→    return c.json({ error: 'Unauthorized' }, 401);
+    66→  }
+    67→  if (!auth.emailVerified) {
+    68→    return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+    69→  }
+    70→  return auth;
+    71→}
+    72→
+    73→// ─── Helper: Create Appwrite user via REST API ───
+    74→
+    75→async function createAppwriteUser(
+    76→  env: Env,
+    77→  email: string,
+    78→  password: string,
+    79→  name: string
+    80→): Promise<Record<string, unknown>> {
+    81→  const res = await fetch(`${env.APPWRITE_ENDPOINT}/users`, {
+    82→    method: 'POST',
+    83→    headers: {
+    84→      'Content-Type': 'application/json',
+    85→      'X-Appwrite-Project': env.APPWRITE_PROJECT_ID,
+    86→      'X-Appwrite-Key': env.APPWRITE_API_KEY,
+    87→    },
+    88→    body: JSON.stringify({
+    89→      userId: 'unique()',
+    90→      email,
+    91→      password,
+    92→      name,
+    93→      prefs: {
+    94→        role: 'student',
+    95→        emailVerified: false,
+    96→      },
+    97→    }),
+    98→  });
+    99→
+   100→  if (!res.ok) {
+   101→    const err = await res.json().catch(() => ({ message: 'Failed to create user' }));
+   102→    throw new Error((err as { message?: string }).message || 'Failed to create user');
+   103→  }
+   104→
+   105→  return res.json() as Promise<Record<string, unknown>>;
+   106→}
+   107→
+   108→// ─── Helper: Update Appwrite user prefs ───
+   109→
+   110→async function updateAppwriteUserPrefs(
+   111→  env: Env,
+   112→  userId: string,
+   113→  prefs: Record<string, unknown>
+   114→): Promise<void> {
+   115→  // First get existing prefs
+   116→  const res = await fetch(`${env.APPWRITE_ENDPOINT}/users/${userId}/prefs`, {
+   117→    method: 'PATCH',
+   118→    headers: {
+   119→      'Content-Type': 'application/json',
+   120→      'X-Appwrite-Project': env.APPWRITE_PROJECT_ID,
+   121→      'X-Appwrite-Key': env.APPWRITE_API_KEY,
+   122→    },
+   123→    body: JSON.stringify({ prefs }),
+   124→  });
+   125→
+   126→  if (!res.ok) {
+   127→    const err = await res.json().catch(() => ({ message: 'Failed to update user prefs' }));
+   128→    throw new Error((err as { message?: string }).message || 'Failed to update user prefs');
+   129→  }
+   130→}
+   131→
+   132→// ─── Helper: Find user profile document ───
+   133→// The users collection document ID may or may not match the auth user ID.
+   134→// Try by document ID first, then by userId field.
+   135→
+   136→async function findUserProfile(
+   137→  env: Env,
+   138→  authUserId: string
+   139→): Promise<(Record<string, unknown> & { $id: string }) | null> {
+   140→  // Try 1: Get by document ID (if doc ID == auth user ID)
+   141→  try {
+   142→    const doc = await getDocument(env, APPWRITE_COLLECTIONS.USERS, authUserId);
+   143→    return doc as Record<string, unknown> & { $id: string };
+   144→  } catch {
+   145→    // Not found by ID, try search
+   146→  }
+   147→
+   148→  // Try 2: Search by userId field
+   149→  try {
+   150→    const result = await listDocuments(env, APPWRITE_COLLECTIONS.USERS, [
+   151→      Query.equal('userId', authUserId),
+   152→      Query.limit(1),
+   153→    ]);
+   154→    if (result.documents.length > 0) {
+   155→      return result.documents[0] as Record<string, unknown> & { $id: string };
+   156→    }
+   157→  } catch {
+   158→    // Search failed
+   159→  }
+   160→
+   161→  return null;
+   162→}
+   163→
+   164→// ─── Helper: Map raw Appwrite course document to frontend CourseListItem format ───
+   165→
+   166→function mapCourseDoc(doc: any) {
+   167→  return {
+   168→    id: doc.$id,
+   169→    title: doc.title || '',
+   170→    slug: doc.slug || '',
+   171→    description: doc.description || '',
+   172→    thumbnailUrl: doc.thumbnailUrl || doc.thumbnail_url || null,
+   173→    bannerUrl: doc.bannerUrl || doc.banner_url || null,
+   174→    categoryId: doc.categoryId || doc.category_id || null,
+   175→    instructorId: doc.instructorId || doc.instructor_id || '',
+   176→    instructorName: doc.instructorName || doc.instructor_name || '',
+   177→    level: doc.level || 'beginner',
+   178→    language: doc.language || 'Bangla',
+   179→    duration: Number(doc.duration || doc.total_duration_minutes || 0),
+   180→    totalVideos: Number(doc.totalVideos || doc.total_videos || 0),
+   181→    rating: Number(doc.rating || 0),
+   182→    totalReviews: Number(doc.totalReviews || doc.total_reviews || 0),
+   183→    totalStudents: Number(doc.totalStudents || doc.total_students || doc.enrollment_count || 0),
+   184→    isFeatured: Boolean(doc.isFeatured ?? doc.is_featured ?? false),
+   185→    isPublished: Boolean(doc.isPublished ?? doc.is_published ?? false),
+   186→    status: doc.status || 'draft',
+   187→    tags: Array.isArray(doc.tags) ? doc.tags : [],
+   188→    price: Number(doc.price || 0),
+   189→    department: doc.department || null,
+   190→    semester: doc.semester ?? null,
+   191→    previewVideoUrl: doc.previewVideoUrl || doc.preview_video_url || null,
+   192→    createdAt: doc.$createdAt || null,
+   193→    updatedAt: doc.$updatedAt || null,
+   194→  };
+   195→}
+   196→
+   197→// ═══════════════════════════════════════════════════════════════
+   198→// AUTH ROUTES (no auth required)
+   199→// ═══════════════════════════════════════════════════════════════
+   200→
+   201→// POST /auth/login — Login student
+   202→studentRoutes.post('/auth/login', rateLimitMiddleware('auth', RATE_LIMITS.auth), async (c) => {
+   203→  try {
+   204→    const { email, password, deviceId, deviceInfo } = await c.req.json();
+   205→
+   206→    if (!email || !password) {
+   207→      return c.json({ error: 'Email and password are required' }, 400);
+   208→    }
+   209→
+   210→    // Create Appwrite session
+   211→    const { sessionCookie } = await createSession(c.env, email, password);
+   212→
+   213→    // Get account info
+   214→    const account = await getAccount(c.env, sessionCookie);
+   215→
+   216→    // Check that user is NOT admin
+   217→    const prefs = (account as any).prefs || {};
+   218→    if (prefs.role === 'admin') {
+   219→      // Delete the Appwrite session — admins shouldn't use student login
+   220→      await deleteSession(c.env, sessionCookie);
+   221→      return c.json({ error: 'Admin accounts cannot login here' }, 403);
+   222→    }
+   223→
+   224→    const userId = (account as any).$id as string;
+   225→    const userName = (account as any).name as string;
+   226→    const userEmail = (account as any).email as string;
+   227→    const userRole = prefs.role || 'student';
+   228→    const emailVerified = prefs.emailVerified === true || prefs.emailVerified === 'true';
+   229→
+   230→    // Create D1 student session (multi-device: does NOT kill other sessions)
+   231→    const token = await createStudentSession(c.env, userId, userEmail, deviceId, deviceInfo, emailVerified);
+   232→
+   233→    // Fetch user profile from Appwrite users collection
+   234→    const profile = await findUserProfile(c.env, userId);
+   235→
+   236→    const user = {
+   237→      id: userId,
+   238→      email: userEmail,
+   239→      name: userName,
+   240→      role: userRole,
+   241→      emailVerified,
+   242→      phone: (profile?.phone as string) || null,
+   243→      institute: (profile?.institute as string) || null,
+   244→      technology: (profile?.technology as string) || null,
+   245→      semester: (profile?.semester as string) || null,
+   246→      avatarUrl: (profile?.avatarUrl as string) || (profile?.avatar_url as string) || null,
+   247→      fullName: (profile?.fullName as string) || (profile?.full_name as string) || userName,
+   248→    };
+   249→
+   250→    // Clean up the Appwrite session — we use our own D1 session
+   251→    await deleteSession(c.env, sessionCookie);
+   252→
+   253→    return c.json({ token, user, emailVerified });
+   254→  } catch (error) {
+   255→    return c.json({ error: getErrorMessage(error) }, 401);
+   256→  }
+   257→});
+   258→
+   259→// POST /auth/check — Verify session
+   260→studentRoutes.post('/auth/check', async (c) => {
+   261→  try {
+   262→    const auth = await getStudentAuth(c);
+   263→    if (!auth.authorized) {
+   264→      return c.json({ authenticated: false, user: null });
+   265→    }
+   266→
+   267→    // Fetch fresh user data from Appwrite
+   268→    const profile = await findUserProfile(c.env, auth.userId!);
+   269→
+   270→    const user = {
+   271→      id: auth.userId,
+   272→      email: auth.email,
+   273→      emailVerified: auth.emailVerified || false,
+   274→      name: (profile?.fullName as string) || (profile?.full_name as string) || (profile?.name as string) || null,
+   275→      role: (profile?.role as string) || 'student',
+   276→      phone: (profile?.phone as string) || null,
+   277→      institute: (profile?.institute as string) || null,
+   278→      technology: (profile?.technology as string) || null,
+   279→      semester: (profile?.semester as string) || null,
+   280→      avatarUrl: (profile?.avatarUrl as string) || (profile?.avatar_url as string) || null,
+   281→      fullName: (profile?.fullName as string) || (profile?.full_name as string) || null,
+   282→    };
+   283→
+   284→    return c.json({ authenticated: true, user, emailVerified: auth.emailVerified || false });
+   285→  } catch (error) {
+   286→    return c.json({ error: getErrorMessage(error) }, 500);
+   287→  }
+   288→});
+   289→
+   290→// DELETE /auth/logout — Logout
+   291→studentRoutes.delete('/auth/logout', async (c) => {
+   292→  try {
+   293→    const auth = await getStudentAuth(c);
+   294→    if (!auth.authorized) {
+   295→      return c.json({ error: 'Unauthorized' }, 401);
+   296→    }
+   297→
+   298→    const authHeader = c.req.header('Authorization');
+   299→    const token = authHeader!.substring(7);
+   300→
+   301→    await deleteStudentSession(c.env, token);
+   302→
+   303→    return c.json({ success: true });
+   304→  } catch (error) {
+   305→    return c.json({ error: getErrorMessage(error) }, 500);
+   306→  }
+   307→});
+   308→
+   309→// ═══════════════════════════════════════════════════════════════
+   310→// REGISTRATION ROUTE (no auth required)
+   311→// ═══════════════════════════════════════════════════════════════
+   312→
+   313→// POST /auth/register — Register a new student
+   314→studentRoutes.post('/auth/register', rateLimitMiddleware('auth', RATE_LIMITS.auth), async (c) => {
+   315→  try {
+   316→    const { name, email, password, phone, institute, technology, semester } = await c.req.json();
+   317→
+   318→    if (!name || !email || !password) {
+   319→      return c.json({ error: 'Name, email, and password are required' }, 400);
+   320→    }
+   321→
+   322→    // Basic email validation
+   323→    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+   324→    if (!emailRegex.test(email)) {
+   325→      return c.json({ error: 'Invalid email format' }, 400);
+   326→    }
+   327→
+   328→    // Password strength check
+   329→    if (password.length < 8) {
+   330→      return c.json({ error: 'Password must be at least 8 characters' }, 400);
+   331→    }
+   332→
+   333→    // Create Appwrite user via REST API
+   334→    const appwriteUser = await createAppwriteUser(c.env, email, password, name);
+   335→    const userId = (appwriteUser as any).$id as string;
+   336→
+   337→    // Create user profile document in Appwrite users collection
+   338→    // Note: The document ID is set to the auth user ID for easy lookup.
+   339→    // Only include attributes that exist in the users collection schema:
+   340→    // email, fullName, institute, instituteName, technology, role, phone, semester
+   341→    const profileData: Record<string, unknown> = {
+   342→      email,
+   343→      fullName: name,
+   344→      role: 'student',
+   345→    };
+   346→    if (phone) profileData.phone = phone;
+   347→    if (institute) {
+   348→      profileData.institute = institute;
+   349→      profileData.instituteName = institute;
+   350→    }
+   351→    if (technology) profileData.technology = technology;
+   352→    if (semester) profileData.semester = semester;
+   353→
+   354→    try {
+   355→      await createDocument(c.env, APPWRITE_COLLECTIONS.USERS, profileData, userId);
+   356→    } catch (profileErr) {
+   357→      console.error('Failed to create user profile document:', getErrorMessage(profileErr));
+   358→      // Non-fatal: user was created in Appwrite auth, profile can be updated later
+   359→    }
+   360→
+   361→    // Auto-send OTP for email verification
+   362→    try {
+   363→      await createAndSendOTP(
+   364→        c.env.DB,
+   365→        email,
+   366→        'email',
+   367→        c.env.RESEND_API_KEY,
+   368→        c.env.RESEND_FROM_EMAIL
+   369→      );
+   370→    } catch (otpErr) {
+   371→      console.error('Failed to send verification OTP:', getErrorMessage(otpErr));
+   372→      // Non-fatal: user can request OTP later
+   373→    }
+   374→
+   375→    // Create D1 student session with emailVerified=false
+   376→    const token = await createStudentSession(c.env, userId, email, undefined, undefined, false);
+   377→
+   378→    const user = {
+   379→      id: userId,
+   380→      email,
+   381→      name,
+   382→      role: 'student',
+   383→      phone: phone || null,
+   384→      institute: institute || null,
+   385→      technology: technology || null,
+   386→      semester: semester || null,
+   387→      avatarUrl: null,
+   388→      fullName: name,
+   389→    };
+   390→
+   391→    return c.json({ token, user, emailVerified: false }, 201);
+   392→  } catch (error) {
+   393→    return c.json({ error: getErrorMessage(error) }, 400);
+   394→  }
+   395→});
+   396→
+   397→// ═══════════════════════════════════════════════════════════════
+   398→// EMAIL VERIFICATION ROUTES (auth required)
+   399→// ═══════════════════════════════════════════════════════════════
+   400→
+   401→// POST /auth/email/verify/send — Send OTP to verify email
+   402→studentRoutes.post('/auth/email/verify/send', rateLimitMiddleware('otp', RATE_LIMITS.otp), async (c) => {
+   403→  try {
+   404→    const auth = await getStudentAuth(c);
+   405→    if (!auth.authorized) {
+   406→      return c.json({ error: 'Unauthorized' }, 401);
+   407→    }
+   408→
+   409→    if (auth.emailVerified) {
+   410→      return c.json({ error: 'Email is already verified' }, 400);
+   411→    }
+   412→
+   413→    const result = await createAndSendOTP(
+   414→      c.env.DB,
+   415→      auth.email!,
+   416→      'email',
+   417→      c.env.RESEND_API_KEY,
+   418→      c.env.RESEND_FROM_EMAIL
+   419→    );
+   420→
+   421→    if (!result.success) {
+   422→      return c.json({ error: result.message }, 429);
+   423→    }
+   424→
+   425→    return c.json({ success: true, message: result.message, expiresAt: result.expiresAt });
+   426→  } catch (error) {
+   427→    return c.json({ error: getErrorMessage(error) }, 500);
+   428→  }
+   429→});
+   430→
+   431→// POST /auth/email/verify — Verify OTP, set emailVerified=true
+   432→studentRoutes.post('/auth/email/verify', async (c) => {
+   433→  try {
+   434→    const auth = await getStudentAuth(c);
+   435→    if (!auth.authorized) {
+   436→      return c.json({ error: 'Unauthorized' }, 401);
+   437→    }
+   438→
+   439→    if (auth.emailVerified) {
+   440→      return c.json({ error: 'Email is already verified' }, 400);
+   441→    }
+   442→
+   443→    const { code } = await c.req.json();
+   444→    if (!code) {
+   445→      return c.json({ error: 'OTP code is required' }, 400);
+   446→    }
+   447→
+   448→    // Verify the OTP
+   449→    const result = await verifyOTP(c.env.DB, auth.email!, code);
+   450→
+   451→    if (!result.valid) {
+   452→      return c.json({ error: result.message }, 400);
+   453→    }
+   454→
+   455→    // Update Appwrite user prefs: emailVerified=true
+   456→    try {
+   457→      await updateAppwriteUserPrefs(c.env, auth.userId!, {
+   458→        role: 'student',
+   459→        emailVerified: true,
+   460→      });
+   461→    } catch (prefsErr) {
+   462→      console.error('Failed to update Appwrite prefs:', getErrorMessage(prefsErr));
+   463→      // Continue: D1 session update is the primary source of truth
+   464→    }
+   465→
+   466→    // Update D1 session email_verified flag for all active sessions
+   467→    await updateEmailVerifiedForUser(c.env, auth.userId!, true);
+   468→
+   469→    // Store verification token in email_verification_tokens for audit
+   470→    const verificationId = crypto.randomUUID();
+   471→    await c.env.DB.prepare(
+   472→      `INSERT INTO email_verification_tokens (id, user_id, token, expires_at, used, created_at)
+   473→       VALUES (?, ?, 'verified', datetime('now', '+1 year'), 1, datetime('now'))`
+   474→    ).bind(verificationId, auth.userId).run();
+   475→
+   476→    return c.json({ success: true, message: 'Email verified successfully', emailVerified: true });
+   477→  } catch (error) {
+   478→    return c.json({ error: getErrorMessage(error) }, 500);
+   479→  }
+   480→});
+   481→
+   482→// ═══════════════════════════════════════════════════════════════
+   483→// PROFILE ROUTES (Bearer token required)
+   484→// ═══════════════════════════════════════════════════════════════
+   485→
+   486→// GET /profile — Get own profile
+   487→studentRoutes.get('/profile', async (c) => {
+   488→  try {
+   489→    const auth = await getStudentAuth(c);
+   490→    if (!auth.authorized) {
+   491→      return c.json({ error: 'Unauthorized' }, 401);
+   492→    }
+   493→
+   494→    const profile = await findUserProfile(c.env, auth.userId!);
+   495→    if (!profile) {
+   496→      return c.json({ error: 'Profile not found' }, 404);
+   497→    }
+   498→
+   499→    return c.json({ profile });
+   500→  } catch (error) {
+   501→    return c.json({ error: getErrorMessage(error) }, 500);
+   502→  }
+   503→});
+   504→
+   505→// PUT /profile — Update profile (no email verification required)
+   506→studentRoutes.put('/profile', async (c) => {
+   507→  try {
+   508→    const auth = await getStudentAuth(c);
+   509→    if (!auth.authorized) {
+   510→      return c.json({ error: 'Unauthorized' }, 401);
+   511→    }
+   512→
+   513→    const data = await c.req.json();
+   514→    const allowedFields = ['fullName', 'phone', 'institute', 'technology', 'semester', 'avatarUrl'];
+   515→    const updates: Record<string, unknown> = {};
+   516→
+   517→    for (const field of allowedFields) {
+   518→      if (data[field] !== undefined) {
+   519→        updates[field] = data[field];
+   520→      }
+   521→    }
+   522→
+   523→    if (Object.keys(updates).length === 0) {
+   524→      return c.json({ error: 'No valid fields to update' }, 400);
+   525→    }
+   526→
+   527→    const profile = await findUserProfile(c.env, auth.userId!);
+   528→    if (!profile) {
+   529→      return c.json({ error: 'Profile not found' }, 404);
+   530→    }
+   531→
+   532→    // Filter out fields that don't exist in the Appwrite collection to avoid
+   533→    // "Invalid document structure: Unknown attribute" errors.
+   534→    // Strategy: Get the existing document first, check which fields exist,
+   535→    // and only update those that are present in the current document.
+   536→    const existingDocKeys = Object.keys(profile).filter(k => !k.startsWith('$'));
+   537→    const safeUpdates: Record<string, unknown> = {};
+   538→    const skippedFields: string[] = [];
+   539→
+   540→    for (const field of allowedFields) {
+   541→      if (data[field] !== undefined) {
+   542→        if (existingDocKeys.includes(field)) {
+   543→          safeUpdates[field] = data[field];
+   544→        } else {
+   545→          skippedFields.push(field);
+   546→        }
+   547→      }
+   548→    }
+   549→
+   550→    if (Object.keys(safeUpdates).length === 0) {
+   551→      return c.json({ 
+   552→        error: 'No updatable fields found. Missing attributes in collection: ' + skippedFields.join(', '),
+   553→        skippedFields 
+   554→      }, 400);
+   555→    }
+   556→
+   557→    const updated = await updateDocument(
+   558→      c.env,
+   559→      APPWRITE_COLLECTIONS.USERS,
+   560→      profile.$id,
+   561→      safeUpdates
+   562→    );
+   563→
+   564→    return c.json({ profile: updated, skippedFields });
+   565→  } catch (error) {
+   566→    return c.json({ error: getErrorMessage(error) }, 500);
+   567→  }
+   568→});
+   569→
+   570→// POST /profile/avatar — Upload avatar to R2 (no email verification required)
+   571→studentRoutes.post('/profile/avatar', async (c) => {
+   572→  try {
+   573→    const auth = await getStudentAuth(c);
+   574→    if (!auth.authorized) {
+   575→      return c.json({ error: 'Unauthorized' }, 401);
+   576→    }
+   577→
+   578→    const formData = await c.req.formData();
+   579→    const file = formData.get('file') as File | null;
+   580→
+   581→    if (!file) {
+   582→      return c.json({ error: 'File is required' }, 400);
+   583→    }
+   584→
+   585→    // Upload to R2_AVATARS bucket
+   586→    const arrayBuffer = await file.arrayBuffer();
+   587→    const key = `avatars/${auth.userId}/${Date.now()}-${file.name}`;
+   588→    const r2Bucket = getBucketForType('avatars', c.env);
+   589→
+   590→    await uploadFile(r2Bucket, key, arrayBuffer, file.type);
+   591→
+   592→    // Generate public URL
+   593→    const avatarUrl = getPublicUrl(c.env, 'avatars', key);
+   594→
+   595→    // Update user document with new avatarUrl
+   596→    const profile = await findUserProfile(c.env, auth.userId!);
+   597→    if (profile) {
+   598→      await updateDocument(c.env, APPWRITE_COLLECTIONS.USERS, profile.$id, {
+   599→        avatarUrl,
+   600→      });
+   601→    }
+   602→
+   603→    return c.json({ avatarUrl });
+   604→  } catch (error) {
+   605→    return c.json({ error: getErrorMessage(error) }, 500);
+   606→  }
+   607→});
+   608→
+   609→// ═══════════════════════════════════════════════════════════════
+   610→// NOTIFICATION ROUTES (Bearer token required)
+   611→// ═══════════════════════════════════════════════════════════════
+   612→
+   613→// GET /notifications — List user's notifications
+   614→studentRoutes.get('/notifications', async (c) => {
+   615→  try {
+   616→    const auth = await getStudentAuth(c);
+   617→    if (!auth.authorized) {
+   618→      return c.json({ error: 'Unauthorized' }, 401);
+   619→    }
+   620→
+   621→    const page = parseInt(c.req.query('page') || '1');
+   622→    const limit = parseInt(c.req.query('limit') || '20');
+   623→    const offset = (page - 1) * limit;
+   624→
+   625→    const queries = [
+   626→      Query.equal('userId', auth.userId!),
+   627→      Query.orderDesc('$createdAt'),
+   628→      Query.limit(limit),
+   629→      Query.offset(offset),
+   630→    ];
+   631→
+   632→    let result;
+   633→    try {
+   634→      result = await listDocuments(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, queries);
+   635→    } catch (queryError) {
+   636→      // If attribute-based query fails, try simpler query
+   637→      const errMsg = getErrorMessage(queryError);
+   638→      if (errMsg.includes('Attribute not found')) {
+   639→        // Fall back to listing all and filtering manually
+   640→        result = await listDocuments(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, [
+   641→          Query.limit(limit + 100),
+   642→          Query.orderDesc('$createdAt'),
+   643→        ]);
+   644→        // Filter manually
+   645→        result.documents = result.documents.filter((doc: any) => doc.userId === auth.userId);
+   646→        result.total = result.documents.length;
+   647→        // Re-apply pagination
+   648→        result.documents = result.documents.slice(offset, offset + limit);
+   649→      } else {
+   650→        throw queryError;
+   651→      }
+   652→    }
+   653→
+   654→    // Get unread count - try with isRead, fall back if attribute doesn't exist
+   655→    let unreadCount = 0;
+   656→    try {
+   657→      const unreadResult = await listDocuments(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, [
+   658→        Query.equal('userId', auth.userId!),
+   659→        Query.equal('isRead', false),
+   660→        Query.limit(0),
+   661→      ]);
+   662→      unreadCount = unreadResult.total;
+   663→    } catch {
+   664→      // If isRead attribute doesn't exist, count from the fetched results
+   665→      unreadCount = result.documents.filter((doc: any) => !doc.isRead && !doc.read).length;
+   666→    }
+   667→
+   668→    // Filter out dismissed notifications (if the "dismissed" attribute exists)
+   669→    const filteredDocs = result.documents.filter((doc: any) => !doc.dismissed);
+   670→
+   671→    return c.json({
+   672→      notifications: filteredDocs,
+   673→      total: filteredDocs.length,
+   674→      unreadCount,
+   675→    });
+   676→  } catch (error) {
+   677→    return c.json({ error: getErrorMessage(error) }, 500);
+   678→  }
+   679→});
+   680→
+   681→// PUT /notifications/read — Mark notification(s) as read
+   682→studentRoutes.put('/notifications/read', async (c) => {
+   683→  try {
+   684→    const auth = await getStudentAuth(c);
+   685→    if (!auth.authorized) {
+   686→      return c.json({ error: 'Unauthorized' }, 401);
+   687→    }
+   688→
+   689→    const data = await c.req.json();
+   690→
+   691→    if (data.all === true) {
+   692→      // Mark all notifications as read for this user
+   693→      const result = await listDocuments(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, [
+   694→        Query.equal('userId', auth.userId!),
+   695→        Query.equal('isRead', false),
+   696→        Query.limit(500),
+   697→      ]);
+   698→
+   699→      for (const doc of result.documents) {
+   700→        const docAny = doc as Record<string, unknown> & { $id: string };
+   701→        await updateDocument(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, docAny.$id, {
+   702→          isRead: true,
+   703→        });
+   704→      }
+   705→    } else if (data.notificationId) {
+   706→      // Mark single notification as read
+   707→      await updateDocument(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, data.notificationId, {
+   708→        isRead: true,
+   709→      });
+   710→    } else {
+   711→      return c.json({ error: 'Provide notificationId or { all: true }' }, 400);
+   712→    }
+   713→
+   714→    return c.json({ success: true });
+   715→  } catch (error) {
+   716→    return c.json({ error: getErrorMessage(error) }, 500);
+   717→  }
+   718→});
+   719→
+   720→// PUT /notifications/dismiss — Dismiss a notification permanently
+   721→studentRoutes.put('/notifications/dismiss', async (c) => {
+   722→  try {
+   723→    const auth = await getStudentAuth(c);
+   724→    if (!auth.authorized) {
+   725→      return c.json({ error: 'Unauthorized' }, 401);
+   726→    }
+   727→
+   728→    const data = await c.req.json();
+   729→    if (!data.notificationId) {
+   730→      return c.json({ error: 'notificationId is required' }, 400);
+   731→    }
+   732→
+   733→    // Try to set `dismissed: true` on the document (if the attribute exists in Appwrite)
+   734→    // Also mark as read for good measure
+   735→    const updates: Record<string, unknown> = { isRead: true };
+   736→
+   737→    try {
+   738→      await updateDocument(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, data.notificationId, {
+   739→        ...updates,
+   740→        dismissed: true,
+   741→      });
+   742→    } catch (updateErr) {
+   743→      // If "dismissed" attribute doesn't exist in Appwrite, fall back to just marking as read
+   744→      const errMsg = getErrorMessage(updateErr);
+   745→      if (errMsg.includes('Attribute not found') || errMsg.includes('Unknown attribute')) {
+   746→        try {
+   747→          await updateDocument(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, data.notificationId, updates);
+   748→        } catch (fallbackErr) {
+   749→          // Even marking as read may fail — the notification might not exist
+   750→          console.error('Failed to dismiss notification (fallback):', getErrorMessage(fallbackErr));
+   751→        }
+   752→      } else {
+   753→        throw updateErr;
+   754→      }
+   755→    }
+   756→
+   757→    return c.json({ success: true });
+   758→  } catch (error) {
+   759→    return c.json({ error: getErrorMessage(error) }, 500);
+   760→  }
+   761→});
+   762→
+   763→// GET /notifications/unread-count — Get unread count
+   764→studentRoutes.get('/notifications/unread-count', async (c) => {
+   765→  try {
+   766→    const auth = await getStudentAuth(c);
+   767→    if (!auth.authorized) {
+   768→      return c.json({ error: 'Unauthorized' }, 401);
+   769→    }
+   770→
+   771→    // Fetch all user notifications and count unread manually
+   772→    // (Appwrite boolean queries can be unreliable with the JSON query format)
+   773→    let count = 0;
+   774→    try {
+   775→      const result = await listDocuments(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, [
+   776→        Query.equal('userId', auth.userId!),
+   777→        Query.limit(500),
+   778→      ]);
+   779→      count = result.documents.filter((doc: any) => !doc.isRead && !doc.read).length;
+   780→    } catch {
+   781→      // If userId query fails, try listing all and filtering
+   782→      try {
+   783→        const result = await listDocuments(c.env, APPWRITE_COLLECTIONS.NOTIFICATIONS, [
+   784→          Query.limit(500),
+   785→          Query.orderDesc('$createdAt'),
+   786→        ]);
+   787→        count = result.documents
+   788→          .filter((doc: any) => doc.userId === auth.userId)
+   789→          .filter((doc: any) => !doc.isRead && !doc.read)
+   790→          .length;
+   791→      } catch {
+   792→        count = 0;
+   793→      }
+   794→    }
+   795→
+   796→    return c.json({ count });
+   797→  } catch (error) {
+   798→    return c.json({ error: getErrorMessage(error) }, 500);
+   799→  }
+   800→});
+   801→
+   802→// ═══════════════════════════════════════════════════════════════
+   803→// COURSE ROUTES (Bearer token required unless noted)
+   804→// ═══════════════════════════════════════════════════════════════
+   805→
+   806→// GET /courses — List enrolled courses with progress
+   807→studentRoutes.get('/courses', async (c) => {
+   808→  try {
+   809→    const auth = await getStudentAuth(c);
+   810→    if (!auth.authorized) {
+   811→      return c.json({ error: 'Unauthorized' }, 401);
+   812→    }
+   813→
+   814→    // Fetch enrollments for the current user
+   815→    const enrollmentsResult = await listDocuments(c.env, APPWRITE_COLLECTIONS.ENROLLMENTS, [
+   816→      Query.equal('userId', auth.userId!),
+   817→      Query.limit(100),
+   818→    ]);
+   819→
+   820→    const courses = [];
+   821→
+   822→    for (const enrollment of enrollmentsResult.documents) {
+   823→      const enr = enrollment as Record<string, unknown> & { $id: string };
+   824→      const courseId = enr.courseId as string;
+   825→
+   826→      try {
+   827→        // Fetch course details
+   828→        const course = await getDocument(c.env, APPWRITE_COLLECTIONS.COURSES, courseId);
+   829→
+   830→        // Fetch watch progress for this course
+   831→        const progressResult = await listDocuments(
+   832→          c.env,
+   833→          APPWRITE_COLLECTIONS.WATCH_PROGRESS,
+   834→          [
+   835→            Query.equal('userId', auth.userId!),
+   836→            Query.equal('courseId', courseId),
+   837→            Query.limit(100),
+   838→          ]
+   839→        );
+   840→
+   841→        courses.push({
+   842→          ...mapCourseDoc(course),
+   843→          enrollment: enr,
+   844→          progress: progressResult.documents,
+   845→        });
+   846→      } catch {
+   847→        // Course may have been deleted; skip
+   848→        courses.push({
+   849→          courseId,
+   850→          enrollment: enr,
+   851→          progress: [],
+   852→          error: 'Course not found',
+   853→        });
+   854→      }
+   855→    }
+   856→
+   857→    return c.json({ courses });
+   858→  } catch (error) {
+   859→    return c.json({ error: getErrorMessage(error) }, 500);
+   860→  }
+   861→});
+   862→
+   863→// GET /courses/all — Course catalog (published only)
+   864→studentRoutes.get('/courses/all', rateLimitMiddleware('api', RATE_LIMITS.api), async (c) => {
+   865→  try {
+   866→    const search = c.req.query('search');
+   867→    const category = c.req.query('category');
+   868→    const department = c.req.query('department');
+   869→    const semesterStr = c.req.query('semester');
+   870→    const level = c.req.query('level');
+   871→    const page = parseInt(c.req.query('page') || '1');
+   872→    const limit = parseInt(c.req.query('limit') || '20');
+   873→    const offset = (page - 1) * limit;
+   874→    const semester = semesterStr ? parseInt(semesterStr) : undefined;
+   875→
+   876→    const queries: string[] = [
+   877→      Query.limit(limit),
+   878→      Query.offset(offset),
+   879→      Query.orderDesc('$createdAt'),
+   880→    ];
+   881→
+   882→    // Only filter by isPublished if the attribute exists (skip if no courses yet)
+   883→    try {
+   884→      queries.unshift(Query.equal('isPublished', true));
+   885→    } catch (_) {}
+   886→
+   887→    if (search) {
+   888→      queries.unshift(Query.search('title', search));
+   889→    }
+   890→
+   891→    if (category) {
+   892→      queries.unshift(Query.equal('categoryId', category));
+   893→    }
+   894→
+   895→    if (level) {
+   896→      queries.unshift(Query.equal('level', level));
+   897→    }
+   898→
+   899→    // Department filtering: "all" means visible to everyone
+   900→    // Specific department: show courses where department = "all" OR department = specific dept
+   901→    if (department && department !== 'all') {
+   902→      try {
+   903→        // Appwrite doesn't support OR queries natively, so we query with equal
+   904→        // and then also include "all" courses in post-processing
+   905→        queries.unshift(Query.equal('department', department));
+   906→      } catch (_) {}
+   907→    }
+   908→
+   909→    // Semester filtering: 0 or undefined = all semesters
+   910→    if (semester && semester > 0) {
+   911→      try {
+   912→        queries.unshift(Query.equal('semester', semester));
+   913→      } catch (_) {}
+   914→    }
+   915→
+   916→    let result;
+   917→    try {
+   918→      result = await listDocuments(c.env, APPWRITE_COLLECTIONS.COURSES, queries);
+   919→    } catch (queryError: any) {
+   920→      // If isPublished attribute doesn't exist, retry without it
+   921→      if (String(queryError).includes('Attribute not found')) {
+   922→        const fallbackQueries = queries.filter(q => !q.includes('isPublished'));
+   923→        result = await listDocuments(c.env, APPWRITE_COLLECTIONS.COURSES, fallbackQueries);
+   924→      } else {
+   925→        throw queryError;
+   926→      }
+   927→    }
+   928→
+   929→    // Post-filter: if department filter is active, also include courses with department="all"
+   930→    // This is needed because Appwrite doesn't support OR queries
+   931→    let filteredDocs = result.documents;
+   932→    if (department && department !== 'all') {
+   933→      // Fetch "all" department courses and merge
+   934→      try {
+   935→        const allDeptQueries: string[] = [
+   936→          Query.equal('isPublished', true),
+   937→          Query.equal('department', 'all'),
+   938→          Query.limit(100),
+   939→          Query.orderDesc('$createdAt'),
+   940→        ];
+   941→        if (search) allDeptQueries.unshift(Query.search('title', search));
+   942→        if (category) allDeptQueries.unshift(Query.equal('categoryId', category));
+   943→        if (level) allDeptQueries.unshift(Query.equal('level', level));
+   944→
+   945→        const allDeptResult = await listDocuments(c.env, APPWRITE_COLLECTIONS.COURSES, allDeptQueries);
+   946→        // Merge, avoiding duplicates (by $id)
+   947→        const existingIds = new Set(filteredDocs.map((d: any) => d.$id));
+   948→        const newDocs = allDeptResult.documents.filter((d: any) => !existingIds.has(d.$id));
+   949→
+   950→        // If semester filter, apply it to "all" courses too
+   951→        if (semester && semester > 0) {
+   952→          const semesterMatching = newDocs.filter((d: any) => {
+   953→            const s = d.semester;
+   954→            return s === 0 || s === null || s === undefined || s === semester;
+   955→          });
+   956→          filteredDocs = [...filteredDocs, ...semesterMatching];
+   957→        } else {
+   958→          filteredDocs = [...filteredDocs, ...newDocs];
+   959→        }
+   960→      } catch (_) {
+   961→        // If fetching "all" dept fails, just use the primary result
+   962→      }
+   963→    }
+   964→
+   965→    return c.json({ courses: filteredDocs.map(mapCourseDoc), total: result.total });
+   966→  } catch (error) {
+   967→    return c.json({ error: getErrorMessage(error) }, 500);
+   968→  }
+   969→});
+   970→
+   971→// GET /courses/:id — Course detail + curriculum
+   972→studentRoutes.get('/courses/:id', async (c) => {
+   973→  try {
+   974→    const courseId = c.req.param('id');
+   975→
+   976→    // Fetch course document
+   977→    const course = await getDocument(c.env, APPWRITE_COLLECTIONS.COURSES, courseId);
+   978→
+   979→    // Fetch videos for this course
+   980→    // Try 'courseId' first (newer attribute), fall back to 'course_id' (original schema)
+   981→    let videosResult;
+   982→    try {
+   983→      videosResult = await listDocuments(c.env, APPWRITE_COLLECTIONS.VIDEOS, [
+   984→        Query.equal('courseId', courseId),
+   985→        Query.limit(200),
+   986→        Query.orderAsc('sort_order'),
+   987→      ]);
+   988→    } catch (videoQueryErr) {
+   989→      // Fallback: try course_id attribute and sort_order
+   990→      try {
+   991→        videosResult = await listDocuments(c.env, APPWRITE_COLLECTIONS.VIDEOS, [
+   992→          Query.equal('course_id', courseId),
+   993→          Query.limit(200),
+   994→          Query.orderAsc('sort_order'),
+   995→        ]);
+   996→      } catch {
+   997→        // Last resort: no filter, just order
+   998→        videosResult = await listDocuments(c.env, APPWRITE_COLLECTIONS.VIDEOS, [
+   999→          Query.limit(200),
+  1000→        ]);
+  1001→        // Filter manually by courseId or course_id
+  1002→        videosResult.documents = videosResult.documents.filter((v: any) =>
+  1003→          v.courseId === courseId || v.course_id === courseId
+  1004→        );
+  1005→      }
+  1006→    }
+  1007→
+  1008→    // Fetch instructor info
+  1009→    let instructor = null;
+  1010→    const instructorId = (course.instructor_id as string | undefined) || (course.instructorId as string | undefined);
+  1011→    if (instructorId) {
+  1012→      try {
+  1013→        instructor = await getDocument(c.env, APPWRITE_COLLECTIONS.INSTRUCTORS, instructorId);
+  1014→      } catch {
+  1015→        // Instructor not found
+  1016→      }
+  1017→    }
+  1018→
+  1019→    // Check enrollment and watch progress (if authenticated)
+  1020→    let enrollment = null;
+  1021→    let progress: unknown[] = [];
+  1022→
+  1023→    const auth = await getStudentAuth(c);
+  1024→    if (auth.authorized) {
+  1025→      try {
+  1026→        const enrollmentsResult = await listDocuments(
+  1027→          c.env,
+  1028→          APPWRITE_COLLECTIONS.ENROLLMENTS,
+  1029→          [
+  1030→            Query.equal('userId', auth.userId!),
+  1031→            Query.equal('courseId', courseId),
+  1032→            Query.limit(1),
+  1033→          ]
+  1034→        );
+  1035→        if (enrollmentsResult.documents.length > 0) {
+  1036→          enrollment = enrollmentsResult.documents[0];
+  1037→        }
+  1038→      } catch {
+  1039→        // No enrollment
+  1040→      }
+  1041→
+  1042→      // Note: watch_progress collection has 'videoId' not 'courseId'
+  1043→      // We'll fetch all user progress and let the frontend filter by course
+  1044→      try {
+  1045→        const progressResult = await listDocuments(
+  1046→          c.env,
+  1047→          APPWRITE_COLLECTIONS.WATCH_PROGRESS,
+  1048→          [
+  1049→            Query.equal('userId', auth.userId!),
+  1050→            Query.limit(500),
+  1051→          ]
+  1052→        );
+  1053→        progress = progressResult.documents;
+  1054→      } catch {
+  1055→        // No progress
+  1056→      }
+  1057→    }
+  1058→
+  1059→    return c.json({
+  1060→      course: mapCourseDoc(course),
+  1061→      videos: videosResult.documents,
+  1062→      instructor,
+  1063→      enrollment,
+  1064→      progress,
+  1065→    });
+  1066→  } catch (error) {
+  1067→    return c.json({ error: getErrorMessage(error) }, 500);
+  1068→  }
+  1069→});
+  1070→
+  1071→// POST /enroll — Enroll in course (email verification required)
+  1072→studentRoutes.post('/enroll', rateLimitMiddleware('enroll', RATE_LIMITS.enroll), async (c) => {
+  1073→  try {
+  1074→    const authResult = await requireEmailVerified(c);
+  1075→    if (authResult instanceof Response) return authResult;
+  1076→    const auth = authResult;
+  1077→
+  1078→    const { courseId } = await c.req.json();
+  1079→    if (!courseId) {
+  1080→      return c.json({ error: 'courseId is required' }, 400);
+  1081→    }
+  1082→
+  1083→    // Check if already enrolled
+  1084→    const existing = await listDocuments(c.env, APPWRITE_COLLECTIONS.ENROLLMENTS, [
+  1085→      Query.equal('userId', auth.userId!),
+  1086→      Query.equal('courseId', courseId),
+  1087→      Query.limit(1),
+  1088→    ]);
+  1089→
+  1090→    if (existing.documents.length > 0) {
+  1091→      return c.json({ error: 'Already enrolled in this course' }, 400);
+  1092→    }
+  1093→
+  1094→    // Verify the course exists
+  1095→    try {
+  1096→      await getDocument(c.env, APPWRITE_COLLECTIONS.COURSES, courseId);
+  1097→    } catch {
+  1098→      return c.json({ error: 'Course not found' }, 404);
+  1099→    }
+  1100→
+  1101→    // Create enrollment document — include all required Appwrite attributes
+  1102→    const enrollment = await createDocument(c.env, APPWRITE_COLLECTIONS.ENROLLMENTS, {
+  1103→      userId: auth.userId,
+  1104→      courseId,
+  1105→      progress: 0,
+  1106→      completed: false,
+  1107→      enrolledAt: new Date().toISOString(),
+  1108→      email: auth.email || '',
+  1109→      status: 'active',
+  1110→    });
+  1111→
+  1112→    // Log activity and check achievements (S5, S6)
+  1113→    try {
+  1114→      await c.env.DB.prepare(
+  1115→        "INSERT INTO student_activity (user_id, activity_type, resource_type, resource_id, title, description) VALUES (?, 'enroll', 'course', ?, ?, 'Enrolled in course')"
+  1116→      ).bind(auth.userId, courseId, courseId).run();
+  1117→
+  1118→      // Record streak activity
+  1119→      await recordActivity(c.env.DB, auth.userId!);
+  1120→
+  1121→      // Check and unlock achievements
+  1122→      const newAchievements = await checkAndUnlockAchievements(c.env.DB, auth.userId!, 'enroll');
+  1123→      
+  1124→      // Send achievement notifications
+  1125→      if (newAchievements.length > 0) {
+  1126→        const appwriteConfig = {
+  1127→          endpoint: c.env.APPWRITE_ENDPOINT,
+  1128→          projectId: c.env.APPWRITE_PROJECT_ID,
+  1129→          databaseId: c.env.APPWRITE_DATABASE_ID,
+  1130→          apiKey: c.env.APPWRITE_API_KEY,
+  1131→        };
+  1132→        const onesignalConfig = c.env.ONE_SIGNAL_APP_ID ? {
+  1133→          appId: c.env.ONE_SIGNAL_APP_ID,
+  1134→          restApiKey: c.env.ONE_SIGNAL_REST_API_KEY,
+  1135→        } : undefined;
+  1136→        
+  1137→        for (const ach of newAchievements) {
+  1138→          await notifyAchievementUnlocked(auth.userId!, ach.name, appwriteConfig, onesignalConfig, c.env.DB);
+  1139→        }
+  1140→      }
+  1141→    } catch (e) {
+  1142→      console.error('Activity/achievement logging failed:', e);
+  1143→    }
+  1144→
+  1145→    return c.json({ enrollment });
+  1146→  } catch (error) {
+  1147→    return c.json({ error: getErrorMessage(error) }, 500);
+  1148→  }
+  1149→});
+  1150→
+  1151→// ═══════════════════════════════════════════════════════════════
+  1152→// PUBLIC DATA ROUTES
+  1153→// ═══════════════════════════════════════════════════════════════
+  1154→
+  1155→// GET /categories — List categories
+  1156→studentRoutes.get('/categories', async (c) => {
+  1157→  try {
+  1158→    const result = await listDocuments(c.env, APPWRITE_COLLECTIONS.CATEGORIES, [
+  1159→      Query.limit(100),
+  1160→      Query.orderAsc('name'),
+  1161→    ]);
+  1162→
+  1163→    return c.json({ categories: result.documents, total: result.total });
+  1164→  } catch (error) {
+  1165→    return c.json({ error: getErrorMessage(error) }, 500);
+  1166→  }
+  1167→});
+  1168→
+  1169→// GET /instructors — List instructors
+  1170→studentRoutes.get('/instructors', async (c) => {
+  1171→  try {
+  1172→    const result = await listDocuments(c.env, APPWRITE_COLLECTIONS.INSTRUCTORS, [
+  1173→      Query.limit(100),
+  1174→      Query.orderAsc('name'),
+  1175→    ]);
+  1176→
+  1177→    return c.json({ instructors: result.documents, total: result.total });
+  1178→  } catch (error) {
+  1179→    return c.json({ error: getErrorMessage(error) }, 500);
+  1180→  }
+  1181→});
+  1182→
+  1183→// ═══════════════════════════════════════════════════════════════
+  1184→// ANNOUNCEMENTS ROUTE (no auth required — public)
+  1185→// ═══════════════════════════════════════════════════════════════
+  1186→
+  1187→// GET /announcements — List active announcements
+  1188→studentRoutes.get('/announcements', async (c) => {
+  1189→  try {
+  1190→    const limit = Math.min(parseInt(c.req.query('limit') || '10'), 50);
+  1191→    const offset = parseInt(c.req.query('offset') || '0');
+  1192→
+  1193→    // Fetch from D1 announcements table
+  1194→    const { results } = await c.env.DB.prepare(
+  1195→      'SELECT id, title, message, type, action_url, created_at, updated_at FROM announcements WHERE is_active = 1 ORDER BY created_at DESC LIMIT ? OFFSET ?'
+  1196→    ).bind(limit, offset).all<{
+  1197→      id: number;
+  1198→      title: string;
+  1199→      message: string;
+  1200→      type: string;
+  1201→      action_url: string | null;
+  1202→      created_at: string;
+  1203→      updated_at: string;
+  1204→    }>();
+  1205→
+  1206→    // Get total count for pagination
+  1207→    const countResult = await c.env.DB.prepare(
+  1208→      'SELECT COUNT(*) as total FROM announcements WHERE is_active = 1'
+  1209→    ).first<{ total: number }>();
+  1210→
+  1211→    const announcements = results.map((row) => ({
+  1212→      id: row.id,
+  1213→      title: row.title,
+  1214→      message: row.message,
+  1215→      type: row.type,
+  1216→      actionUrl: row.action_url,
+  1217→      createdAt: row.created_at,
+  1218→      updatedAt: row.updated_at,
+  1219→    }));
+  1220→
+  1221→    return c.json({
+  1222→      announcements,
+  1223→      total: countResult?.total || 0,
+  1224→      limit,
+  1225→      offset,
+  1226→    });
+  1227→  } catch (error) {
+  1228→    return c.json({ error: getErrorMessage(error) }, 500);
+  1229→  }
+  1230→});
+  1231→
+  1232→// ═══════════════════════════════════════════════════════════════
+  1233→// CONFIG ROUTE
+  1234→// ═══════════════════════════════════════════════════════════════
+  1235→
+  1236→// GET /config — Get ServerConfig
+  1237→studentRoutes.get('/config', async (c) => {
+  1238→  try {
+  1239→    // First try KV cache
+  1240→    const cachedConfig = await c.env.KV_CONFIG.get('server_config', 'json');
+  1241→    if (cachedConfig) {
+  1242→      return c.json(cachedConfig);
+  1243→    }
+  1244→
+  1245→    // Fall back to D1
+  1246→    const { results } = await c.env.DB.prepare(
+  1247→      'SELECT key, value FROM app_config'
+  1248→    ).all<{ key: string; value: string }>();
+  1249→
+  1250→    const configMap: Record<string, unknown> = {};
+  1251→    for (const row of results) {
+  1252→      try {
+  1253→        configMap[row.key] = JSON.parse(row.value);
+  1254→      } catch {
+  1255→        configMap[row.key] = row.value;
+  1256→      }
+  1257→    }
+  1258→
+  1259→    const config: ServerConfig = {
+  1260→      featureToggles: { ...DEFAULT_CONFIG.featureToggles, ...(configMap.featureToggles as Partial<ServerConfig['featureToggles']>) },
+  1261→      homePageSections: (configMap.homePageSections as ServerConfig['homePageSections']) || DEFAULT_CONFIG.homePageSections,
+  1262→      sidebarVisibility: { ...DEFAULT_CONFIG.sidebarVisibility, ...(configMap.sidebarVisibility as Partial<ServerConfig['sidebarVisibility']>) },
+  1263→      bottomNavTabs: (configMap.bottomNavTabs as ServerConfig['bottomNavTabs']) || DEFAULT_CONFIG.bottomNavTabs,
+  1264→      topBarElements: { ...DEFAULT_CONFIG.topBarElements, ...(configMap.topBarElements as Partial<ServerConfig['topBarElements']>) },
+  1265→      cardStyle: (configMap.cardStyle as ServerConfig['cardStyle']) || DEFAULT_CONFIG.cardStyle,
+  1266→      contentProtection: { ...DEFAULT_CONFIG.contentProtection, ...(configMap.contentProtection as Partial<ServerConfig['contentProtection']>) },
+  1267→      notificationSoundUrl: (configMap.notificationSoundUrl as string) || DEFAULT_CONFIG.notificationSoundUrl,
+  1268→      corsOrigins: (configMap.corsOrigins as string[]) || DEFAULT_CONFIG.corsOrigins,
+  1269→    };
+  1270→
+  1271→    // Cache in KV
+  1272→    await c.env.KV_CONFIG.put('server_config', JSON.stringify(config), {
+  1273→      expirationTtl: 300,
+  1274→    });
+  1275→
+  1276→    return c.json(config);
+  1277→  } catch (error) {
+  1278→    return c.json({ error: getErrorMessage(error) }, 500);
+  1279→  }
+  1280→});
+  1281→
+  1282→// ═══════════════════════════════════════════════════════════════
+  1283→// WATCH PROGRESS ROUTES (Bearer token required)
+  1284→// ═══════════════════════════════════════════════════════════════
+  1285→
+  1286→// GET /watch-progress — Get watch progress for a course or all courses
+  1287→studentRoutes.get('/watch-progress', async (c) => {
+  1288→  try {
+  1289→    const auth = await getStudentAuth(c);
+  1290→    if (!auth.authorized) {
+  1291→      return c.json({ error: 'Unauthorized' }, 401);
+  1292→    }
+  1293→
+  1294→    const courseId = c.req.query('courseId');
+  1295→    const queries = [
+  1296→      Query.equal('userId', auth.userId!),
+  1297→      Query.limit(200),
+  1298→    ];
+  1299→
+  1300→    if (courseId) {
+  1301→      queries.push(Query.equal('courseId', courseId));
+  1302→    }
+  1303→
+  1304→    const result = await listDocuments(c.env, APPWRITE_COLLECTIONS.WATCH_PROGRESS, queries);
+  1305→
+  1306→    return c.json({ progress: result.documents, total: result.total });
+  1307→  } catch (error) {
+  1308→    return c.json({ error: getErrorMessage(error) }, 500);
+  1309→  }
+  1310→});
+  1311→
+  1312→// POST /watch-progress — Update watch progress (email verification required)
+  1313→studentRoutes.post('/watch-progress', async (c) => {
+  1314→  try {
+  1315→    const authResult = await requireEmailVerified(c);
+  1316→    if (authResult instanceof Response) return authResult;
+  1317→    const auth = authResult;
+  1318→
+  1319→    const { videoId, courseId, progress, completed } = await c.req.json();
+  1320→
+  1321→    if (!videoId || !courseId) {
+  1322→      return c.json({ error: 'videoId and courseId are required' }, 400);
+  1323→    }
+  1324→
+  1325→    // Check if progress document already exists
+  1326→    const existing = await listDocuments(c.env, APPWRITE_COLLECTIONS.WATCH_PROGRESS, [
+  1327→      Query.equal('userId', auth.userId!),
+  1328→      Query.equal('videoId', videoId),
+  1329→      Query.limit(1),
+  1330→    ]);
+  1331→
+  1332→    const data: Record<string, unknown> = {
+  1333→      progress: progress ?? 0,
+  1334→      completed: completed ?? false,
+  1335→      updatedAt: new Date().toISOString(),
+  1336→    };
+  1337→
+  1338→    if (existing.documents.length > 0) {
+  1339→      // Update existing document
+  1340→      const docId = (existing.documents[0] as Record<string, unknown> & { $id: string }).$id;
+  1341→      const updated = await updateDocument(
+  1342→        c.env,
+  1343→        APPWRITE_COLLECTIONS.WATCH_PROGRESS,
+  1344→        docId,
+  1345→        data
+  1346→      );
+  1347→
+  1348→      // Log activity and update streak (S5, S6)
+  1349→      try {
+  1350→        await c.env.DB.prepare(
+  1351→          "INSERT INTO student_activity (user_id, activity_type, resource_type, resource_id, title, description, metadata) VALUES (?, 'watch', 'video', ?, ?, 'Watched video', ?)"
+  1352→        ).bind(auth.userId, videoId, `Video ${videoId}`, JSON.stringify({ courseId, progress: progress ?? 0, completed: completed ?? false })).run();
+  1353→
+  1354→        await recordActivity(c.env.DB, auth.userId!);
+  1355→
+  1356→        // Check achievements on video completion
+  1357→        if (completed) {
+  1358→          const newAchievements = await checkAndUnlockAchievements(c.env.DB, auth.userId!, 'watch');
+  1359→          if (newAchievements.length > 0) {
+  1360→            const appwriteConfig = {
+  1361→              endpoint: c.env.APPWRITE_ENDPOINT,
+  1362→              projectId: c.env.APPWRITE_PROJECT_ID,
+  1363→              databaseId: c.env.APPWRITE_DATABASE_ID,
+  1364→              apiKey: c.env.APPWRITE_API_KEY,
+  1365→            };
+  1366→            const onesignalConfig = c.env.ONE_SIGNAL_APP_ID ? {
+  1367→              appId: c.env.ONE_SIGNAL_APP_ID,
+  1368→              restApiKey: c.env.ONE_SIGNAL_REST_API_KEY,
+  1369→            } : undefined;
+  1370→            for (const ach of newAchievements) {
+  1371→              await notifyAchievementUnlocked(auth.userId!, ach.name, appwriteConfig, onesignalConfig, c.env.DB);
+  1372→            }
+  1373→          }
+  1374→        }
+  1375→      } catch (e) {
+  1376→        console.error('Activity/streak logging failed:', e);
+  1377→      }
+  1378→
+  1379→      return c.json({ progress: updated });
+  1380→    } else {
+  1381→      // Create new document
+  1382→      const created = await createDocument(c.env, APPWRITE_COLLECTIONS.WATCH_PROGRESS, {
+  1383→        userId: auth.userId,
+  1384→        videoId,
+  1385→        courseId,
+  1386→        ...data,
+  1387→      });
+  1388→
+  1389→      // Log activity and update streak
+  1390→      try {
+  1391→        await c.env.DB.prepare(
+  1392→          "INSERT INTO student_activity (user_id, activity_type, resource_type, resource_id, title, description, metadata) VALUES (?, 'watch', 'video', ?, ?, 'Started watching video', ?)"
+  1393→        ).bind(auth.userId, videoId, `Video ${videoId}`, JSON.stringify({ courseId, progress: progress ?? 0 })).run();
+  1394→
+  1395→        await recordActivity(c.env.DB, auth.userId!);
+  1396→      } catch (e) {
+  1397→        console.error('Activity/streak logging failed:', e);
+  1398→      }
+  1399→
+  1400→      return c.json({ progress: created });
+  1401→    }
+  1402→  } catch (error) {
+  1403→    return c.json({ error: getErrorMessage(error) }, 500);
+  1404→  }
+  1405→});
+  1406→
+  1407→// ═══════════════════════════════════════════════════════════════
+  1408→// BOOKMARK ROUTES (Bearer token required)
+  1409→// ═══════════════════════════════════════════════════════════════
+  1410→
+  1411→// GET /bookmarks — List bookmarks
+  1412→studentRoutes.get('/bookmarks', async (c) => {
+  1413→  try {
+  1414→    const auth = await getStudentAuth(c);
+  1415→    if (!auth.authorized) {
+  1416→      return c.json({ error: 'Unauthorized' }, 401);
+  1417→    }
+  1418→
+  1419→    const result = await listDocuments(c.env, APPWRITE_COLLECTIONS.BOOKMARKS, [
+  1420→      Query.equal('userId', auth.userId!),
+  1421→      Query.limit(100),
+  1422→      Query.orderDesc('$createdAt'),
+  1423→    ]);
+  1424→
+  1425→    return c.json({ bookmarks: result.documents, total: result.total });
+  1426→  } catch (error) {
+  1427→    return c.json({ error: getErrorMessage(error) }, 500);
+  1428→  }
+  1429→});
+  1430→
+  1431→// POST /bookmarks — Add bookmark (email verification required)
+  1432→studentRoutes.post('/bookmarks', rateLimitMiddleware('api', RATE_LIMITS.api), async (c) => {
+  1433→  try {
+  1434→    const authResult = await requireEmailVerified(c);
+  1435→    if (authResult instanceof Response) return authResult;
+  1436→    const auth = authResult;
+  1437→
+  1438→    const { courseId } = await c.req.json();
+  1439→    if (!courseId) {
+  1440→      return c.json({ error: 'courseId is required' }, 400);
+  1441→    }
+  1442→
+  1443→    // Check if already bookmarked
+  1444→    const existing = await listDocuments(c.env, APPWRITE_COLLECTIONS.BOOKMARKS, [
+  1445→      Query.equal('userId', auth.userId!),
+  1446→      Query.equal('courseId', courseId),
+  1447→      Query.limit(1),
+  1448→    ]);
+  1449→
+  1450→    if (existing.documents.length > 0) {
+  1451→      return c.json({ error: 'Already bookmarked' }, 400);
+  1452→    }
+  1453→
+  1454→    const bookmark = await createDocument(c.env, APPWRITE_COLLECTIONS.BOOKMARKS, {
+  1455→      userId: auth.userId,
+  1456→      courseId,
+  1457→    });
+  1458→
+  1459→    return c.json({ bookmark });
+  1460→  } catch (error) {
+  1461→    return c.json({ error: getErrorMessage(error) }, 500);
+  1462→  }
+  1463→});
+  1464→
+  1465→// DELETE /bookmarks — Remove bookmark (email verification required)
+  1466→studentRoutes.delete('/bookmarks', async (c) => {
+  1467→  try {
+  1468→    const authResult = await requireEmailVerified(c);
+  1469→    if (authResult instanceof Response) return authResult;
+  1470→    const auth = authResult;
+  1471→
+  1472→    const { courseId } = await c.req.json();
+  1473→    if (!courseId) {
+  1474→      return c.json({ error: 'courseId is required' }, 400);
+  1475→    }
+  1476→
+  1477→    // Find the bookmark
+  1478→    const existing = await listDocuments(c.env, APPWRITE_COLLECTIONS.BOOKMARKS, [
+  1479→      Query.equal('userId', auth.userId!),
+  1480→      Query.equal('courseId', courseId),
+  1481→      Query.limit(1),
+  1482→    ]);
+  1483→
+  1484→    if (existing.documents.length === 0) {
+  1485→      return c.json({ error: 'Bookmark not found' }, 404);
+  1486→    }
+  1487→
+  1488→    const docId = (existing.documents[0] as Record<string, unknown> & { $id: string }).$id;
+  1489→    await deleteDocument(c.env, APPWRITE_COLLECTIONS.BOOKMARKS, docId);
+  1490→
+  1491→    return c.json({ success: true });
+  1492→  } catch (error) {
+  1493→    return c.json({ error: getErrorMessage(error) }, 500);
+  1494→  }
+  1495→});
+  1496→
+  1497→// ═══════════════════════════════════════════════════════════════
+  1498→// SETTINGS ROUTES (Bearer token required)
+  1499→// ═══════════════════════════════════════════════════════════════
+  1500→
+  1501→// GET /settings — Get user settings
+  1502→studentRoutes.get('/settings', async (c) => {
+  1503→  try {
+  1504→    const auth = await getStudentAuth(c);
+  1505→    if (!auth.authorized) {
+  1506→      return c.json({ error: 'Unauthorized' }, 401);
+  1507→    }
+  1508→
+  1509→    const result = await listDocuments(c.env, APPWRITE_COLLECTIONS.USER_SETTINGS, [
+  1510→      Query.equal('userId', auth.userId!),
+  1511→      Query.limit(1),
+  1512→    ]);
+  1513→
+  1514→    if (result.documents.length === 0) {
+  1515→      return c.json({ settings: null });
+  1516→    }
+  1517→
+  1518→    return c.json({ settings: result.documents[0] });
+  1519→  } catch (error) {
+  1520→    return c.json({ error: getErrorMessage(error) }, 500);
+  1521→  }
+  1522→});
+  1523→
+  1524→// PUT /settings — Update user settings
+  1525→studentRoutes.put('/settings', async (c) => {
+  1526→  try {
+  1527→    const auth = await getStudentAuth(c);
+  1528→    if (!auth.authorized) {
+  1529→      return c.json({ error: 'Unauthorized' }, 401);
+  1530→    }
+  1531→
+  1532→    const data = await c.req.json();
+  1533→
+  1534→    // Check if settings document exists
+  1535→    const existing = await listDocuments(c.env, APPWRITE_COLLECTIONS.USER_SETTINGS, [
+  1536→      Query.equal('userId', auth.userId!),
+  1537→      Query.limit(1),
+  1538→    ]);
+  1539→
+  1540→    if (existing.documents.length > 0) {
+  1541→      // Update existing
+  1542→      const docId = (existing.documents[0] as Record<string, unknown> & { $id: string }).$id;
+  1543→      const updated = await updateDocument(
+  1544→        c.env,
+  1545→        APPWRITE_COLLECTIONS.USER_SETTINGS,
+  1546→        docId,
+  1547→        data
+  1548→      );
+  1549→      return c.json({ settings: updated });
+  1550→    } else {
+  1551→      // Create new
+  1552→      const created = await createDocument(c.env, APPWRITE_COLLECTIONS.USER_SETTINGS, {
+  1553→        userId: auth.userId,
+  1554→        ...data,
+  1555→      });
+  1556→      return c.json({ settings: created });
+  1557→    }
+  1558→  } catch (error) {
+  1559→    return c.json({ error: getErrorMessage(error) }, 500);
+  1560→  }
+  1561→});
+  1562→
+  1563→// ═══════════════════════════════════════════════════════════════
+  1564→// OTP ROUTES (no auth required for send, auth for verify)
+  1565→// ═══════════════════════════════════════════════════════════════
+  1566→
+  1567→// POST /auth/otp/send — Send OTP to email/phone
+  1568→studentRoutes.post('/auth/otp/send', rateLimitMiddleware('otp', RATE_LIMITS.otp), async (c) => {
+  1569→  try {
+  1570→    const { target, type } = await c.req.json();
+  1571→    if (!target) {
+  1572→      return c.json({ error: 'Email or phone number is required' }, 400);
+  1573→    }
+  1574→
+  1575→    const otpType = type === 'phone' ? 'phone' : 'email';
+  1576→    const result = await createAndSendOTP(
+  1577→      c.env.DB,
+  1578→      target,
+  1579→      otpType as 'email' | 'phone',
+  1580→      c.env.RESEND_API_KEY,
+  1581→      c.env.RESEND_FROM_EMAIL
+  1582→    );
+  1583→
+  1584→    if (!result.success) {
+  1585→      return c.json({ error: result.message }, 429);
+  1586→    }
+  1587→
+  1588→    return c.json({ success: true, message: result.message, expiresAt: result.expiresAt });
+  1589→  } catch (error) {
+  1590→    return c.json({ error: getErrorMessage(error) }, 500);
+  1591→  }
+  1592→});
+  1593→
+  1594→// POST /auth/otp/verify — Verify OTP and create session
+  1595→studentRoutes.post('/auth/otp/verify', rateLimitMiddleware('auth', RATE_LIMITS.auth), async (c) => {
+  1596→  try {
+  1597→    const { target, code } = await c.req.json();
+  1598→    if (!target || !code) {
+  1599→      return c.json({ error: 'Target and code are required' }, 400);
+  1600→    }
+  1601→
+  1602→    const result = await verifyOTP(c.env.DB, target, code);
+  1603→
+  1604→    if (!result.valid) {
+  1605→      return c.json({ error: result.message }, 400);
+  1606→    }
+  1607→
+  1608→    // OTP verified — find or create user session
+  1609→    // For email OTP, find user by email in Appwrite
+  1610→    try {
+  1611→      const usersResult = await listDocuments(c.env, APPWRITE_COLLECTIONS.USERS, [
+  1612→        Query.equal('email', target),
+  1613→        Query.limit(1),
+  1614→      ]);
+  1615→
+  1616→      if (usersResult.documents.length === 0) {
+  1617→        return c.json({ error: 'User not found. Please sign up first.' }, 404);
+  1618→      }
+  1619→
+  1620→      const userDoc = usersResult.documents[0] as Record<string, unknown> & { $id: string };
+  1621→      const userId = userDoc.$id;
+  1622→      const email = userDoc.email as string;
+  1623→
+  1624→      // Create D1 session
+  1625→      const token = await createStudentSession(c.env, userId, email);
+  1626→
+  1627→      const profile = await findUserProfile(c.env, userId);
+  1628→      const user = {
+  1629→        id: userId,
+  1630→        email,
+  1631→        name: (profile?.fullName as string) || (profile?.name as string) || null,
+  1632→        role: (profile?.role as string) || 'student',
+  1633→        phone: (profile?.phone as string) || null,
+  1634→        institute: (profile?.institute as string) || null,
+  1635→        technology: (profile?.technology as string) || null,
+  1636→        semester: (profile?.semester as string) || null,
+  1637→        avatarUrl: (profile?.avatarUrl as string) || null,
+  1638→        fullName: (profile?.fullName as string) || null,
+  1639→      };
+  1640→
+  1641→      return c.json({ token, user, verified: true });
+  1642→    } catch (error) {
+  1643→      return c.json({ error: getErrorMessage(error) }, 500);
+  1644→    }
+  1645→  } catch (error) {
+  1646→    return c.json({ error: getErrorMessage(error) }, 500);
+  1647→  }
+  1648→});
+  1649→
+  1650→// ═══════════════════════════════════════════════════════════════
+  1651→// STREAK ROUTES (Bearer token required)
+  1652→// ═══════════════════════════════════════════════════════════════
+  1653→
+  1654→// GET /streak — Get current streak info (no email verification required)
+  1655→studentRoutes.get('/streak', async (c) => {
+  1656→  try {
+  1657→    const auth = await getStudentAuth(c);
+  1658→    if (!auth.authorized) {
+  1659→      return c.json({ error: 'Unauthorized' }, 401);
+  1660→    }
+  1661→
+  1662→    const streakInfo = await getStreakInfo(c.env.DB, auth.userId!);
+  1663→    return c.json({ streak: streakInfo });
+  1664→  } catch (error) {
+  1665→    return c.json({ error: getErrorMessage(error) }, 500);
+  1666→  }
+  1667→});
+  1668→
+  1669→// GET /streak/calendar — Get streak calendar
+  1670→studentRoutes.get('/streak/calendar', async (c) => {
+  1671→  try {
+  1672→    const auth = await getStudentAuth(c);
+  1673→    if (!auth.authorized) {
+  1674→      return c.json({ error: 'Unauthorized' }, 401);
+  1675→    }
+  1676→
+  1677→    const days = parseInt(c.req.query('days') || '30');
+  1678→    const calendar = await getStreakCalendar(c.env.DB, auth.userId!, days);
+  1679→    return c.json({ calendar });
+  1680→  } catch (error) {
+  1681→    return c.json({ error: getErrorMessage(error) }, 500);
+  1682→  }
+  1683→});
+  1684→
+  1685→// ═══════════════════════════════════════════════════════════════
+  1686→// ACHIEVEMENT ROUTES (Bearer token required)
+  1687→// ═══════════════════════════════════════════════════════════════
+  1688→
+  1689→// GET /achievements — Get all achievements with unlock status
+  1690→studentRoutes.get('/achievements', async (c) => {
+  1691→  try {
+  1692→    const auth = await getStudentAuth(c);
+  1693→    if (!auth.authorized) {
+  1694→      return c.json({ error: 'Unauthorized' }, 401);
+  1695→    }
+  1696→
+  1697→    const result = await getUserAchievements(c.env.DB, auth.userId!);
+  1698→    return c.json(result);
+  1699→  } catch (error) {
+  1700→    return c.json({ error: getErrorMessage(error) }, 500);
+  1701→  }
+  1702→});
+  1703→
+  1704→// ═══════════════════════════════════════════════════════════════
+  1705→// LEADERBOARD ROUTE (Bearer token required)
+  1706→// ═══════════════════════════════════════════════════════════════
+  1707→
+  1708→// GET /leaderboard — Get weekly leaderboard based on activity (no email verification required)
+  1709→studentRoutes.get('/leaderboard', async (c) => {
+  1710→  try {
+  1711→    const auth = await getStudentAuth(c);
+  1712→    if (!auth.authorized) {
+  1713→      return c.json({ error: 'Unauthorized' }, 401);
+  1714→    }
+  1715→
+  1716→    const technology = c.req.query('technology');
+  1717→    const limit = parseInt(c.req.query('limit') || '20');
+  1718→
+  1719→    // Step 1: Aggregate XP from D1 student_activity for the last 7 days
+  1720→    let d1Query = `
+  1721→      SELECT user_id, COUNT(*) as xp, MAX(created_at) as last_active
+  1722→      FROM student_activity
+  1723→      WHERE created_at >= datetime('now', '-7 days')
+  1724→    `;
+  1725→    const params: string[] = [];
+  1726→
+  1727→    if (technology) {
+  1728→      // Filter by technology: join with user_profiles that have matching technology
+  1729→      d1Query += ` AND user_id IN (SELECT user_id FROM user_profiles WHERE technology = ?)`;
+  1730→      params.push(technology);
+  1731→    }
+  1732→
+  1733→    d1Query += ' GROUP BY user_id ORDER BY xp DESC LIMIT ?';
+  1734→    params.push(limit.toString());
+  1735→
+  1736→    const d1Result = await c.env.DB.prepare(d1Query).bind(...params).all();
+  1737→
+  1738→    if (d1Result.results.length === 0) {
+  1739→      return c.json({ leaderboard: [], week: 'last_7_days' });
+  1740→    }
+  1741→
+  1742→    // Step 2: Fetch user profile data from Appwrite for those user_ids
+  1743→    const userIds = (d1Result.results as any[]).map(r => r.user_id);
+  1744→    const profileMap = new Map<string, { name: string; department: string; badge: string; avatarUrl: string }>();
+  1745→
+  1746→    // Try to fetch profiles from user_profiles table in D1 first
+  1747→    try {
+  1748→      const placeholders = userIds.map(() => '?').join(',');
+  1749→      const profileResult = await c.env.DB.prepare(
+  1750→        `SELECT user_id, full_name, department, badge, avatar_url FROM user_profiles WHERE user_id IN (${placeholders})`
+  1751→      ).bind(...userIds).all();
+  1752→
+  1753→      for (const row of (profileResult.results as any[])) {
+  1754→        profileMap.set(row.user_id, {
+  1755→          name: row.full_name || 'Student',
+  1756→          department: row.department || '',
+  1757→          badge: row.badge || '',
+  1758→          avatarUrl: row.avatar_url || '',
+  1759→        });
+  1760→      }
+  1761→    } catch {
+  1762→      // user_profiles table may not exist; fall back to Appwrite
+  1763→    }
+  1764→
+  1765→    // Step 3: For any user_ids not found in D1 user_profiles, try Appwrite
+  1766→    const missingUserIds = userIds.filter(id => !profileMap.has(id));
+  1767→
+  1768→    for (const userId of missingUserIds) {
+  1769→      try {
+  1770→        const profile = await findUserProfile(c.env, userId);
+  1771→        profileMap.set(userId, {
+  1772→          name: (profile?.fullName as string) || (profile?.full_name as string) || (profile?.name as string) || 'Student',
+  1773→          department: (profile?.technology as string) || (profile?.institute as string) || '',
+  1774→          badge: '',
+  1775→          avatarUrl: (profile?.avatarUrl as string) || (profile?.avatar_url as string) || '',
+  1776→        });
+  1777→      } catch {
+  1778→        profileMap.set(userId, {
+  1779→          name: 'Student',
+  1780→          department: '',
+  1781→          badge: '',
+  1782→          avatarUrl: '',
+  1783→        });
+  1784→      }
+  1785→    }
+  1786→
+  1787→    // Step 4: Merge D1 XP data with Appwrite profile data
+  1788→    const leaderboard = (d1Result.results as any[]).map((row, idx) => {
+  1789→      const profile = profileMap.get(row.user_id) || { name: 'Student', department: '', badge: '', avatarUrl: '' };
+  1790→      return {
+  1791→        rank: idx + 1,
+  1792→        userId: row.user_id,
+  1793→        name: profile.name,
+  1794→        department: profile.department,
+  1795→        xp: row.xp || 0,
+  1796→        points: row.xp || 0,  // Frontend expects 'points' field
+  1797→        streak: 0,
+  1798→        coursesCompleted: 0,
+  1799→        lastActive: row.last_active,
+  1800→        badge: idx < 3 ? 'gold' : idx < 6 ? 'silver' : 'bronze',
+  1801→        avatarUrl: profile.avatarUrl,
+  1802→      };
+  1803→    });
+  1804→
+  1805→    return c.json({ leaderboard, week: 'last_7_days' });
+  1806→  } catch (error) {
+  1807→    return c.json({ error: getErrorMessage(error) }, 500);
+  1808→  }
+  1809→});
+  1810→
+  1811→// ═══════════════════════════════════════════════════════════════
+  1812→// ACTIVITY LOG ROUTE (Bearer token required)
+  1813→// ═══════════════════════════════════════════════════════════════
+  1814→
+  1815→// GET /activity — Get user's recent activity (no email verification required)
+  1816→studentRoutes.get('/activity', async (c) => {
+  1817→  try {
+  1818→    const auth = await getStudentAuth(c);
+  1819→    if (!auth.authorized) {
+  1820→      return c.json({ error: 'Unauthorized' }, 401);
+  1821→    }
+  1822→
+  1823→    const limit = parseInt(c.req.query('limit') || '20');
+  1824→    const result = await c.env.DB.prepare(
+  1825→      'SELECT * FROM student_activity WHERE user_id = ? ORDER BY created_at DESC LIMIT ?'
+  1826→    ).bind(auth.userId!, limit).all();
+  1827→
+  1828→    return c.json({ activities: result.results, total: result.results.length });
+  1829→  } catch (error) {
+  1830→    return c.json({ error: getErrorMessage(error) }, 500);
+  1831→  }
+  1832→});
+  1833→
+  1834→// ═══════════════════════════════════════════════════════════════
+  1835→// STATS ROUTE (Bearer token required) — Profile stats
+  1836→// ═══════════════════════════════════════════════════════════════
+  1837→
+  1838→// GET /stats — Get user's learning stats (no email verification required)
+  1839→studentRoutes.get('/stats', async (c) => {
+  1840→  try {
+  1841→    const auth = await getStudentAuth(c);
+  1842→    if (!auth.authorized) {
+  1843→      return c.json({ error: 'Unauthorized' }, 401);
+  1844→    }
+  1845→
+  1846→    // Get enrollment count from Appwrite
+  1847→    let coursesEnrolled = 0;
+  1848→    try {
+  1849→      const enrollments = await listDocuments(c.env, APPWRITE_COLLECTIONS.ENROLLMENTS, [
+  1850→        Query.equal('userId', auth.userId!),
+  1851→        Query.limit(0),
+  1852→      ]);
+  1853→      coursesEnrolled = enrollments.total;
+  1854→    } catch { /* ignore */ }
+  1855→
+  1856→    // Get streak info
+  1857→    const streakInfo = await getStreakInfo(c.env.DB, auth.userId!);
+  1858→
+  1859→    // Get total activity count (proxy for XP)
+  1860→    const activityCount = await c.env.DB.prepare(
+  1861→      'SELECT COUNT(*) as count FROM student_activity WHERE user_id = ?'
+  1862→    ).bind(auth.userId!).first();
+  1863→
+  1864→    // Get total watch time from activity metadata
+  1865→    const watchTime = await c.env.DB.prepare(
+  1866→      "SELECT SUM(CAST(json_extract(metadata, '$.duration_seconds') AS REAL)) as total_seconds FROM student_activity WHERE user_id = ? AND activity_type = 'watch'"
+  1867→    ).bind(auth.userId!).first();
+  1868→
+  1869→    const totalSeconds = (watchTime?.total_seconds as number) || 0;
+  1870→    const hoursWatched = Math.round(totalSeconds / 3600);
+  1871→
+  1872→    return c.json({
+  1873→      stats: {
+  1874→        totalWatchTime: hoursWatched,
+  1875→        totalVideosWatched: (activityCount?.count as number) || 0,
+  1876→        totalCoursesEnrolled: coursesEnrolled,
+  1877→        totalCoursesCompleted: 0,
+  1878→        averageDailyWatchTime: 0,
+  1879→        weeklyWatchTime: [],
+  1880→        topCategories: [],
+  1881→        coursesEnrolled,
+  1882→        hoursWatched,
+  1883→        certificates: 0,
+  1884→        currentStreak: streakInfo.currentStreak,
+  1885→        longestStreak: streakInfo.longestStreak,
+  1886→        totalXp: (activityCount?.count as number) || 0,
+  1887→        totalActivities: (activityCount?.count as number) || 0,
+  1888→      },
+  1889→    });
+  1890→  } catch (error) {
+  1891→    return c.json({ error: getErrorMessage(error) }, 500);
+  1892→  }
+  1893→});
+  1894→
+  1895→// ═══════════════════════════════════════════════════════════════
+  1896→// VIDEO STREAM ROUTES (auth optional for free previews)
+  1897→// ═══════════════════════════════════════════════════════════════
+  1898→
+  1899→// ─── Helper: Detect video type from URL ───
+  1900→
+  1901→type VideoType = 'youtube' | 'hls' | 'direct';
+  1902→
+  1903→function detectVideoType(videoUrl: string): VideoType {
+  1904→  const lower = videoUrl.toLowerCase();
+  1905→
+  1906→  // YouTube detection
+  1907→  if (
+  1908→    lower.includes('youtube.com') ||
+  1909→    lower.includes('youtu.be')
+  1910→  ) {
+  1911→    return 'youtube';
+  1912→  }
+  1913→
+  1914→  // HLS detection
+  1915→  if (lower.endsWith('.m3u8')) {
+  1916→    return 'hls';
+  1917→  }
+  1918→
+  1919→  // Direct video files
+  1920→  return 'direct';
+  1921→}
+  1922→
+  1923→// ─── Helper: Extract YouTube video ID ───
+  1924→
+  1925→function extractYouTubeId(url: string): string | null {
+  1926→  // Standard youtube.com/watch?v=ID
+  1927→  const watchMatch = url.match(/[?&]v=([^&]+)/);
+  1928→  if (watchMatch) return watchMatch[1];
+  1929→
+  1930→  // Short youtu.be/ID
+  1931→  const shortMatch = url.match(/youtu\.be\/([^?&]+)/);
+  1932→  if (shortMatch) return shortMatch[1];
+  1933→
+  1934→  // Embed URL youtube.com/embed/ID
+  1935→  const embedMatch = url.match(/youtube\.com\/embed\/([^?&]+)/);
+  1936→  if (embedMatch) return embedMatch[1];
+  1937→
+  1938→  return null;
+  1939→}
+  1940→
+  1941→// ─── Helper: Parse HTTP Range header ───
+  1942→
+  1943→interface RangeInfo {
+  1944→  start: number;
+  1945→  end: number;
+  1946→}
+  1947→
+  1948→function parseRangeHeader(rangeHeader: string, fileSize: number): RangeInfo | null {
+  1949→  const matches = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
+  1950→  if (!matches) return null;
+  1951→
+  1952→  let start = matches[1] ? parseInt(matches[1], 10) : 0;
+  1953→  let end = matches[2] ? parseInt(matches[2], 10) : fileSize - 1;
+  1954→
+  1955→  // Clamp values
+  1956→  if (start < 0) start = 0;
+  1957→  if (end >= fileSize) end = fileSize - 1;
+  1958→  if (start > end) return null;
+  1959→
+  1960→  return { start, end };
+  1961→}
+  1962→
+  1963→// ─── Helper: Check video access control ───
+  1964→
+  1965→interface AccessCheckResult {
+  1966→  allowed: boolean;
+  1967→  statusCode?: number;
+  1968→  error?: string;
+  1969→  isPreview: boolean;
+  1970→  courseId?: string;
+  1971→}
+  1972→
+  1973→async function checkVideoAccess(
+  1974→  env: Env,
+  1975→  videoId: string,
+  1976→  auth: { authorized: boolean; userId?: string; email?: string }
+  1977→): Promise<AccessCheckResult> {
+  1978→  // Step 1: Fetch video document from Appwrite
+  1979→  let videoDoc: Record<string, unknown>;
+  1980→  try {
+  1981→    videoDoc = await getDocument(env, APPWRITE_COLLECTIONS.VIDEOS, videoId);
+  1982→  } catch {
+  1983→    return { allowed: false, statusCode: 404, error: 'Video not found', isPreview: false };
+  1984→  }
+  1985→
+  1986→  const isPreview = (videoDoc.isPreview as boolean) || false;
+  1987→  const courseId = videoDoc.courseId as string | undefined;
+  1988→  const isPublished = videoDoc.isPublished as boolean | undefined;
+  1989→
+  1990→  // Unpublished video — deny access
+  1991→  if (isPublished === false) {
+  1992→    return { allowed: false, statusCode: 404, error: 'Video not found', isPreview, courseId };
+  1993→  }
+  1994→
+  1995→  // Step 2: If isPreview → allow access (no auth required)
+  1996→  if (isPreview) {
+  1997→    return { allowed: true, isPreview: true, courseId };
+  1998→  }
+  1999→
+  2000→  // Step 3: Non-preview video requires auth
+
+[showing lines 1-2000 of 2408; use offset=2001 with limit to continue reading]
