@@ -31,6 +31,7 @@ import {
 import { useNavigationStore, useWatchProgressStore } from '@/lib/store';
 import { formatDuration } from '@/lib/mock-data';
 import { courseApi, videoApi, instructorApi, watchHistoryApi } from '@/lib/api-client';
+import { UniversalVideoPlayer, type StreamData } from './UniversalVideoPlayer';
 import { GlassCard } from '../shared/GlassCard';
 import { GradientButton } from '../shared/GradientButton';
 import { ProgressBar } from '../shared/ProgressBar';
@@ -669,38 +670,26 @@ export function VideoPlayerPage() {
                   }
                 }}
               >
-                {/* Real video element when stream URL is available */}
+                {/* Real video player when stream URL is available — uses UniversalVideoPlayer for HLS support */}
                 {streamUrl && (
-                  <video
-                    ref={(el) => {
-                      if (el && streamUrl) {
-                        el.src = streamUrl;
-                        if (isPlaying) {
-                          el.play().catch(() => {});
-                        } else {
-                          el.pause();
-                        }
-                        el.currentTime = currentTime;
-                        el.volume = effectiveVolume / 100;
-                        el.playbackRate = playbackSpeed;
-                      }
+                  <UniversalVideoPlayer
+                    streamData={{
+                      type: 'hls',
+                      url: streamUrl,
+                      title: currentVideo?.title || 'Video',
                     }}
-                    className="absolute inset-0 w-full h-full object-contain"
-                    playsInline
-                    onTimeUpdate={(e) => {
-                      const video = e.target as HTMLVideoElement;
-                      setCurrentTime(video.currentTime);
-                      setBuffered(Math.min(video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0, videoDuration));
+                    onProgress={(p) => {
+                      setCurrentTime(p.currentTime);
+                      setBuffered(Math.min(p.currentTime + 30, videoDuration));
                     }}
-                    onEnded={() => {
+                    onComplete={() => {
                       if (nextVideo) {
                         setShowNextEpisode(true);
                         setNextEpisodeCountdown(5);
                       }
                     }}
-                    onLoadedMetadata={(e) => {
-                      // Video loaded, update duration if needed
-                    }}
+                    initialTime={initialPosition}
+                    autoplay={isPlaying}
                   />
                 )}
 
