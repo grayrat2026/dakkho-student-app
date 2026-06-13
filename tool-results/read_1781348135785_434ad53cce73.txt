@@ -1,0 +1,1442 @@
+     1→<!DOCTYPE html>
+     2→<html lang="en">
+     3→<head>
+     4→<meta charset="UTF-8"/>
+     5→<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"/>
+     6→<title>Video Player</title>
+     7→
+     8→<!-- Fonts -->
+     9→<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+    10→<!-- FontAwesome -->
+    11→<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+    12→<!-- Lucide Icons -->
+    13→<script src="https://unpkg.com/lucide@latest"></script>
+    14→
+    15→<style>
+    16→/* ═══════════════════════════════════════════════
+    17→   DESIGN TOKENS
+    18→   ═══════════════════════════════════════════════ */
+    19→*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    20→:root{
+    21→  /* ── Color ── */
+    22→  --accent:#22c55e;
+    23→  --accent-glow:rgba(34,197,94,.45);
+    24→  --accent-dim:rgba(34,197,94,.18);
+    25→  --surface-dark:rgba(10,10,10,.92);
+    26→  --glass-bg:rgba(15,15,18,.58);
+    27→  --glass-border:1px solid rgba(255,255,255,.08);
+    28→  --text-primary:#fff;
+    29→  --text-secondary:rgba(255,255,255,.72);
+    30→  --text-muted:rgba(255,255,255,.45);
+    31→  --color-buffer:rgba(255,255,255,.18);
+    32→  --color-track:rgba(255,255,255,.25);
+    33→  --hover-bg:rgba(255,255,255,.12);
+    34→  --ripple-bg:rgba(34,197,94,.22);
+    35→  --panel-bg:#fff;
+    36→  --panel-text:#111;
+    37→  --panel-text-sec:#6b7280;
+    38→  --panel-border:#e5e7eb;
+    39→  --panel-hover:#f0fdf4;
+    40→  --panel-alt:#f9fafb;
+    41→  --dropdown-bg:#1c1c1e;
+    42→
+    43→  /* ── Spacing ── */
+    44→  --sp-xs:4px;--sp-sm:8px;--sp-md:14px;--sp-lg:20px;--sp-xl:28px;
+    45→
+    46→  /* ── Icon ── */
+    47→  --icon-top:24px;--icon-bot:22px;--icon-skip:38px;--icon-play:68px;
+    48→
+    49→  /* ── Touch ── */
+    50→  --touch-min:44px;
+    51→
+    52→  /* ── Seek ── */
+    53→  --seek-h:4px;--seek-h-hover:6px;--seek-thumb:16px;
+    54→
+    55→  /* ── Font ── */
+    56→  --f-sans:'DM Sans',system-ui,sans-serif;
+    57→  --f-mono:'DM Mono','SF Mono',monospace;
+    58→  --f-title:14px;--f-time:12px;--f-tip:11px;--f-toast:12.5px;
+    59→
+    60→  /* ── Easing ── */
+    61→  --ease-expo:cubic-bezier(.16,1,.3,1);
+    62→  --ease-back:cubic-bezier(.34,1.56,.64,1);
+    63→  --ease-smooth:cubic-bezier(.4,0,.2,1);
+    64→  --dur-fast:150ms;--dur-norm:220ms;--dur-slow:320ms;--dur-slower:450ms;
+    65→  --T:var(--dur-norm) var(--ease-smooth);
+    66→
+    67→  /* ── Z-Index ── */
+    68→  --z-vid:0;--z-wave:1;--z-overlay:2;--z-dtap:8;--z-ctl:10;
+    69→  --z-vol:11;--z-lock:12;--z-spin:15;--z-flash:20;--z-panel:100;
+    70→  --z-bs-back:250;--z-bs:260;--z-dd:300;--z-toast:500;
+    71→
+    72→  /* ── Glass ── */
+    73→  --glass-blur:18px;
+    74→
+    75→  /* ── Safe Area ── */
+    76→  --sat:0px;--sar:0px;--sab:0px;--sal:0px;
+    77→}
+    78→@supports(padding:env(safe-area-inset-top)){
+    79→  :root{--sat:env(safe-area-inset-top);--sar:env(safe-area-inset-right);--sab:env(safe-area-inset-bottom);--sal:env(safe-area-inset-left);}
+    80→}
+    81→
+    82→html,body{width:100%;height:100%;overflow:hidden;background:#111;font-family:var(--f-sans);}
+    83→::selection{background:var(--accent);color:#fff;}
+    84→
+    85→/* ═══════════════════════════════════════════════
+    86→   WRAPPER
+    87→   ═══════════════════════════════════════════════ */
+    88→#pw{position:relative;width:100dvw;height:100dvh;display:flex;overflow:hidden;transition:width var(--T);}
+    89→@supports not(height:100dvh){#pw{width:100vw;height:100vh;}}
+    90→#pw.panel-open{width:calc(100dvw - 380px);}
+    91→
+    92→/* ═══════════════════════════════════════════════
+    93→   VIDEO
+    94→   ═══════════════════════════════════════════════ */
+    95→#ve{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:var(--z-vid);}
+    96→
+    97→/* ═══════════════════════════════════════════════
+    98→   WAVE BG
+    99→   ═══════════════════════════════════════════════ */
+   100→#wb{position:absolute;inset:0;width:100%;height:100%;z-index:var(--z-wave);pointer-events:none;opacity:1;transition:opacity .5s;}
+   101→.vp #wb{opacity:0;}
+   102→
+   103→/* ═══════════════════════════════════════════════
+   104→   DARK OVERLAY
+   105→   ═══════════════════════════════════════════════ */
+   106→#do{
+   107→  position:absolute;inset:0;z-index:var(--z-overlay);pointer-events:none;
+   108→  background:linear-gradient(180deg,rgba(0,0,0,.25) 0%,rgba(0,0,0,.03) 26%,rgba(0,0,0,.03) 70%,rgba(0,0,0,.3) 100%);
+   109→  opacity:0;transition:opacity var(--dur-slow) var(--ease-smooth);
+   110→}
+   111→#do.show{opacity:1;}
+   112→
+   113→/* ═══════════════════════════════════════════════
+   114→   DOUBLE-TAP ZONES (mobile portrait)
+   115→   ═══════════════════════════════════════════════ */
+   116→.dtap-zone{position:absolute;top:0;height:100%;width:38%;z-index:var(--z-dtap);-webkit-tap-highlight-color:transparent;pointer-events:none;}
+   117→.dtap-zone.left{left:0;}
+   118→.dtap-zone.right{right:0;}
+   119→@media(min-width:601px),(orientation:landscape){.dtap-zone{display:none;}}
+   120→
+   121→@keyframes dtap-ripple{0%{transform:scale(0);opacity:.5;}100%{transform:scale(2.8);opacity:0;}}
+   122→.dtap-ripple{
+   123→  position:absolute;width:70px;height:70px;border-radius:50%;
+   124→  background:rgba(255,255,255,.12);pointer-events:none;
+   125→  animation:dtap-ripple 500ms var(--ease-expo) forwards;
+   126→}
+   127→
+   128→/* ═══════════════════════════════════════════════
+   129→   CONTROLS
+   130→   ═══════════════════════════════════════════════ */
+   131→#ctl{position:absolute;inset:0;z-index:var(--z-ctl);display:flex;flex-direction:column;justify-content:space-between;opacity:1;transition:opacity var(--dur-slow) var(--ease-smooth);}
+   132→#ctl.hidden{opacity:0;pointer-events:none;}
+   133→
+   134→/* ═══════════════════════════════════════════════
+   135→   LOCK BUTTON (mobile portrait)
+   136→   ═══════════════════════════════════════════════ */
+   137→#lock-btn{
+   138→  position:absolute;top:calc(16px + var(--sat));left:calc(16px + var(--sal));
+   139→  width:var(--touch-min);height:var(--touch-min);
+   140→  background:var(--surface-dark);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+   141→  border:var(--glass-border);border-radius:50%;
+   142→  display:none;align-items:center;justify-content:center;color:#fff;
+   143→  z-index:var(--z-lock);cursor:pointer;
+   144→  transition:background var(--dur-norm) var(--ease-smooth),transform var(--dur-fast) var(--ease-smooth);
+   145→}
+   146→#lock-btn [data-lucide]{width:20px;height:20px;}
+   147→#lock-btn.locked{background:var(--accent);}
+   148→#lock-btn:active{transform:scale(.88);}
+   149→@media(hover:none)and(pointer:coarse)and(orientation:portrait){#lock-btn{display:flex;}}
+   150→#pw.locked #ctl{opacity:0;pointer-events:none;}
+   151→#pw.locked #lock-btn{opacity:1;pointer-events:all;}
+   152→#pw.locked #do{opacity:0!important;}
+   153→
+   154→/* ═══════════════════════════════════════════════
+   155→   TOP BAR
+   156→   ═══════════════════════════════════════════════ */
+   157→#top{
+   158→  display:flex;align-items:center;justify-content:space-between;
+   159→  padding:calc(14px + var(--sat)) calc(18px + var(--sar)) 0 calc(14px + var(--sal));
+   160→  background:linear-gradient(180deg,var(--glass-bg) 0%,transparent 100%);
+   161→  backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));
+   162→  flex-shrink:0;
+   163→}
+   164→.tl{display:flex;align-items:center;gap:10px;}
+   165→.tr{display:flex;align-items:center;gap:2px;}
+   166→
+   167→/* icon-button base */
+   168→.ib{
+   169→  background:none;border:none;cursor:pointer;
+   170→  display:flex;align-items:center;justify-content:center;
+   171→  color:#fff;border-radius:10px;
+   172→  transition:background var(--T),transform var(--T);
+   173→  position:relative;
+   174→}
+   175→.ib:hover{background:var(--hover-bg);}
+   176→.ib:active{transform:scale(.88);transition:transform 80ms var(--ease-smooth);}
+   177→.ib:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+   178→.ib:focus:not(:focus-visible){outline:none;}
+   179→
+   180→/* top-bar buttons */
+   181→.tb{padding:8px;}
+   182→.tb:hover{transform:scale(1.1);}
+   183→.tb [data-lucide]{width:var(--icon-top);height:var(--icon-top);stroke-width:1.8;}
+   184→.tb.active [data-lucide]{color:var(--accent);}
+   185→.tb.active{background:rgba(255,255,255,.08);border-radius:10px;}
+   186→
+   187→/* tooltip */
+   188→.tb[data-tip]::after{
+   189→  content:attr(data-tip);position:absolute;bottom:-34px;left:50%;transform:translateX(-50%);
+   190→  background:rgba(6,6,6,.88);color:#fff;
+   191→  font-size:var(--f-tip);font-weight:500;padding:3px 9px;border-radius:5px;
+   192→  white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;
+   193→}
+   194→.tb[data-tip]:hover::after{opacity:1;}
+   195→/* right-side buttons: flip tooltip */
+   196→.tr .tb:last-child[data-tip]::after,.tr .tb:nth-last-child(2)[data-tip]::after{left:auto;right:0;transform:none;}
+   197→
+   198→/* video title */
+   199→#vt{
+   200→  font-size:var(--f-title);font-weight:600;color:#fff;
+   201→  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px;
+   202→  text-shadow:0 1px 6px rgba(0,0,0,.6);
+   203→}
+   204→
+   205→/* ═══════════════════════════════════════════════
+   206→   CENTER CONTROLS
+   207→   ═══════════════════════════════════════════════ */
+   208→#cc{display:flex;align-items:center;justify-content:center;gap:48px;flex:1;pointer-events:none;}
+   209→.cb{pointer-events:all;padding:10px;}
+   210→.cb:hover{background:rgba(255,255,255,.13);transform:scale(1.12);}
+   211→
+   212→/* skip buttons */
+   213→.sk{display:flex;flex-direction:column;align-items:center;gap:0;width:64px;height:64px;position:relative;padding:0;}
+   214→.sk i{font-size:var(--icon-skip);color:#fff;line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.3);}
+   215→.sk span{
+   216→  position:absolute;top:50%;left:50%;transform:translate(-50%,-38%);
+   217→  font-size:12px;font-weight:700;font-family:var(--f-mono);color:#fff;pointer-events:none;
+   218→  text-shadow:0 1px 4px rgba(0,0,0,.4);
+   219→}
+   220→
+   221→/* play/pause */
+   222→#bpp{padding:12px;}
+   223→#bpp svg{width:var(--icon-play);height:var(--icon-play);}
+   224→
+   225→/* ripple */
+   226→@keyframes rip{to{transform:translate(-50%,-50%) scale(2.4);opacity:0;}}
+   227→.cb.rip::after{
+   228→  content:'';position:absolute;border-radius:50%;
+   229→  background:var(--ripple-bg);width:80px;height:80px;
+   230→  top:50%;left:50%;transform:translate(-50%,-50%) scale(0);
+   231→  animation:rip var(--dur-slower) var(--ease-expo);
+   232→}
+   233→
+   234→/* ═══════════════════════════════════════════════
+   235→   BOTTOM BAR
+   236→   ═══════════════════════════════════════════════ */
+   237→#bot{
+   238→  padding:0 calc(14px + var(--sal)) calc(12px + var(--sab)) calc(14px + var(--sar));
+   239→  display:flex;flex-direction:column;gap:5px;flex-shrink:0;
+   240→  background:linear-gradient(0deg,var(--glass-bg) 0%,transparent 100%);
+   241→  backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));
+   242→}
+   243→#bi{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-bottom:2px;position:relative;}
+   244→.bb{padding:7px;border-radius:9px;}
+   245→.bb:hover{transform:scale(1.1);}
+   246→.bb [data-lucide]{width:var(--icon-bot);height:var(--icon-bot);stroke-width:1.8;}
+   247→
+   248→/* ═══════════════════════════════════════════════
+   249→   SEEK BAR
+   250→   ═══════════════════════════════════════════════ */
+   251→#sw{
+   252→  position:relative;width:100%;height:26px;
+   253→  display:flex;align-items:center;cursor:pointer;
+   254→  -webkit-tap-highlight-color:transparent;touch-action:none;
+   255→}
+   256→#st{position:absolute;left:0;right:0;height:var(--seek-h);background:var(--color-track);border-radius:4px;transition:height .15s;}
+   257→#sw:hover #st,#sw.dragging #st{height:var(--seek-h-hover);}
+   258→
+   259→/* buffer bar */
+   260→#sb{position:absolute;left:0;top:0;height:100%;width:0%;background:var(--color-buffer);border-radius:4px;transition:width 200ms linear;}
+   261→
+   262→/* progress */
+   263→#sp{height:100%;width:0%;background:var(--accent);border-radius:4px;position:relative;}
+   264→
+   265→/* thumb */
+   266→#sth{
+   267→  position:absolute;top:50%;right:-8px;transform:translateY(-50%);
+   268→  width:var(--seek-thumb);height:var(--seek-thumb);
+   269→  background:#fff;border:2.5px solid var(--accent);border-radius:50%;
+   270→  box-shadow:0 0 10px var(--accent-glow);
+   271→  opacity:0;transition:opacity var(--dur-fast) var(--ease-smooth),transform var(--dur-norm) var(--ease-back);
+   272→  cursor:grab;
+   273→}
+   274→#sth:active{cursor:grabbing;}
+   275→#sw:hover #sth,#sw.dragging #sth{opacity:1;transform:translateY(-50%) scale(1.3);}
+   276→
+   277→/* seek tooltip */
+   278→#stip{
+   279→  position:absolute;bottom:28px;
+   280→  background:rgba(0,0,0,.85);color:#fff;
+   281→  font-size:var(--f-tip);font-family:var(--f-mono);font-weight:500;
+   282→  padding:2px 8px;border-radius:5px;
+   283→  pointer-events:none;opacity:0;transition:opacity .15s;
+   284→  white-space:nowrap;transform:translateX(-50%);
+   285→}
+   286→#sw:hover #stip{opacity:1;}
+   287→
+   288→/* time row */
+   289→#tr{display:flex;justify-content:space-between;font-size:var(--f-time);font-weight:500;font-family:var(--f-mono);color:var(--text-secondary);padding:0 2px;}
+   290→
+   291→/* ═══════════════════════════════════════════════
+   292→   VOLUME SLIDER
+   293→   ═══════════════════════════════════════════════ */
+   294→#vol-wrap{
+   295→  position:absolute;bottom:calc(100% + 8px);right:0;
+   296→  width:44px;height:140px;display:flex;flex-direction:column;align-items:center;padding:12px 0;
+   297→  background:var(--surface-dark);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+   298→  border-radius:14px;border:var(--glass-border);
+   299→  box-shadow:0 8px 32px rgba(0,0,0,.4);
+   300→  opacity:0;transform:translateY(8px) scale(.95);transform-origin:bottom center;
+   301→  pointer-events:none;
+   302→  transition:opacity var(--dur-norm) var(--ease-smooth),transform var(--dur-norm) var(--ease-expo);
+   303→  z-index:var(--z-vol);
+   304→}
+   305→#vol-wrap.open{opacity:1;transform:translateY(0) scale(1);pointer-events:all;}
+   306→#vol-track{position:relative;width:4px;flex:1;background:var(--color-track);border-radius:4px;cursor:pointer;touch-action:none;}
+   307→#vol-fill{position:absolute;bottom:0;left:0;width:100%;background:var(--accent);border-radius:4px;transition:height var(--dur-fast) var(--ease-smooth);}
+   308→#vol-thumb{
+   309→  position:absolute;left:50%;width:14px;height:14px;
+   310→  background:#fff;border:2px solid var(--accent);border-radius:50%;
+   311→  transform:translate(-50%,50%);
+   312→  box-shadow:0 0 8px var(--accent-glow);cursor:grab;
+   313→  transition:transform var(--dur-fast) var(--ease-smooth);
+   314→}
+   315→#vol-thumb:active{cursor:grabbing;}
+   316→#vol-wrap:hover #vol-thumb{transform:translate(-50%,50%) scale(1.2);}
+   317→#vol-icon{margin-top:8px;padding:6px;cursor:pointer;color:#fff;}
+   318→#vol-icon [data-lucide]{width:20px;height:20px;}
+   319→
+   320→/* ═══════════════════════════════════════════════
+   321→   EPISODE PANEL (desktop/tablet side drawer)
+   322→   ═══════════════════════════════════════════════ */
+   323→#ep{
+   324→  position:fixed;top:0;right:0;width:380px;height:100dvh;
+   325→  background:var(--panel-bg);border-left:1px solid var(--panel-border);z-index:var(--z-panel);
+   326→  display:flex;flex-direction:column;
+   327→  transform:translateX(100%);transition:transform var(--dur-slow) var(--ease-expo);
+   328→  box-shadow:-8px 0 32px rgba(0,0,0,.16);
+   329→  padding-top:var(--sat);
+   330→}
+   331→#ep.open{transform:translateX(0);}
+   332→#eph{display:flex;align-items:center;justify-content:space-between;padding:20px 18px 14px 22px;border-bottom:1px solid var(--panel-border);flex-shrink:0;}
+   333→#eph h2{font-size:19px;font-weight:700;color:var(--panel-text);}
+   334→#bce{background:none;border:none;cursor:pointer;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:7px;color:#555;transition:background var(--T);}
+   335→#bce:hover{background:#f3f4f6;}
+   336→#bce [data-lucide]{width:18px;height:18px;stroke-width:2.2;}
+   337→#el{overflow-y:auto;flex:1;padding:6px 0;scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:#d1d5db transparent;}
+   338→#el::-webkit-scrollbar{width:4px;}
+   339→#el::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px;}
+   340→
+   341→.ei{display:flex;align-items:flex-start;gap:12px;padding:13px 18px;cursor:pointer;transition:background var(--T);border-left:3px solid transparent;}
+   342→.ei:nth-child(even){background:var(--panel-alt);}
+   343→.ei:hover{background:var(--panel-hover);border-left-color:var(--accent);}
+   344→.ei.active{background:var(--panel-hover);border-left-color:var(--accent);}
+   345→.et{width:116px;height:68px;border-radius:8px;flex-shrink:0;background:#e5e7eb;border:1.5px solid #e8e8e8;overflow:hidden;position:relative;}
+   346→.et img{width:100%;height:100%;object-fit:cover;display:block;}
+   347→.epo{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.22);border-radius:8px;opacity:0;transition:opacity .2s;}
+   348→.ei:hover .epo{opacity:1;}
+   349→.epo [data-lucide]{width:22px;height:22px;color:#fff;stroke-width:2;}
+   350→.ein{flex:1;min-width:0;}
+   351→.en{font-size:11px;font-weight:600;color:var(--accent);letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px;}
+   352→.etl{font-size:13px;font-weight:700;color:var(--panel-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;}
+   353→.ed{font-size:11.5px;color:var(--panel-text-sec);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+   354→
+   355→/* ═══════════════════════════════════════════════
+   356→   BOTTOM SHEET (mobile episode panel)
+   357→   ═══════════════════════════════════════════════ */
+   358→#bs-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:var(--z-bs-back);opacity:0;pointer-events:none;transition:opacity var(--dur-slow) var(--ease-smooth);}
+   359→#bs-backdrop.open{opacity:1;pointer-events:all;}
+   360→#bs{
+   361→  position:fixed;left:0;right:0;bottom:0;max-height:70vh;
+   362→  background:var(--panel-bg);border-radius:20px 20px 0 0;
+   363→  z-index:var(--z-bs);transform:translateY(100%);
+   364→  transition:transform 380ms var(--ease-expo);
+   365→  display:none;flex-direction:column;overflow:hidden;
+   366→  padding-bottom:var(--sab);
+   367→}
+   368→#bs.open{transform:translateY(0);}
+   369→#bs-handle{width:36px;height:4px;background:#d1d5db;border-radius:2px;margin:10px auto 0;flex-shrink:0;}
+   370→#bs-content{flex:1;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}
+   371→
+   372→/* ═══════════════════════════════════════════════
+   373→   DROPDOWNS
+   374→   ═══════════════════════════════════════════════ */
+   375→.dd{
+   376→  position:fixed;z-index:var(--z-dd);
+   377→  background:var(--dropdown-bg);border-radius:14px;min-width:200px;
+   378→  box-shadow:0 8px 40px rgba(0,0,0,.5);
+   379→  transform:scale(.94) translateY(-8px);transform-origin:top right;
+   380→  opacity:0;pointer-events:none;
+   381→  transition:opacity var(--dur-norm) var(--ease-smooth),transform var(--dur-norm) var(--ease-back);overflow:hidden;
+   382→}
+   383→.dd.open{opacity:1;pointer-events:all;transform:scale(1) translateY(0);}
+   384→#dd-stt{overflow-y:auto;overscroll-behavior:contain;}
+   385→#dd-stt::-webkit-scrollbar{width:4px;}
+   386→#dd-stt::-webkit-scrollbar-thumb{background:#555;border-radius:2px;}
+   387→
+   388→.ds{font-size:10px;font-weight:700;color:#777;text-transform:uppercase;letter-spacing:.08em;padding:12px 16px 5px;}
+   389→.di{padding:11px 16px;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:10px;color:#fff;transition:background .14s;}
+   390→.di:hover{background:rgba(255,255,255,.09);}
+   391→.di:focus-visible{background:rgba(255,255,255,.12);outline:2px solid var(--accent);outline-offset:-2px;}
+   392→.di.selected{color:var(--accent);}
+   393→.dc{width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;opacity:0;color:var(--accent);}
+   394→.dc [data-lucide]{width:14px;height:14px;stroke-width:3;}
+   395→.di.selected .dc{opacity:1;}
+   396→.dsp{height:1px;background:rgba(255,255,255,.09);margin:4px 0;}
+   397→
+   398→@media(hover:none){
+   399→  .di:hover{background:transparent;}
+   400→  .di:active{background:rgba(255,255,255,.09);}
+   401→}
+   402→
+   403→/* ═══════════════════════════════════════════════
+   404→   TOAST
+   405→   ═══════════════════════════════════════════════ */
+   406→#toast{
+   407→  position:fixed;bottom:calc(90px + var(--sab));left:50%;transform:translateX(-50%) translateY(14px);
+   408→  background:rgba(10,10,10,.9);color:#fff;
+   409→  padding:9px 20px;border-radius:28px;font-size:var(--f-toast);font-weight:500;
+   410→  opacity:0;pointer-events:none;
+   411→  transition:opacity var(--dur-norm) var(--ease-smooth),transform 300ms var(--ease-expo);
+   412→  z-index:var(--z-toast);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+   413→}
+   414→#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+   415→
+   416→/* ═══════════════════════════════════════════════
+   417→   SEEK FLASH
+   418→   ═══════════════════════════════════════════════ */
+   419→.sf{
+   420→  position:absolute;top:50%;transform:translateY(-50%);
+   421→  color:#fff;font-size:12px;font-weight:600;
+   422→  opacity:0;pointer-events:none;z-index:var(--z-flash);
+   423→  display:flex;flex-direction:column;align-items:center;gap:4px;
+   424→  animation:sfade .65s var(--ease-expo) forwards;
+   425→}
+   426→.sf.l{left:8%;}.sf.r{right:8%;}
+   427→.sf i{font-size:28px;}
+   428→@keyframes sfade{0%{opacity:1;transform:translateY(-50%) scale(1.15);}50%{opacity:.8;}100%{opacity:0;transform:translateY(-60%) scale(.85);}}
+   429→
+   430→/* ═══════════════════════════════════════════════
+   431→   SPINNER
+   432→   ═══════════════════════════════════════════════ */
+   433→#spin{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:var(--z-spin);pointer-events:none;opacity:0;transition:opacity .2s;}
+   434→#spin.show{opacity:1;}
+   435→.sr{width:46px;height:46px;border:3px solid var(--accent-dim);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+   436→@keyframes spin{to{transform:rotate(360deg);}}
+   437→
+   438→/* ═══════════════════════════════════════════════
+   439→   EMPTY STATE
+   440→   ═══════════════════════════════════════════════ */
+   441→#empty-state{
+   442→  position:absolute;inset:0;z-index:3;
+   443→  display:flex;flex-direction:column;align-items:center;justify-content:center;
+   444→  color:var(--text-muted);gap:16px;pointer-events:none;
+   445→}
+   446→#empty-state i{font-size:64px;opacity:.4;}
+   447→#empty-state p{font-size:15px;font-weight:500;opacity:.6;text-align:center;line-height:1.6;max-width:280px;}
+   448→.vp #empty-state{display:none;}
+   449→
+   450→/* ═══════════════════════════════════════════════
+   451→   SCREEN-READER ONLY
+   452→   ═══════════════════════════════════════════════ */
+   453→.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+   454→
+   455→/* ═══════════════════════════════════════════════
+   456→   MOBILE PORTRAIT (max-width:600px portrait)
+   457→   ═══════════════════════════════════════════════ */
+   458→@media(max-width:600px)and(orientation:portrait){
+   459→  #pw.panel-open{width:100dvw;overflow:hidden;}
+   460→  #ep{display:none;}
+   461→  #bs{display:flex;}
+   462→
+   463→  /* top bar compact */
+   464→  #top{padding:calc(10px + var(--sat)) calc(12px + var(--sar)) 0 calc(10px + var(--sal));}
+   465→  .tl{gap:6px;}.tr{gap:0;}
+   466→  .tb{padding:6px;min-width:var(--touch-min);min-height:var(--touch-min);}
+   467→  .tb [data-lucide]{width:18px;height:18px;stroke-width:2;}
+   468→  #vt{font-size:13px;max-width:140px;}
+   469→  .tb[data-tip]::after{display:none;}
+   470→
+   471→  /* center: hide skip (replaced by double-tap) */
+   472→  .sk{display:none;}
+   473→  #cc{gap:0;}
+   474→  #bpp{padding:14px;}
+   475→  #bpp svg{width:56px;height:56px;}
+   476→
+   477→  /* bottom bar */
+   478→  #bot{padding:0 calc(12px + var(--sal)) calc(14px + var(--sab)) calc(12px + var(--sar));}
+   479→  .bb{padding:8px;min-width:var(--touch-min);min-height:var(--touch-min);}
+   480→  .bb [data-lucide]{width:20px;height:20px;}
+   481→
+   482→  /* seek bar bigger touch */
+   483→  #sw{height:36px;}
+   484→  #st{height:3px;}
+   485→  #sw.dragging #st{height:5px;}
+   486→  #sth{width:14px;height:14px;}
+   487→  #sw.dragging #sth{opacity:1;transform:translateY(-50%) scale(1.15);}
+   488→  #tr{font-size:11px;}
+   489→
+   490→  /* toast higher */
+   491→  #toast{bottom:calc(100px + var(--sab));}
+   492→
+   493→  /* seek flash inward */
+   494→  .sf.l{left:12%;}.sf.r{right:12%;}
+   495→  .sf i{font-size:32px;}
+   496→
+   497→  /* hide volume slider */
+   498→  #vol-wrap{display:none;}
+   499→
+   500→  /* dropdowns → bottom sheet style */
+   501→  .dd{
+   502→    position:fixed!important;top:auto!important;left:0!important;right:0!important;bottom:0;
+   503→    width:100%!important;min-width:unset;
+   504→    border-radius:20px 20px 0 0;
+   505→    transform-origin:bottom center;
+   506→    transform:translateY(100%) scale(1);
+   507→    max-height:60vh;padding-bottom:var(--sab);
+   508→  }
+   509→  .dd.open{transform:translateY(0) scale(1);}
+   510→}
+   511→
+   512→/* ═══════════════════════════════════════════════
+   513→   MOBILE LANDSCAPE (max-height:500px landscape)
+   514→   ═══════════════════════════════════════════════ */
+   515→@media(max-height:500px)and(orientation:landscape){
+   516→  #pw.panel-open{width:100dvw;}
+   517→  #ep{width:320px;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:-4px 0 24px rgba(0,0,0,.2);}
+   518→
+   519→  /* ultra-compact */
+   520→  #top{padding:calc(6px + var(--sat)) calc(10px + var(--sar)) 0 calc(10px + var(--sal));}
+   521→  .tl{gap:6px;}.tr{gap:0;}
+   522→  .tb{padding:4px;min-width:38px;min-height:38px;}
+   523→  .tb [data-lucide]{width:16px;height:16px;stroke-width:2.2;}
+   524→  #vt{font-size:12px;max-width:200px;}
+   525→  .tb[data-tip]::after{display:none;}
+   526→
+   527→  /* center smaller */
+   528→  #cc{gap:32px;}
+   529→  .sk{width:48px;height:48px;}
+   530→  .sk i{font-size:28px;}
+   531→  .sk span{font-size:10px;}
+   532→  #bpp{padding:8px;}
+   533→  #bpp svg{width:50px;height:50px;}
+   534→
+   535→  /* bottom compact */
+   536→  #bot{padding:0 calc(10px + var(--sal)) calc(8px + var(--sab)) calc(10px + var(--sar));gap:2px;}
+   537→  #bi{margin-bottom:0;gap:2px;}
+   538→  .bb{padding:5px;min-width:36px;min-height:36px;}
+   539→  .bb [data-lucide]{width:18px;height:18px;}
+   540→
+   541→  /* seek bar thinner */
+   542→  #sw{height:24px;}
+   543→  #st{height:3px;}
+   544→  #sw:hover #st,#sw.dragging #st{height:4px;}
+   545→  #sth{width:12px;height:12px;border-width:2px;}
+   546→  #tr{font-size:10px;padding:0 4px;}
+   547→
+   548→  /* dropdowns */
+   549→  .dd{max-height:calc(100vh - 60px);}
+   550→
+   551→  /* toast */
+   552→  #toast{bottom:calc(60px + var(--sab));font-size:11.5px;padding:7px 16px;}
+   553→
+   554→  /* volume slider shorter */
+   555→  #vol-wrap{height:100px;width:38px;}
+   556→
+   557→  /* glass less blur */
+   558→  #top,#bot{backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
+   559→
+   560→  /* spinner smaller */
+   561→  .sr{width:36px;height:36px;border-width:2.5px;}
+   562→}
+   563→
+   564→/* ═══════════════════════════════════════════════
+   565→   SMALL DESKTOP (601-1024px)
+   566→   ═══════════════════════════════════════════════ */
+   567→@media(min-width:601px)and(max-width:1024px){
+   568→  #ep{width:320px;}
+   569→  #pw.panel-open{width:calc(100dvw - 320px);}
+   570→  .et{width:96px;height:58px;}
+   571→}
+   572→
+   573→/* ═══════════════════════════════════════════════
+   574→   REDUCED MOTION
+   575→   ═══════════════════════════════════════════════ */
+   576→@media(prefers-reduced-motion:reduce){
+   577→  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;}
+   578→}
+   579→
+   580→/* ═══════════════════════════════════════════════
+   581→   FORCED COLORS (high contrast)
+   582→   ═══════════════════════════════════════════════ */
+   583→@media(forced-colors:active){
+   584→  .ib{border:1px solid ButtonText;}
+   585→  #sp{background:Highlight;}
+   586→}
+   587→</style>
+   588→</head>
+   589→<body>
+   590→
+   591→<div id="toast" role="status" aria-live="polite"></div>
+   592→
+   593→<div id="pw">
+   594→  <video id="ve" preload="metadata" playsinline></video>
+   595→
+   596→  <!-- Wave BG -->
+   597→  <svg id="wb" viewBox="0 0 1440 810" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+   598→    <g fill="none" stroke-width=".9">
+   599→      <path stroke="#8ecfc4" d="M-60,810 Q120,600 -40,350 Q-160,100 60,0" opacity=".28"/>
+   600→      <path stroke="#8ecfc4" d="M-20,810 Q160,570 0,350 Q-130,115 90,0" opacity=".36"/>
+   601→      <path stroke="#8ecfc4" d="M20,810 Q200,545 40,350 Q-100,130 120,0" opacity=".43"/>
+   602→      <path stroke="#8ecfc4" d="M60,810 Q240,518 80,350 Q-70,145 150,0" opacity=".4"/>
+   603→      <path stroke="#8ecfc4" d="M100,810 Q278,492 118,350 Q-40,158 180,0" opacity=".34"/>
+   604→      <path stroke="#7ac5b8" d="M0,240 Q360,155 720,215 Q1080,275 1440,190" opacity=".3"/>
+   605→      <path stroke="#7ac5b8" d="M0,285 Q360,200 720,260 Q1080,320 1440,235" opacity=".4"/>
+   606→      <path stroke="#7ac5b8" d="M0,330 Q360,245 720,305 Q1080,365 1440,280" opacity=".5"/>
+   607→      <path stroke="#7ac5b8" d="M0,375 Q360,290 720,350 Q1080,410 1440,325" opacity=".5"/>
+   608→      <path stroke="#7ac5b8" d="M0,420 Q360,335 720,395 Q1080,455 1440,370" opacity=".4"/>
+   609→      <path stroke="#7ac5b8" d="M0,465 Q360,380 720,440 Q1080,500 1440,415" opacity=".3"/>
+   610→      <path stroke="#6ab8ac" d="M1200,0 Q1360,210 1440,370 Q1520,500 1440,810" opacity=".28"/>
+   611→      <path stroke="#6ab8ac" d="M1255,0 Q1405,215 1440,395" opacity=".2"/>
+   612→    </g>
+   613→  </svg>
+   614→
+   615→  <div id="do"></div>
+   616→  <div id="spin"><div class="sr"></div></div>
+   617→
+   618→  <!-- Empty state -->
+   619→  <div id="empty-state">
+   620→    <i class="fa-solid fa-film"></i>
+   621→    <p>No video loaded.<br/>Pass <code>?src=URL</code> or use the Episodes panel.</p>
+   622→  </div>
+   623→
+   624→  <!-- Double-tap zones (mobile portrait) -->
+   625→  <div class="dtap-zone left" id="dtap-l"></div>
+   626→  <div class="dtap-zone right" id="dtap-r"></div>
+   627→
+   628→  <!-- Lock button (mobile portrait) -->
+   629→  <button id="lock-btn" aria-label="Lock controls">
+   630→    <i data-lucide="lock"></i>
+   631→  </button>
+   632→
+   633→  <div id="ctl">
+   634→
+   635→    <!-- TOP BAR -->
+   636→    <div id="top">
+   637→      <div class="tl">
+   638→        <button class="ib tb" id="bb" data-tip="Back" aria-label="Go back">
+   639→          <i data-lucide="chevron-left"></i>
+   640→        </button>
+   641→        <div id="vt"></div>
+   642→      </div>
+   643→      <div class="tr">
+   644→        <button class="ib tb" id="bdub" data-tip="Audio / DUB" aria-label="Audio track">
+   645→          <i data-lucide="headphones"></i>
+   646→        </button>
+   647→        <button class="ib tb" id="bcc" data-tip="Subtitles" aria-label="Subtitles">
+   648→          <i data-lucide="closed-caption"></i>
+   649→        </button>
+   650→        <button class="ib tb" id="bbm" data-tip="Bookmark" aria-label="Bookmark">
+   651→          <i data-lucide="bookmark" id="bm-icon"></i>
+   652→        </button>
+   653→        <button class="ib tb" id="bep" data-tip="Episodes" aria-label="Episodes">
+   654→          <i data-lucide="list-video"></i>
+   655→        </button>
+   656→        <button class="ib tb" id="bst" data-tip="Settings" aria-label="Settings">
+   657→          <i data-lucide="settings-2"></i>
+   658→        </button>
+   659→      </div>
+   660→    </div>
+   661→
+   662→    <!-- CENTER CONTROLS -->
+   663→    <div id="cc">
+   664→      <button class="ib cb sk" id="brw" aria-label="Rewind 10 seconds">
+   665→        <i class="fa-solid fa-arrow-rotate-left"></i>
+   666→        <span>10</span>
+   667→      </button>
+   668→      <button class="ib cb" id="bpp" aria-label="Play or pause">
+   669→        <svg id="i-play" xmlns="http://www.w3.org/2000/svg" width="68" height="68" viewBox="0 0 24 24" fill="white" stroke="none"><polygon points="5,3 19,12 5,21"/></svg>
+   670→        <svg id="i-pause" xmlns="http://www.w3.org/2000/svg" width="68" height="68" viewBox="0 0 24 24" fill="white" stroke="none" style="display:none"><rect x="5" y="4" width="4" height="16" rx="1.5"/><rect x="15" y="4" width="4" height="16" rx="1.5"/></svg>
+   671→      </button>
+   672→      <button class="ib cb sk" id="bfw" aria-label="Forward 10 seconds">
+   673→        <i class="fa-solid fa-arrow-rotate-right"></i>
+   674→        <span>10</span>
+   675→      </button>
+   676→    </div>
+   677→
+   678→    <!-- BOTTOM BAR -->
+   679→    <div id="bot">
+   680→      <div id="bi">
+   681→        <!-- Volume -->
+   682→        <div style="position:relative">
+   683→          <button class="ib bb" id="bvol" aria-label="Volume">
+   684→            <i data-lucide="volume-2" id="vol-btn-icon"></i>
+   685→          </button>
+   686→          <div id="vol-wrap">
+   687→            <div id="vol-track">
+   688→              <div id="vol-fill" style="height:100%"></div>
+   689→              <div id="vol-thumb" style="bottom:100%"></div>
+   690→            </div>
+   691→            <div id="vol-icon">
+   692→              <i data-lucide="volume-2"></i>
+   693→            </div>
+   694→          </div>
+   695→        </div>
+   696→        <!-- PiP -->
+   697→        <button class="ib bb" id="bpip" aria-label="Picture in picture">
+   698→          <i data-lucide="picture-in-picture"></i>
+   699→        </button>
+   700→        <!-- Fullscreen -->
+   701→        <button class="ib bb" id="bfs" aria-label="Fullscreen">
+   702→          <i data-lucide="maximize" id="i-max"></i>
+   703→          <i data-lucide="minimize" id="i-min" style="display:none"></i>
+   704→        </button>
+   705→      </div>
+   706→
+   707→      <!-- SEEK BAR -->
+   708→      <div id="sw" role="slider" aria-label="Seek bar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+   709→        <div id="st">
+   710→          <div id="sb"></div>
+   711→          <div id="sp">
+   712→            <div id="sth"></div>
+   713→          </div>
+   714→        </div>
+   715→        <div id="stip">0:00</div>
+   716→      </div>
+   717→
+   718→      <!-- TIME -->
+   719→      <div id="tr">
+   720→        <span id="tc">00:00:00</span>
+   721→        <span id="tt">00:00:00</span>
+   722→      </div>
+   723→    </div>
+   724→
+   725→  </div><!-- /ctl -->
+   726→</div><!-- /pw -->
+   727→
+   728→<!-- EPISODE PANEL (desktop/tablet side drawer) -->
+   729→<div id="ep">
+   730→  <div id="eph">
+   731→    <h2>Episodes</h2>
+   732→    <button id="bce" aria-label="Close episodes">
+   733→      <i data-lucide="x"></i>
+   734→    </button>
+   735→  </div>
+   736→  <div id="el"></div>
+   737→</div>
+   738→
+   739→<!-- BOTTOM SHEET (mobile episode panel) -->
+   740→<div id="bs-backdrop"></div>
+   741→<div id="bs">
+   742→  <div id="bs-handle"></div>
+   743→  <div id="bs-content"></div>
+   744→</div>
+   745→
+   746→<!-- DROPDOWN: DUB -->
+   747→<div class="dd" id="dd-dub">
+   748→  <div class="ds">Audio Track</div>
+   749→  <div class="di selected" data-g="dub" data-v="jpn"><span class="dc"><i data-lucide="check"></i></span>Japanese (Original)</div>
+   750→  <div class="di" data-g="dub" data-v="eng"><span class="dc"><i data-lucide="check"></i></span>English Dub</div>
+   751→  <div class="di" data-g="dub" data-v="kor"><span class="dc"><i data-lucide="check"></i></span>Korean Dub</div>
+   752→</div>
+   753→
+   754→<!-- DROPDOWN: CC -->
+   755→<div class="dd" id="dd-cc">
+   756→  <div class="ds">Subtitles</div>
+   757→  <div class="di selected" data-g="cc" data-v="off"><span class="dc"><i data-lucide="check"></i></span>Off</div>
+   758→  <div class="di" data-g="cc" data-v="en"><span class="dc"><i data-lucide="check"></i></span>English</div>
+   759→  <div class="di" data-g="cc" data-v="bn"><span class="dc"><i data-lucide="check"></i></span>Bengali</div>
+   760→  <div class="di" data-g="cc" data-v="jp"><span class="dc"><i data-lucide="check"></i></span>Japanese</div>
+   761→</div>
+   762→
+   763→<!-- DROPDOWN: SETTINGS -->
+   764→<div class="dd" id="dd-stt">
+   765→  <div class="ds">Playback Speed</div>
+   766→  <div class="di" data-g="spd" data-v="0.25"><span class="dc"><i data-lucide="check"></i></span>0.25x</div>
+   767→  <div class="di" data-g="spd" data-v="0.5"><span class="dc"><i data-lucide="check"></i></span>0.5x</div>
+   768→  <div class="di" data-g="spd" data-v="0.75"><span class="dc"><i data-lucide="check"></i></span>0.75x</div>
+   769→  <div class="di selected" data-g="spd" data-v="1"><span class="dc"><i data-lucide="check"></i></span>1x Normal</div>
+   770→  <div class="di" data-g="spd" data-v="1.25"><span class="dc"><i data-lucide="check"></i></span>1.25x</div>
+   771→  <div class="di" data-g="spd" data-v="1.5"><span class="dc"><i data-lucide="check"></i></span>1.5x</div>
+   772→  <div class="di" data-g="spd" data-v="1.75"><span class="dc"><i data-lucide="check"></i></span>1.75x</div>
+   773→  <div class="di" data-g="spd" data-v="2"><span class="dc"><i data-lucide="check"></i></span>2x</div>
+   774→  <div class="dsp"></div>
+   775→  <div class="ds">Quality</div>
+   776→  <div class="di selected" data-g="q" data-v="auto"><span class="dc"><i data-lucide="check"></i></span>Auto</div>
+   777→  <div class="di" data-g="q" data-v="1080"><span class="dc"><i data-lucide="check"></i></span>1080p HD</div>
+   778→  <div class="di" data-g="q" data-v="720"><span class="dc"><i data-lucide="check"></i></span>720p</div>
+   779→  <div class="di" data-g="q" data-v="480"><span class="dc"><i data-lucide="check"></i></span>480p</div>
+   780→  <div class="di" data-g="q" data-v="360"><span class="dc"><i data-lucide="check"></i></span>360p</div>
+   781→  <div class="dsp"></div>
+   782→  <div class="ds">Loop</div>
+   783→  <div class="di" id="di-loop" data-g="loop" data-v="loop"><span class="dc"><i data-lucide="check"></i></span>Loop Episode</div>
+   784→</div>
+   785→
+   786→<script>
+   787→/* ═══════════════════════════════════════════════
+   788→   EPISODES DATA — Dynamic, no hardcoded mock
+   789→   ═══════════════════════════════════════════════ */
+   790→const EPS = [];
+   791→
+   792→// Load episodes from URL params or global variable
+   793→// Usage: ?ep0_title=Episode1&ep0_src=https://...&ep0_thumb=https://...
+   794→//   OR:  ?src=https://direct-video-url.mp4&title=My+Video
+   795→//   OR:  set window.PLAYER_EPISODES before this script
+   796→(function initEpisodes(){
+   797→  const params = new URLSearchParams(location.search);
+   798→
+   799→  // Method 1: Direct single video via ?src=
+   800→  const directSrc = params.get('src');
+   801→  if(directSrc){
+   802→    EPS.push({
+   803→      title: params.get('title') || 'Video',
+   804→      desc: params.get('desc') || '',
+   805→      src: directSrc,
+   806→      thumb: params.get('thumb') || ''
+   807→    });
+   808→    return;
+   809→  }
+   810→
+   811→  // Method 2: Multi-episode via ?ep0_src=...&ep0_title=...
+   812→  let i = 0;
+   813→  while(params.has('ep'+i+'_src')){
+   814→    EPS.push({
+   815→      title: params.get('ep'+i+'_title') || ('Episode '+(i+1)),
+   816→      desc: params.get('ep'+i+'_desc') || '',
+   817→      src: params.get('ep'+i+'_src'),
+   818→      thumb: params.get('ep'+i+'_thumb') || ''
+   819→    });
+   820→    i++;
+   821→  }
+   822→
+   823→  // Method 3: Global variable
+   824→  if(EPS.length === 0 && window.PLAYER_EPISODES && Array.isArray(window.PLAYER_EPISODES)){
+   825→    EPS.push(...window.PLAYER_EPISODES);
+   826→  }
+   827→})();
+   828→
+   829→/* ═══════════════════════════════════════════════
+   830→   REFS
+   831→   ═══════════════════════════════════════════════ */
+   832→const $=id=>document.getElementById(id);
+   833→const pw=$('pw'), ve=$('ve'), ctl=$('ctl'), doEl=$('do'), spinEl=$('spin');
+   834→const vt=$('vt');
+   835→const bb=$('bb'), bdub=$('bdub'), bcc=$('bcc'), bbm=$('bbm'), bep=$('bep'), bst=$('bst');
+   836→const brw=$('brw'), bpp=$('bpp'), bfw=$('bfw');
+   837→const iPlay=$('i-play'), iPause=$('i-pause');
+   838→const bvol=$('bvol'), bpip=$('bpip'), bfs=$('bfs'), iMax=$('i-max'), iMin=$('i-min');
+   839→const sw=$('sw'), st=$('st'), sb=$('sb'), sp=$('sp'), sth=$('sth'), stip=$('stip');
+   840→const tc=$('tc'), tt=$('tt');
+   841→const epPanel=$('ep'), epList=$('el'), bce=$('bce');
+   842→const bsBack=$('bs-backdrop'), bsEl=$('bs'), bsContent=$('bs-content');
+   843→const ddDub=$('dd-dub'), ddCc=$('dd-cc'), ddStt=$('dd-stt');
+   844→const toastEl=$('toast');
+   845→const volWrap=$('vol-wrap'), volTrack=$('vol-track'), volFill=$('vol-fill'), volThumb=$('vol-thumb'), volBtnIcon=$('vol-btn-icon');
+   846→const lockBtn=$('lock-btn');
+   847→const emptyState=$('empty-state');
+   848→
+   849→/* ═══════════════════════════════════════════════
+   850→   STATE
+   851→   ═══════════════════════════════════════════════ */
+   852→let cur=-1, hideT=null, dragging=false, bookmarked=false, looping=false, toastT=null, volDragging=false, locked=false;
+   853→
+   854→/* ═══════════════════════════════════════════════
+   855→   UTILS
+   856→   ═══════════════════════════════════════════════ */
+   857→function fmt(s){if(!s||isNaN(s))s=0;return[Math.floor(s/3600),Math.floor((s%3600)/60),Math.floor(s%60)].map(v=>String(v).padStart(2,'0')).join(':');}
+   858→function fmtS(s){if(!s||isNaN(s))s=0;return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');}
+   859→function toast_(msg){clearTimeout(toastT);toastEl.textContent=msg;toastEl.classList.add('show');toastT=setTimeout(()=>toastEl.classList.remove('show'),2200);}
+   860→function rip(el){el.classList.remove('rip');void el.offsetWidth;el.classList.add('rip');setTimeout(()=>el.classList.remove('rip'),450);}
+   861→
+   862→function flash(side,label){
+   863→  const el=document.createElement('div');
+   864→  el.className='sf '+(side==='l'?'l':'r');
+   865→  const icon=side==='l'?'fa-arrow-rotate-left':'fa-arrow-rotate-right';
+   866→  el.innerHTML=`<i class="fa-solid ${icon}"></i><span>${label}</span>`;
+   867→  pw.appendChild(el);
+   868→  setTimeout(()=>el.remove(),700);
+   869→}
+   870→
+   871→/* ═══════════════════════════════════════════════
+   872→   CONTROLS SHOW/HIDE
+   873→   ═══════════════════════════════════════════════ */
+   874→function showC(auto=true){
+   875→  if(locked)return;
+   876→  ctl.classList.remove('hidden');
+   877→  doEl.classList.add('show');
+   878→  if(auto){clearTimeout(hideT);if(!ve.paused)hideT=setTimeout(hideC,3000);}
+   879→}
+   880→function hideC(){if(!dragging&&!locked){ctl.classList.add('hidden');doEl.classList.remove('show');}}
+   881→pw.addEventListener('mousemove',()=>showC());
+   882→
+   883→/* ═══════════════════════════════════════════════
+   884→   SEEK BAR
+   885→   ═══════════════════════════════════════════════ */
+   886→function getPct(clientX){const r=st.getBoundingClientRect();return Math.max(0,Math.min(1,(clientX-r.left)/r.width));}
+   887→function applyP(p){sp.style.width=(p*100)+'%';}
+   888→function seekTo(p){const d=ve.duration;if(!d||isNaN(d))return;ve.currentTime=p*d;applyP(p);tc.textContent=fmt(ve.currentTime);}
+   889→
+   890→/* Buffer progress */
+   891→function updateBuffer(){
+   892→  if(!ve.duration||isNaN(ve.duration))return;
+   893→  if(ve.buffered.length>0){
+   894→    const end=ve.buffered.end(ve.buffered.length-1);
+   895→    sb.style.width=(end/ve.duration*100)+'%';
+   896→  }
+   897→}
+   898→ve.addEventListener('progress',updateBuffer);
+   899→ve.addEventListener('timeupdate',()=>{
+   900→  if(dragging)return;
+   901→  const d=ve.duration;if(!d||isNaN(d))return;
+   902→  applyP(ve.currentTime/d);tc.textContent=fmt(ve.currentTime);
+   903→  sw.setAttribute('aria-valuenow',Math.round(ve.currentTime/d*100));
+   904→});
+   905→ve.addEventListener('loadedmetadata',()=>{tt.textContent=fmt(ve.duration);applyP(0);tc.textContent='00:00:00';updateBuffer();});
+   906→
+   907→// Mouse seek
+   908→sw.addEventListener('mousedown',e=>{
+   909→  if(e.button!==0)return;
+   910→  e.preventDefault();e.stopPropagation();
+   911→  dragging=true;sw.classList.add('dragging');clearTimeout(hideT);
+   912→  applyP(getPct(e.clientX));seekTo(getPct(e.clientX));
+   913→  const mv=e=>{const p=getPct(e.clientX);applyP(p);tc.textContent=fmt(p*(ve.duration||0));stip.textContent=fmtS(p*(ve.duration||0));stip.style.left=Math.max(8,Math.min(92,p*100))+'%';};
+   914→  const up=e=>{seekTo(getPct(e.clientX));dragging=false;sw.classList.remove('dragging');document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);clearTimeout(hideT);if(!ve.paused)hideT=setTimeout(hideC,3000);};
+   915→  document.addEventListener('mousemove',mv);
+   916→  document.addEventListener('mouseup',up);
+   917→});
+   918→
+   919→// Touch seek
+   920→sw.addEventListener('touchstart',e=>{e.stopPropagation();dragging=true;sw.classList.add('dragging');clearTimeout(hideT);const p=getPct(e.touches[0].clientX);applyP(p);seekTo(p);},{passive:true});
+   921→sw.addEventListener('touchmove',e=>{e.stopPropagation();const p=getPct(e.touches[0].clientX);applyP(p);tc.textContent=fmt(p*(ve.duration||0));stip.textContent=fmtS(p*(ve.duration||0));stip.style.left=Math.max(8,Math.min(92,p*100))+'%';},{passive:true});
+   922→sw.addEventListener('touchend',e=>{e.stopPropagation();if(e.changedTouches.length)seekTo(getPct(e.changedTouches[0].clientX));dragging=false;sw.classList.remove('dragging');clearTimeout(hideT);if(!ve.paused)hideT=setTimeout(hideC,3000);});
+   923→
+   924→// Hover tooltip
+   925→sw.addEventListener('mousemove',e=>{if(dragging)return;const p=getPct(e.clientX);stip.textContent=fmtS(p*(ve.duration||0));stip.style.left=Math.max(8,Math.min(92,p*100))+'%';});
+   926→
+   927→/* ═══════════════════════════════════════════════
+   928→   VOLUME SLIDER
+   929→   ═══════════════════════════════════════════════ */
+   930→function updateVolUI(){
+   931→  const v=ve.volume;
+   932→  volFill.style.height=(v*100)+'%';
+   933→  volThumb.style.bottom=(v*100)+'%';
+   934→  // Update icon
+   935→  const icon=volBtnIcon;
+   936→  if(!icon)return;
+   937→  const name=v===0?'volume-x':v<.5?'volume-1':'volume-2';
+   938→  icon.setAttribute('data-lucide',name);
+   939→  lucide.createIcons({nodes:[icon.parentElement]});
+   940→}
+   941→
+   942→bvol.addEventListener('click',e=>{
+   943→  e.stopPropagation();
+   944→  volWrap.classList.toggle('open');
+   945→});
+   946→
+   947→// Volume track drag
+   948→volTrack.addEventListener('mousedown',e=>{
+   949→  e.preventDefault();e.stopPropagation();
+   950→  volDragging=true;
+   951→  setVolFromY(e.clientY);
+   952→  const mv=e=>{setVolFromY(e.clientY);};
+   953→  const up=()=>{volDragging=false;document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+   954→  document.addEventListener('mousemove',mv);
+   955→  document.addEventListener('mouseup',up);
+   956→});
+   957→volTrack.addEventListener('touchstart',e=>{e.stopPropagation();volDragging=true;setVolFromY(e.touches[0].clientY);},{passive:true});
+   958→volTrack.addEventListener('touchmove',e=>{e.stopPropagation();setVolFromY(e.touches[0].clientY);},{passive:true});
+   959→volTrack.addEventListener('touchend',e=>{e.stopPropagation();volDragging=false;});
+   960→
+   961→function setVolFromY(clientY){
+   962→  const r=volTrack.getBoundingClientRect();
+   963→  let pct=Math.max(0,Math.min(1,1-(clientY-r.top)/r.height));
+   964→  ve.volume=pct;
+   965→  ve.muted=pct===0;
+   966→  updateVolUI();
+   967→}
+   968→
+   969→// Close volume on outside click
+   970→document.addEventListener('click',e=>{
+   971→  if(!volWrap.contains(e.target)&&e.target!==bvol&&!bvol.contains(e.target)){
+   972→    volWrap.classList.remove('open');
+   973→  }
+   974→});
+   975→
+   976→ve.addEventListener('volumechange',updateVolUI);
+   977→
+   978→/* ═══════════════════════════════════════════════
+   979→   LOAD EPISODE
+   980→   ═══════════════════════════════════════════════ */
+   981→function loadEp(i){
+   982→  cur=i;const ep=EPS[i];
+   983→  ve.src=ep.src;ve.load();
+   984→  vt.textContent=ep.title;
+   985→  document.title=ep.title+' — Video Player';
+   986→  emptyState.style.display='none';
+   987→  ve.play().catch(()=>{});
+   988→  refreshEp();showC();
+   989→}
+   990→function refreshEp(){
+   991→  document.querySelectorAll('.ei').forEach((el,i)=>el.classList.toggle('active',i===cur));
+   992→}
+   993→
+   994→/* ═══════════════════════════════════════════════
+   995→   BUILD EPISODE LIST (both panel & bottom sheet)
+   996→   ═══════════════════════════════════════════════ */
+   997→function buildEp(){
+   998→  const html=EPS.map((ep,i)=>`
+   999→    <div class="ei${i===cur?' active':''}" data-idx="${i}">
+  1000→      <div class="et">
+  1001→        ${ep.thumb?`<img src="${ep.thumb}" alt="${ep.title}" onerror="this.style.display='none'"/>`:''}
+  1002→        <div class="epo"><i data-lucide="play"></i></div>
+  1003→      </div>
+  1004→      <div class="ein">
+  1005→        <div class="en">EP ${i+1}</div>
+  1006→        <div class="etl">${ep.title}</div>
+  1007→        ${ep.desc?`<div class="ed">${ep.desc}</div>`:''}
+  1008→      </div>
+  1009→    </div>
+  1010→  `).join('');
+  1011→
+  1012→  // Desktop panel
+  1013→  epList.innerHTML=html;
+  1014→  epList.querySelectorAll('.ei').forEach(el=>{
+  1015→    el.addEventListener('click',()=>{
+  1016→      loadEp(+el.dataset.idx);
+  1017→      if(window.innerWidth<=600)closeEpP();
+  1018→    });
+  1019→  });
+  1020→
+  1021→  // Mobile bottom sheet
+  1022→  bsContent.innerHTML=`
+  1023→    <div style="padding:20px 18px 14px 22px;border-bottom:1px solid var(--panel-border);">
+  1024→      <h2 style="font-size:19px;font-weight:700;color:var(--panel-text);">Episodes</h2>
+  1025→    </div>
+  1026→  `+html;
+  1027→  bsContent.querySelectorAll('.ei').forEach(el=>{
+  1028→    el.addEventListener('click',()=>{
+  1029→      loadEp(+el.dataset.idx);
+  1030→      closeBs();
+  1031→    });
+  1032→  });
+  1033→
+  1034→  lucide.createIcons();
+  1035→
+  1036→  // Show/hide episode button
+  1037→  bep.style.display=EPS.length>1?'':'none';
+  1038→}
+  1039→
+  1040→/* ═══════════════════════════════════════════════
+  1041→   EPISODE PANEL (desktop)
+  1042→   ═══════════════════════════════════════════════ */
+  1043→function openEpP(){epPanel.classList.add('open');pw.classList.add('panel-open');bep.classList.add('active');}
+  1044→function closeEpP(){epPanel.classList.remove('open');pw.classList.remove('panel-open');bep.classList.remove('active');}
+  1045→
+  1046→/* ═══════════════════════════════════════════════
+  1047→   BOTTOM SHEET (mobile)
+  1048→   ═══════════════════════════════════════════════ */
+  1049→function openBs(){bsEl.classList.add('open');bsBack.classList.add('open');bep.classList.add('active');}
+  1050→function closeBs(){bsEl.classList.remove('open');bsBack.classList.remove('open');bep.classList.remove('active');}
+  1051→bsBack.addEventListener('click',closeBs);
+  1052→
+  1053→/* Episode button: open panel or bottom sheet depending on screen */
+  1054→bep.addEventListener('click',e=>{
+  1055→  e.stopPropagation();closeAllDD();
+  1056→  const isMobilePortrait=window.innerWidth<=600&&window.innerHeight>500;
+  1057→  if(isMobilePortrait){
+  1058→    bsEl.classList.contains('open')?closeBs():openBs();
+  1059→  }else{
+  1060→    epPanel.classList.contains('open')?closeEpP():openEpP();
+  1061→  }
+  1062→});
+  1063→bce.addEventListener('click',closeEpP);
+  1064→
+  1065→/* ═══════════════════════════════════════════════
+  1066→   PLAY/PAUSE
+  1067→   ═══════════════════════════════════════════════ */
+  1068→function togPlay(){ve.paused?ve.play().catch(()=>{}):ve.pause();}
+  1069→
+  1070→function setPlayIcon(playing){
+  1071→  iPlay.style.display=playing?'none':'block';
+  1072→  iPause.style.display=playing?'block':'none';
+  1073→  bpp.setAttribute('aria-label',playing?'Pause':'Play');
+  1074→}
+  1075→
+  1076→ve.addEventListener('play',()=>{
+  1077→  setPlayIcon(true);pw.classList.add('vp');
+  1078→  clearTimeout(hideT);hideT=setTimeout(hideC,3000);
+  1079→});
+  1080→ve.addEventListener('pause',()=>{
+  1081→  setPlayIcon(false);pw.classList.remove('vp');
+  1082→  showC(false);clearTimeout(hideT);
+  1083→});
+  1084→ve.addEventListener('ended',()=>{
+  1085→  setPlayIcon(false);pw.classList.remove('vp');showC(false);
+  1086→  if(looping){ve.currentTime=0;ve.play();return;}
+  1087→  if(cur<EPS.length-1)setTimeout(()=>loadEp(cur+1),600);
+  1088→});
+  1089→
+  1090→bpp.addEventListener('click',e=>{e.stopPropagation();rip(bpp);togPlay();});
+  1091→
+  1092→// Click on player area: toggle controls
+  1093→ctl.addEventListener('click',e=>{
+  1094→  if(e.target===ctl||e.target===document.getElementById('cc')){
+  1095→    if(ctl.classList.contains('hidden')){showC();}else{hideC();}
+  1096→  }
+  1097→});
+  1098→pw.addEventListener('click',e=>{
+  1099→  if(e.target===ve||e.target===pw){
+  1100→    e.stopPropagation();
+  1101→    if(ctl.classList.contains('hidden')){showC();}
+  1102→    else{clearTimeout(hideT);hideC();}
+  1103→  }
+  1104→});
+  1105→
+  1106→// Touch tap for mobile
+  1107→let tStart=0;
+  1108→pw.addEventListener('touchstart',e=>{if(e.target===ve||e.target===pw)tStart=Date.now();},{passive:true});
+  1109→pw.addEventListener('touchend',e=>{
+  1110→  if(e.target===ve||e.target===pw){
+  1111→    if(Date.now()-tStart<250){
+  1112→      e.preventDefault();
+  1113→      if(ctl.classList.contains('hidden')){showC();}
+  1114→      else{clearTimeout(hideT);hideC();}
+  1115→    }
+  1116→  }
+  1117→});
+  1118→
+  1119→/* ═══════════════════════════════════════════════
+  1120→   DOUBLE-TAP TO SKIP (mobile portrait)
+  1121→   ═══════════════════════════════════════════════ */
+  1122→(function initDoubleTap(){
+  1123→  let lastTap=0, lastSide=null;
+  1124→  function handleTap(side,e){
+  1125→    const now=Date.now();
+  1126→    if(now-lastTap<300&&lastSide===side){
+  1127→      // Double-tap!
+  1128→      const s=side==='left'?-10:10;
+  1129→      skip(s);
+  1130→      flash(side==='left'?'l':'r',(side==='left'?'-':'+')+'10s');
+  1131→      // Visual ripple
+  1132→      const zone=document.getElementById('dtap-'+side[0]);
+  1133→      const rect=zone.getBoundingClientRect();
+  1134→      const ripEl=document.createElement('div');
+  1135→      ripEl.className='dtap-ripple';
+  1136→      ripEl.style.left=(e.clientX-rect.left-35)+'px';
+  1137→      ripEl.style.top=(e.clientY-rect.top-35)+'px';
+  1138→      zone.appendChild(ripEl);
+  1139→      setTimeout(()=>ripEl.remove(),500);
+  1140→      lastTap=0;lastSide=null;
+  1141→    }else{
+  1142→      lastTap=now;lastSide=side;
+  1143→    }
+  1144→  }
+  1145→  // We listen on the video element directly for double-tap
+  1146→  let tapTimer=null;
+  1147→  ve.addEventListener('click',e=>{
+  1148→    // Only on mobile portrait
+  1149→    if(window.innerWidth>600||window.innerWidth>window.innerHeight)return;
+  1150→    const rect=ve.getBoundingClientRect();
+  1151→    const x=e.clientX-rect.left;
+  1152→    const side=x<rect.width*.45?'left':x>rect.width*.55?'right':null;
+  1153→    if(!side)return;
+  1154→    handleTap(side,e);
+  1155→  });
+  1156→  // Also handle touch since click may not fire
+  1157→  let touchSide=null,touchTime=0;
+  1158→  ve.addEventListener('touchend',e=>{
+  1159→    if(window.innerWidth>600||window.innerWidth>window.innerHeight)return;
+  1160→    if(!e.changedTouches.length)return;
+  1161→    const t=e.changedTouches[0];
+  1162→    const rect=ve.getBoundingClientRect();
+  1163→    const x=t.clientX-rect.left;
+  1164→    const side=x<rect.width*.45?'left':x>rect.width*.55?'right':null;
+  1165→    if(!side)return;
+  1166→    const now=Date.now();
+  1167→    if(now-touchTime<300&&touchSide===side){
+  1168→      const s=side==='left'?-10:10;
+  1169→      skip(s);
+  1170→      flash(side==='left'?'l':'r',(side==='left'?'-':'+')+'10s');
+  1171→      const zone=document.getElementById('dtap-'+side[0]);
+  1172→      const rect2=zone.getBoundingClientRect();
+  1173→      const ripEl=document.createElement('div');
+  1174→      ripEl.className='dtap-ripple';
+  1175→      ripEl.style.left=(t.clientX-rect2.left-35)+'px';
+  1176→      ripEl.style.top=(t.clientY-rect2.top-35)+'px';
+  1177→      zone.style.pointerEvents='all';
+  1178→      zone.appendChild(ripEl);
+  1179→      setTimeout(()=>{ripEl.remove();zone.style.pointerEvents='none';},500);
+  1180→      touchTime=0;touchSide=null;
+  1181→    }else{
+  1182→      touchTime=now;touchSide=side;
+  1183→    }
+  1184→  });
+  1185→})();
+  1186→
+  1187→/* ═══════════════════════════════════════════════
+  1188→   LOCK BUTTON (mobile portrait)
+  1189→   ═══════════════════════════════════════════════ */
+  1190→lockBtn.addEventListener('click',e=>{
+  1191→  e.stopPropagation();
+  1192→  locked=!locked;
+  1193→  pw.classList.toggle('locked',locked);
+  1194→  lockBtn.classList.toggle('locked',locked);
+  1195→  // Swap icon
+  1196→  const icon=lockBtn.querySelector('[data-lucide]');
+  1197→  icon.setAttribute('data-lucide',locked?'lock':'unlock');
+  1198→  lucide.createIcons({nodes:[lockBtn]});
+  1199→  toast_(locked?'Controls locked':'Controls unlocked');
+  1200→  if(!locked)showC();
+  1201→});
+  1202→
+  1203→/* ═══════════════════════════════════════════════
+  1204→   SKIP
+  1205→   ═══════════════════════════════════════════════ */
+  1206→function skip(s){ve.currentTime=Math.max(0,Math.min(ve.duration||0,ve.currentTime+s));}
+  1207→brw.addEventListener('click',e=>{e.stopPropagation();skip(-10);flash('l','-10s');});
+  1208→bfw.addEventListener('click',e=>{e.stopPropagation();skip(10);flash('r','+10s');});
+  1209→
+  1210→/* ═══════════════════════════════════════════════
+  1211→   SPINNER
+  1212→   ═══════════════════════════════════════════════ */
+  1213→ve.addEventListener('waiting',()=>spinEl.classList.add('show'));
+  1214→ve.addEventListener('canplay',()=>spinEl.classList.remove('show'));
+  1215→ve.addEventListener('playing',()=>spinEl.classList.remove('show'));
+  1216→
+  1217→/* ═══════════════════════════════════════════════
+  1218→   BACK
+  1219→   ═══════════════════════════════════════════════ */
+  1220→bb.addEventListener('click',e=>{e.stopPropagation();
+  1221→  if(window.history.length>1)window.history.back();
+  1222→  else toast_('No previous page');
+  1223→});
+  1224→
+  1225→/* ═══════════════════════════════════════════════
+  1226→   BOOKMARK
+  1227→   ═══════════════════════════════════════════════ */
+  1228→bbm.addEventListener('click',e=>{
+  1229→  e.stopPropagation();bookmarked=!bookmarked;
+  1230→  const ic=document.querySelector('#bm-icon');
+  1231→  ic.style.fill=bookmarked?'white':'none';
+  1232→  bbm.classList.toggle('active',bookmarked);
+  1233→  toast_(bookmarked?'Bookmarked':'Bookmark removed');
+  1234→});
+  1235→
+  1236→/* ═══════════════════════════════════════════════
+  1237→   PIP
+  1238→   ═══════════════════════════════════════════════ */
+  1239→bpip.addEventListener('click',e=>{
+  1240→  e.stopPropagation();
+  1241→  if(document.pictureInPictureEnabled&&ve!==document.pictureInPictureElement){
+  1242→    ve.requestPictureInPicture().catch(()=>toast_('PiP not available'));
+  1243→  }else if(document.pictureInPictureElement){
+  1244→    document.exitPictureInPicture();
+  1245→  }else toast_('PiP not supported');
+  1246→});
+  1247→
+  1248→/* ═══════════════════════════════════════════════
+  1249→   FULLSCREEN + LANDSCAPE
+  1250→   ═══════════════════════════════════════════════ */
+  1251→bfs.addEventListener('click',e=>{
+  1252→  e.stopPropagation();
+  1253→  if(!document.fullscreenElement){
+  1254→    (pw.requestFullscreen||pw.webkitRequestFullscreen||document.documentElement.requestFullscreen).call(pw).then(()=>{
+  1255→      if(screen.orientation&&screen.orientation.lock)screen.orientation.lock('landscape').catch(()=>{});
+  1256→    }).catch(()=>{});
+  1257→  }else{
+  1258→    document.exitFullscreen().then(()=>{
+  1259→      if(screen.orientation&&screen.orientation.unlock)screen.orientation.unlock();
+  1260→    }).catch(()=>{});
+  1261→  }
+  1262→});
+  1263→document.addEventListener('fullscreenchange',()=>{
+  1264→  const fs=!!document.fullscreenElement;
+  1265→  iMax.style.display=fs?'none':'';
+  1266→  iMin.style.display=fs?'':'none';
+  1267→});
+  1268→
+  1269→/* ═══════════════════════════════════════════════
+  1270→   DROPDOWNS
+  1271→   ═══════════════════════════════════════════════ */
+  1272→const DDS=[{btn:bdub,dd:ddDub},{btn:bcc,dd:ddCc},{btn:bst,dd:ddStt}];
+  1273→function posDD(dd,btn){
+  1274→  const br=btn.getBoundingClientRect();
+  1275→  const isMobilePortrait=window.innerWidth<=600&&window.innerHeight>500;
+  1276→  if(!isMobilePortrait){
+  1277→    dd.style.top=(br.bottom+6)+'px';
+  1278→    dd.style.right=Math.max(4,window.innerWidth-br.right)+'px';
+  1279→    dd.style.left='auto';
+  1280→  }
+  1281→  if(dd.id==='dd-stt'){
+  1282→    const avail=window.innerHeight-br.bottom-14;
+  1283→    dd.style.maxHeight=Math.max(80,avail)+'px';
+  1284→  }
+  1285→}
+  1286→function closeAllDD(){
+  1287→  DDS.forEach(({btn,dd})=>{dd.classList.remove('open');btn.classList.remove('active');});
+  1288→  volWrap.classList.remove('open');
+  1289→}
+  1290→DDS.forEach(({btn,dd})=>{
+  1291→  btn.addEventListener('click',e=>{
+  1292→    e.stopPropagation();
+  1293→    const was=dd.classList.contains('open');
+  1294→    closeAllDD();
+  1295→    if(!was){posDD(dd,btn);dd.classList.add('open');btn.classList.add('active');}
+  1296→  });
+  1297→});
+  1298→document.addEventListener('click',closeAllDD);
+  1299→
+  1300→// Dropdown item select
+  1301→document.querySelectorAll('.di[data-g]').forEach(item=>{
+  1302→  item.addEventListener('click',e=>{
+  1303→    e.stopPropagation();
+  1304→    const g=item.dataset.g,v=item.dataset.v;
+  1305→    if(g==='loop'){
+  1306→      looping=!looping;ve.loop=looping;
+  1307→      item.classList.toggle('selected',looping);
+  1308→      toast_(looping?'Loop: On':'Loop: Off');return;
+  1309→    }
+  1310→    document.querySelectorAll(`.di[data-g="${g}"]`).forEach(i=>i.classList.remove('selected'));
+  1311→    item.classList.add('selected');
+  1312→    if(g==='spd'){ve.playbackRate=parseFloat(v);toast_('Speed: '+v+'x');}
+  1313→    else if(g==='q'){toast_('Quality: '+(v==='auto'?'Auto':v+'p'));}
+  1314→    else if(g==='dub'){toast_('Audio: '+item.textContent.trim());}
+  1315→    else if(g==='cc'){toast_('Subtitle: '+item.textContent.trim());}
+  1316→    setTimeout(closeAllDD,200);
+  1317→  });
+  1318→});
+  1319→ctl.addEventListener('click',closeAllDD);
+  1320→
+  1321→/* ═══════════════════════════════════════════════
+  1322→   KEYBOARD
+  1323→   ═══════════════════════════════════════════════ */
+  1324→document.addEventListener('keydown',e=>{
+  1325→  if(['INPUT','TEXTAREA'].includes(e.target.tagName))return;
+  1326→  switch(e.code){
+  1327→    case'Space':e.preventDefault();togPlay();break;
+  1328→    case'ArrowLeft':skip(-10);flash('l','-10s');break;
+  1329→    case'ArrowRight':skip(10);flash('r','+10s');break;
+  1330→    case'ArrowUp':e.preventDefault();ve.volume=Math.min(1,ve.volume+.1);updateVolUI();toast_('Vol: '+Math.round(ve.volume*100)+'%');break;
+  1331→    case'ArrowDown':e.preventDefault();ve.volume=Math.max(0,ve.volume-.1);updateVolUI();toast_('Vol: '+Math.round(ve.volume*100)+'%');break;
+  1332→    case'KeyF':bfs.click();break;
+  1333→    case'KeyM':ve.muted=!ve.muted;updateVolUI();toast_(ve.muted?'Muted':'Unmuted');break;
+  1334→    case'Escape':closeAllDD();closeEpP();closeBs();break;
+  1335→    case'KeyL':lockBtn.click();break;
+  1336→  }
+  1337→});
+  1338→
+  1339→/* ═══════════════════════════════════════════════
+  1340→   ORIENTATION CHANGE HANDLER
+  1341→   ═══════════════════════════════════════════════ */
+  1342→function handleOrientation(){
+  1343→  closeAllDD();closeEpP();closeBs();
+  1344→}
+  1345→window.addEventListener('orientationchange',()=>setTimeout(handleOrientation,200));
+  1346→
+  1347→/* ═══════════════════════════════════════════════
+  1348→   SWIPE VOLUME GESTURE (mobile)
+  1349→   ═══════════════════════════════════════════════ */
+  1350→(function initSwipeVolume(){
+  1351→  let startY=0,startVol=0,swiping=false;
+  1352→  const leftZone=30; // right 30% of screen
+  1353→  ve.addEventListener('touchstart',e=>{
+  1354→    if(!e.touches.length)return;
+  1355→    const x=e.touches[0].clientX;
+  1356→    const w=window.innerWidth;
+  1357→    // Only activate in right zone
+  1358→    if(x>w*.7){
+  1359→      startY=e.touches[0].clientY;
+  1360→      startVol=ve.volume;
+  1361→      swiping=true;
+  1362→    }
+  1363→  },{passive:true});
+  1364→  ve.addEventListener('touchmove',e=>{
+  1365→    if(!swiping||!e.touches.length)return;
+  1366→    const dy=startY-e.touches[0].clientY;
+  1367→    const sensitivity=0.008;
+  1368→    const newVol=Math.max(0,Math.min(1,startVol+dy*sensitivity));
+  1369→    ve.volume=newVol;
+  1370→    ve.muted=newVol===0;
+  1371→    updateVolUI();
+  1372→    toast_('Vol: '+Math.round(newVol*100)+'%');
+  1373→  },{passive:true});
+  1374→  ve.addEventListener('touchend',()=>{swiping=false;},{passive:true});
+  1375→})();
+  1376→
+  1377→/* ═══════════════════════════════════════════════
+  1378→   BRIGHTNESS GESTURE (mobile — left side swipe)
+  1379→   ═══════════════════════════════════════════════ */
+  1380→(function initSwipeBrightness(){
+  1381→  let startY=0,startBright=1,swiping=false;
+  1382→  // We store brightness in a CSS filter
+  1383→  ve.addEventListener('touchstart',e=>{
+  1384→    if(!e.touches.length)return;
+  1385→    const x=e.touches[0].clientX;
+  1386→    const w=window.innerWidth;
+  1387→    if(x<w*.3){
+  1388→      startY=e.touches[0].clientY;
+  1389→      startBright=parseFloat(ve.style.filter?.match(/brightness\(([\d.]+)\)/)?.[1]||1);
+  1390→      swiping=true;
+  1391→    }
+  1392→  },{passive:true});
+  1393→  ve.addEventListener('touchmove',e=>{
+  1394→    if(!swiping||!e.touches.length)return;
+  1395→    const dy=startY-e.touches[0].clientY;
+  1396→    const sensitivity=0.005;
+  1397→    const newB=Math.max(.3,Math.min(1.5,startBright+dy*sensitivity));
+  1398→    ve.style.filter=`brightness(${newB})`;
+  1399→    toast_('Brightness: '+Math.round(newB/1.5*100)+'%');
+  1400→  },{passive:true});
+  1401→  ve.addEventListener('touchend',()=>{swiping=false;},{passive:true});
+  1402→})();
+  1403→
+  1404→/* ═══════════════════════════════════════════════
+  1405→   INIT
+  1406→   ═══════════════════════════════════════════════ */
+  1407→lucide.createIcons();
+  1408→buildEp();
+  1409→updateVolUI();
+  1410→
+  1411→// Auto-load first episode if available
+  1412→if(EPS.length>0){
+  1413→  loadEp(0);
+  1414→}else{
+  1415→  // Show empty state, controls visible
+  1416→  showC(false);
+  1417→  vt.textContent='No video loaded';
+  1418→}
+  1419→
+  1420→/* ═══════════════════════════════════════════════
+  1421→   PUBLIC API — load videos programmatically
+  1422→   ═══════════════════════════════════════════════ */
+  1423→window.playerAPI = {
+  1424→  load(src, title='', desc='', thumb=''){
+  1425→    EPS.length=0;
+  1426→    EPS.push({title:title||'Video',desc:desc||'',src,thumb:thumb||''});
+  1427→    buildEp();loadEp(0);
+  1428→  },
+  1429→  addEpisode(title, src, desc='', thumb=''){
+  1430→    EPS.push({title,desc,src,thumb});
+  1431→    buildEp();
+  1432→  },
+  1433→  play(){ve.play().catch(()=>{});},
+  1434→  pause(){ve.pause();},
+  1435→  seek(time){ve.currentTime=time;},
+  1436→  setVolume(v){ve.volume=Math.max(0,Math.min(1,v));updateVolUI();},
+  1437→  getVideoElement(){return ve;}
+  1438→};
+  1439→</script>
+  1440→</body>
+  1441→</html>
+  1442→
