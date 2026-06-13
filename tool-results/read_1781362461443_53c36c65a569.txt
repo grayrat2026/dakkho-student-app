@@ -1,0 +1,909 @@
+     1→// DAKKHO API Client — All calls go through Worker API
+     2→const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ||
+     3→  'https://dakkho-admin-api.dakkho-admin.workers.dev';
+     4→
+     5→const AUTH_TOKEN_KEY = 'dakkho_student_token';
+     6→const PENDING_TOKEN_KEY = 'dakkho_pending_verification_token';
+     7→
+     8→export function getAuthToken(): string | null {
+     9→  if (typeof window === 'undefined') return null;
+    10→  // Check the main token first, then fall back to pending verification token
+    11→  // (used during signup flow before OTP verification is complete)
+    12→  return localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(PENDING_TOKEN_KEY);
+    13→}
+    14→
+    15→export function getPendingVerificationToken(): string | null {
+    16→  if (typeof window === 'undefined') return null;
+    17→  return localStorage.getItem(PENDING_TOKEN_KEY);
+    18→}
+    19→
+    20→export function setPendingVerificationToken(token: string): void {
+    21→  localStorage.setItem(PENDING_TOKEN_KEY, token);
+    22→}
+    23→
+    24→export function clearPendingVerificationToken(): void {
+    25→  localStorage.removeItem(PENDING_TOKEN_KEY);
+    26→}
+    27→
+    28→export function setAuthToken(token: string): void {
+    29→  localStorage.setItem(AUTH_TOKEN_KEY, token);
+    30→}
+    31→
+    32→export function clearAuthToken(): void {
+    33→  localStorage.removeItem(AUTH_TOKEN_KEY);
+    34→}
+    35→
+    36→async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    37→  const url = `${API_BASE}${path}`;
+    38→  const headers: Record<string, string> = {
+    39→    'Content-Type': 'application/json',
+    40→    ...(options.headers as Record<string, string> || {}),
+    41→  };
+    42→
+    43→  const token = getAuthToken();
+    44→  if (token) {
+    45→    headers['Authorization'] = `Bearer ${token}`;
+    46→  }
+    47→
+    48→  const res = await fetch(url, { ...options, headers });
+    49→
+    50→  if (!res.ok) {
+    51→    const data = await res.json().catch(() => ({}));
+    52→    throw { status: res.status, message: data.error || data.message || 'Request failed', ...data };
+    53→  }
+    54→
+    55→  return res.json() as Promise<T>;
+    56→}
+    57→
+    58→export const api = {
+    59→  get: <T>(path: string) => request<T>(path, { method: 'GET' }),
+    60→  post: <T>(path: string, body: unknown) => request<T>(path, {
+    61→    method: 'POST', body: JSON.stringify(body),
+    62→  }),
+    63→  put: <T>(path: string, body: unknown) => request<T>(path, {
+    64→    method: 'PUT', body: JSON.stringify(body),
+    65→  }),
+    66→  delete: <T>(path: string, body?: unknown) => request<T>(path, {
+    67→    method: 'DELETE', body: body ? JSON.stringify(body) : undefined,
+    68→  }),
+    69→};
+    70→
+    71→// ============ TYPE-SAFE API FUNCTIONS ============
+    72→
+    73→export interface Institute {
+    74→  id: number;
+    75→  name: string;
+    76→  name_bn: string;
+    77→  division: string;
+    78→  district: string;
+    79→  eiin_number: string;
+    80→  type: string;
+    81→  is_active: number;
+    82→}
+    83→
+    84→export interface Technology {
+    85→  id: number;
+    86→  name: string;
+    87→  name_bn: string;
+    88→  short_code: string;
+    89→  description: string;
+    90→  is_active: number;
+    91→}
+    92→
+    93→export interface LiveClass {
+    94→  id: number;
+    95→  course_id: string;
+    96→  title: string;
+    97→  title_bn: string;
+    98→  description: string;
+    99→  instructor_id: string;
+   100→  technology_id: number;
+   101→  scheduled_at: string;
+   102→  duration_minutes: number;
+   103→  meeting_url: string;
+   104→  platform: string;
+   105→  status: string;
+   106→  recording_url: string;
+   107→}
+   108→
+   109→export interface Event {
+   110→  id: number;
+   111→  title: string;
+   112→  title_bn: string;
+   113→  description: string;
+   114→  event_type: string;
+   115→  banner_url: string;
+   116→  start_date: string;
+   117→  end_date: string;
+   118→  is_featured: number;
+   119→}
+   120→
+   121→export interface CoursePackage {
+   122→  id: number;
+   123→  course_id: string;
+   124→  package_type: string;
+   125→  price: number;
+   126→  duration_months: number;
+   127→  max_users: number;
+   128→  is_auto_assign: number;
+   129→  is_active: number;
+   130→}
+   131→
+   132→export interface UserPackage {
+   133→  id: number;
+   134→  user_id: string;
+   135→  package_id: number;
+   136→  course_id: string;
+   137→  package_type: string;
+   138→  activated_at: string;
+   139→  expires_at: string;
+   140→  status: string;
+   141→  price: number;
+   142→  duration_months: number;
+   143→}
+   144→
+   145→export interface PaymentConfig {
+   146→  id: number;
+   147→  gateway: string;
+   148→  is_active: number;
+   149→  instructions: string;
+   150→  instructions_bn: string;
+   151→  sandbox_mode: number;
+   152→}
+   153→
+   154→export interface PaymentOrder {
+   155→  success: boolean;
+   156→  order_id: string;
+   157→  pp_url: string;
+   158→  pp_id: string;
+   159→  amount: number;
+   160→  currency: string;
+   161→}
+   162→
+   163→export interface EnrollmentStatus {
+   164→  enrolled: boolean;
+   165→  enrollment: any;
+   166→  paymentStatus: 'none' | 'pending' | 'expired' | 'completed';
+   167→}
+   168→
+   169→export interface AuthResponse {
+   170→  success: boolean;
+   171→  token: string;
+   172→  userId?: string;
+   173→  user?: {
+   174→    id: string;
+   175→    name: string;
+   176→    email: string;
+   177→    instituteId: number | null;
+   178→    instituteName: string | null;
+   179→    technology: string | null;
+   180→    technologyName: string | null;
+   181→    emailVerified: boolean;
+   182→    packages: UserPackage[];
+   183→  };
+   184→  message?: string;
+   185→}
+   186→
+   187→export interface UserProfile {
+   188→  id: string;
+   189→  email: string;
+   190→  name: string;
+   191→  instituteId: number | null;
+   192→  instituteName: string | null;
+   193→  technology: string | null;
+   194→  technologyName: string | null;
+   195→  emailVerified: boolean;
+   196→  packages: UserPackage[];
+   197→}
+   198→
+   199→// Auth
+   200→export const authApi = {
+   201→  signup: (data: { fullName: string; email: string; password: string; instituteId?: number; technology?: string }) =>
+   202→    api.post<AuthResponse>('/api/auth/signup', data),
+   203→  login: (data: { email: string; password: string }) =>
+   204→    api.post<AuthResponse>('/api/auth/login', data),
+   205→  logout: () =>
+   206→    api.post<{ success: boolean }>('/api/auth/logout', {}),
+   207→  me: () =>
+   208→    api.get<{ user: UserProfile }>('/api/auth/me'),
+   209→  verifyOTP: (data: { email: string; otp: string }) =>
+   210→    api.post<{ success: boolean; message: string }>('/api/auth/verify-otp', data),
+   211→  forgotPassword: (data: { email: string }) =>
+   212→    api.post<{ success: boolean; message: string }>('/api/auth/forgot-password', data),
+   213→  resetPassword: (data: { email: string; otp: string; newPassword: string }) =>
+   214→    api.post<{ success: boolean; message: string }>('/api/auth/reset-password', data),
+   215→  resendOTP: (data: { email: string }) =>
+   216→    api.post<{ success: boolean; message: string }>('/api/auth/resend-otp', data),
+   217→  otpCooldown: (email: string) =>
+   218→    api.get<{ cooldownSeconds: number }>(`/api/auth/otp-cooldown?email=${encodeURIComponent(email)}`),
+   219→  updateProfile: (data: { fullName?: string; instituteId?: number; technology?: string; bio?: string; phone?: string; semester?: string; avatarUrl?: string }) =>
+   220→    api.put<{ success: boolean; user: UserProfile }>('/api/auth/profile', data),
+   221→};
+   222→
+   223→// Institutes
+   224→export const instituteApi = {
+   225→  list: (params?: { division?: string; search?: string; page?: number; limit?: number }) => {
+   226→    const query = new URLSearchParams();
+   227→    if (params?.division) query.set('division', params.division);
+   228→    if (params?.search) query.set('search', params.search);
+   229→    if (params?.page) query.set('page', String(params.page));
+   230→    if (params?.limit) query.set('limit', String(params.limit));
+   231→    const qs = query.toString();
+   232→    return api.get<{ institutes: Institute[]; total: number }>(`/api/institutes${qs ? `?${qs}` : ''}`);
+   233→  },
+   234→  get: (id: number) =>
+   235→    api.get<{ institute: Institute }>(`/api/institutes/${id}`),
+   236→  requestNew: (data: { institute_name: string; institute_name_bn?: string; division?: string; district?: string }) =>
+   237→    api.post<{ success: boolean; message: string }>('/api/institutes/requests', data),
+   238→  myRequests: () =>
+   239→    api.get<{ requests: any[] }>('/api/institutes/requests/mine'),
+   240→};
+   241→
+   242→// Technologies
+   243→export const technologyApi = {
+   244→  list: () =>
+   245→    api.get<{ technologies: Technology[] }>('/api/technologies'),
+   246→};
+   247→
+   248→// Events
+   249→export const eventApi = {
+   250→  list: () =>
+   251→    api.get<{ events: Event[] }>('/api/events'),
+   252→};
+   253→
+   254→// Live Classes
+   255→export const liveClassApi = {
+   256→  list: () =>
+   257→    api.get<{ liveClasses: LiveClass[] }>('/api/live-classes'),
+   258→};
+   259→
+   260→// Course Packages
+   261→export const packageApi = {
+   262→  list: (courseId: string) =>
+   263→    api.get<{ packages: CoursePackage[] }>(`/api/course-packages?courseId=${courseId}`),
+   264→  mine: () =>
+   265→    api.get<{ packages: UserPackage[] }>('/api/packages/mine'),
+   266→};
+   267→
+   268→// Payments
+   269→export const paymentApi = {
+   270→  submit: (data: { package_id: number; trx_id: string; phone?: string; proof_url?: string }) =>
+   271→    api.post<{ success: boolean; message: string }>('/api/payments/submit', data),
+   272→  config: () =>
+   273→    api.get<{ paymentConfig: PaymentConfig[] }>('/api/config/payment'),
+   274→  // Piprapay checkout
+   275→  create: (data: { course_id: string; package_id?: number; customer_name?: string; customer_email?: string; customer_phone?: string }) =>
+   276→    api.post<{ success: boolean; order_id: string; pp_url: string; pp_id: string; amount: number; currency: string }>('/api/payments/create', data),
+   277→  getStatus: (orderId: string) =>
+   278→    api.get<{ status: string; order_id: string; amount: number; enrolled: boolean; enrollment?: any }>('/api/payments/status?order_id=' + orderId),
+   279→  getHistory: () =>
+   280→    api.get<{ payments: any[] }>('/api/payments/history'),
+   281→};
+   282→
+   283→// Enrollments
+   284→export const enrollmentApi = {
+   285→  check: (courseId: string) =>
+   286→    api.get<{ enrolled: boolean; enrollment: any; paymentStatus: string }>('/api/enrollments/check?course_id=' + courseId),
+   287→  enrollFree: (data: { course_id: string; package_id?: number }) =>
+   288→    api.post<{ success: boolean; enrollment: any }>('/api/enroll', data),
+   289→};
+   290→
+   291→// Coupons
+   292→export const couponApi = {
+   293→  validate: (code: string) =>
+   294→    api.get<{ valid: boolean; coupon?: any; error?: string }>(`/api/coupons/validate?code=${code}`),
+   295→};
+   296→
+   297→// Config
+   298→export const configApi = {
+   299→  get: () =>
+   300→    api.get<{ config: Record<string, any> }>('/api/config'),
+   301→};
+   302→
+   303→// Push Notifications
+   304→export const pushApi = {
+   305→  register: (data: { push_token: string; device_type?: string; device_info?: string }) =>
+   306→    api.post<{ success: boolean }>('/api/push/register', data),
+   307→  unregister: (data: { push_token: string }) =>
+   308→    api.delete<{ success: boolean }>('/api/push/unregister', data),
+   309→};
+   310→
+   311→// ============ COURSE / INSTRUCTOR / CATEGORY TYPES ============
+   312→
+   313→export interface Course {
+   314→  id: string;
+   315→  title: string;
+   316→  slug: string;
+   317→  description: string;
+   318→  thumbnailUrl: string;
+   319→  categoryId: string;
+   320→  instructorId: string;
+   321→  level: 'beginner' | 'intermediate' | 'advanced' | 'expert';
+   322→  language: string;
+   323→  duration: number;
+   324→  totalVideos: number;
+   325→  rating: number;
+   326→  totalReviews: number;
+   327→  totalStudents: number;
+   328→  isFeatured: boolean;
+   329→  tags: string[];
+   330→  price: number;
+   331→  semester: number | null;
+   332→  whatYouLearn: string[];
+   333→}
+   334→
+   335→export interface Instructor {
+   336→  id: string;
+   337→  name: string;
+   338→  bio: string;
+   339→  avatarUrl: string;
+   340→  coverUrl: string;
+   341→  specialization: string;
+   342→  rating: number;
+   343→  totalStudents: number;
+   344→  totalCourses: number;
+   345→  socialLinks?: { platform: string; url: string }[];
+   346→}
+   347→
+   348→export interface Category {
+   349→  id: string;
+   350→  name: string;
+   351→  slug: string;
+   352→  icon: string;
+   353→  color: string;
+   354→  courseCount: number;
+   355→}
+   356→
+   357→export interface Chapter {
+   358→  id: string;
+   359→  courseId: string;
+   360→  subjectId: string;
+   361→  title: string;
+   362→  slug: string;
+   363→  description: string;
+   364→  sortOrder: number;
+   365→  isActive: boolean;
+   366→}
+   367→
+   368→export interface Lesson {
+   369→  id: string;
+   370→  chapterId: string;
+   371→  courseId: string;
+   372→  subjectId: string;
+   373→  title: string;
+   374→  slug: string;
+   375→  description: string;
+   376→  lessonType: 'lecture' | 'unit' | 'part' | 'extra_class' | 'assignment' | 'quiz' | 'note' | 'other';
+   377→  sortOrder: number;
+   378→  isPreview: boolean;
+   379→  isActive: boolean;
+   380→  duration: number;
+   381→}
+   382→
+   383→export interface LearningPoint {
+   384→  id: number;
+   385→  pointText: string;
+   386→  sortOrder: number;
+   387→}
+   388→
+   389→export interface Video {
+   390→  id: string;
+   391→  title: string;
+   392→  slug: string;
+   393→  courseId: string;
+   394→  subjectId: string;
+   395→  chapterId: string;
+   396→  lessonId: string;
+   397→  lessonType: string;
+   398→  duration: number;
+   399→  order: number;
+   400→  isPreview: boolean;
+   401→  description: string;
+   402→}
+   403→
+   404→// ============ D1 → TypeScript DATA MAPPERS ============
+   405→// D1 returns snake_case fields; our TypeScript types use camelCase.
+   406→// These mappers bridge the gap so the UI always gets the right shape.
+   407→
+   408→/** Parse a string into a string array — handles comma-separated, JSON array, or single value */
+   409→function parseTags(value: unknown): string[] {
+   410→  if (Array.isArray(value)) return value.map(String);
+   411→  if (typeof value === 'string' && value.trim()) {
+   412→    try {
+   413→      const parsed = JSON.parse(value);
+   414→      if (Array.isArray(parsed)) return parsed.map(String);
+   415→    } catch {}
+   416→    return value.split(',').map((s: string) => s.trim()).filter(Boolean);
+   417→  }
+   418→  return [];
+   419→}
+   420→
+   421→/** Map a raw D1 course row → our Course interface */
+   422→function mapCourse(raw: Record<string, unknown>): Course {
+   423→  return {
+   424→    id: String(raw.id ?? ''),
+   425→    title: String(raw.title ?? ''),
+   426→    slug: String(raw.slug ?? ''),
+   427→    description: String(raw.description ?? ''),
+   428→    thumbnailUrl: String(raw.thumbnail_url ?? raw.thumbnailUrl ?? ''),
+   429→    categoryId: String(raw.category_id ?? raw.categoryId ?? ''),
+   430→    instructorId: String(raw.instructor_id ?? raw.instructorId ?? ''),
+   431→    level: (String(raw.level ?? 'beginner')) as Course['level'],
+   432→    language: String(raw.language ?? ''),
+   433→    duration: Number(raw.total_duration_minutes ?? raw.duration ?? 0),
+   434→    totalVideos: Number(raw.total_videos ?? raw.totalVideos ?? 0),
+   435→    rating: Number(raw.rating_avg ?? raw.rating ?? 0),
+   436→    totalReviews: Number(raw.rating_count ?? raw.totalReviews ?? 0),
+   437→    totalStudents: Number(raw.enrollment_count ?? raw.totalStudents ?? 0),
+   438→    isFeatured: Boolean(raw.is_featured ?? raw.isFeatured ?? false),
+   439→    tags: parseTags(raw.tags),
+   440→    price: Number(raw.price ?? raw.price_bdt ?? 0),
+   441→    semester: raw.semester != null ? Number(raw.semester) : null,
+   442→    whatYouLearn: parseTags(raw.what_you_learn ?? raw.whatYouLearn),
+   443→  };
+   444→}
+   445→
+   446→/** Map a raw D1 instructor row → our Instructor interface */
+   447→function mapInstructor(raw: Record<string, unknown>): Instructor {
+   448→  return {
+   449→    id: String(raw.id ?? ''),
+   450→    name: String(raw.name ?? ''),
+   451→    bio: String(raw.bio ?? ''),
+   452→    avatarUrl: String(raw.avatar_url ?? raw.avatarUrl ?? ''),
+   453→    coverUrl: String(raw.banner_url ?? raw.coverUrl ?? ''),
+   454→    specialization: String(raw.specialization ?? ''),
+   455→    rating: Number(raw.rating_avg ?? raw.rating ?? 0),
+   456→    totalStudents: Number(raw.total_students ?? raw.totalStudents ?? 0),
+   457→    totalCourses: Number(raw.total_courses ?? raw.totalCourses ?? 0),
+   458→    socialLinks: raw.social_links
+   459→      ? (Array.isArray(raw.social_links) ? raw.social_links : parseTags(raw.social_links))
+   460→      : undefined,
+   461→  };
+   462→}
+   463→
+   464→/** Map a raw D1 video row → our Video interface */
+   465→function mapVideo(raw: Record<string, unknown>): Video {
+   466→  return {
+   467→    id: String(raw.id ?? ''),
+   468→    title: String(raw.title ?? ''),
+   469→    slug: String(raw.slug ?? ''),
+   470→    courseId: String(raw.course_id ?? raw.courseId ?? ''),
+   471→    subjectId: String(raw.subject_id ?? raw.subjectId ?? ''),
+   472→    chapterId: String(raw.chapter_id ?? raw.chapterId ?? ''),
+   473→    lessonId: String(raw.lesson_id ?? raw.lessonId ?? ''),
+   474→    lessonType: String(raw.lesson_type ?? raw.lessonType ?? ''),
+   475→    duration: Number(raw.duration_seconds ?? raw.duration ?? 0),
+   476→    order: Number(raw.sort_order ?? raw.order ?? 0),
+   477→    isPreview: Boolean(raw.is_preview ?? raw.isPreview ?? false),
+   478→    description: String(raw.description ?? ''),
+   479→  };
+   480→}
+   481→
+   482→/** Map a raw D1 chapter row → our Chapter interface */
+   483→function mapChapter(raw: Record<string, unknown>): Chapter {
+   484→  return {
+   485→    id: String(raw.id ?? ''),
+   486→    courseId: String(raw.course_id ?? raw.courseId ?? ''),
+   487→    subjectId: String(raw.subject_id ?? raw.subjectId ?? ''),
+   488→    title: String(raw.title ?? ''),
+   489→    slug: String(raw.slug ?? ''),
+   490→    description: String(raw.description ?? ''),
+   491→    sortOrder: Number(raw.sort_order ?? raw.sortOrder ?? 0),
+   492→    isActive: Boolean(raw.is_active ?? raw.isActive ?? true),
+   493→  };
+   494→}
+   495→
+   496→/** Map a raw D1 lesson row → our Lesson interface */
+   497→function mapLesson(raw: Record<string, unknown>): Lesson {
+   498→  return {
+   499→    id: String(raw.id ?? ''),
+   500→    chapterId: String(raw.chapter_id ?? raw.chapterId ?? ''),
+   501→    courseId: String(raw.course_id ?? raw.courseId ?? ''),
+   502→    subjectId: String(raw.subject_id ?? raw.subjectId ?? ''),
+   503→    title: String(raw.title ?? ''),
+   504→    slug: String(raw.slug ?? ''),
+   505→    description: String(raw.description ?? ''),
+   506→    lessonType: (String(raw.lesson_type ?? raw.lessonType ?? 'other')) as Lesson['lessonType'],
+   507→    sortOrder: Number(raw.sort_order ?? raw.sortOrder ?? 0),
+   508→    isPreview: Boolean(raw.is_preview ?? raw.isPreview ?? false),
+   509→    isActive: Boolean(raw.is_active ?? raw.isActive ?? true),
+   510→    duration: Number(raw.duration_seconds ?? raw.duration ?? 0),
+   511→  };
+   512→}
+   513→
+   514→/** Map a raw D1 learning_point row → our LearningPoint interface */
+   515→function mapLearningPoint(raw: Record<string, unknown>): LearningPoint {
+   516→  return {
+   517→    id: Number(raw.id ?? 0),
+   518→    pointText: String(raw.point_text ?? raw.pointText ?? ''),
+   519→    sortOrder: Number(raw.sort_order ?? raw.sortOrder ?? 0),
+   520→  };
+   521→}
+   522→
+   523→// ============ COURSE API ============
+   524→export const courseApi = {
+   525→  list: async (params?: { technology?: string; limit?: number; offset?: number; search?: string; level?: string }): Promise<{ courses: Course[]; total: number }> => {
+   526→    const query = new URLSearchParams();
+   527→    if (params?.technology) query.set('technology', params.technology);
+   528→    if (params?.limit) query.set('limit', String(params.limit));
+   529→    if (params?.offset) query.set('offset', String(params.offset));
+   530→    if (params?.search) query.set('search', params.search);
+   531→    if (params?.level) query.set('level', params.level);
+   532→    const qs = query.toString();
+   533→    const res = await api.get<{ courses: Record<string, unknown>[]; total: number }>(`/api/courses${qs ? `?${qs}` : ''}`);
+   534→    return { courses: res.courses.map(mapCourse), total: res.total };
+   535→  },
+   536→  get: async (id: string): Promise<{ course: Course; instructors: Instructor[] }> => {
+   537→    const res = await api.get<{ course: Record<string, unknown>; instructors?: Record<string, unknown>[] }>(`/api/courses/${id}`);
+   538→    const instructors = (res.instructors || []).map(mapInstructor);
+   539→    return { course: mapCourse(res.course), instructors };
+   540→  },
+   541→  videos: async (id: string): Promise<{ videos: Video[]; total: number }> => {
+   542→    const res = await api.get<{ videos: Record<string, unknown>[]; total: number }>(`/api/courses/${id}/videos`);
+   543→    return { videos: res.videos.map(mapVideo), total: res.total };
+   544→  },
+   545→  curriculum: async (id: string): Promise<{ subjects: any[]; chapters: Chapter[]; lessons: Lesson[]; videos: Video[]; learningPoints: LearningPoint[] }> => {
+   546→    const res = await api.get<{ subjects: Record<string, unknown>[]; chapters: Record<string, unknown>[]; lessons: Record<string, unknown>[]; videos: Record<string, unknown>[]; learningPoints: Record<string, unknown>[] }>(`/api/courses/${id}/curriculum`);
+   547→    return {
+   548→      subjects: res.subjects || [],
+   549→      chapters: (res.chapters || []).map(mapChapter),
+   550→      lessons: (res.lessons || []).map(mapLesson),
+   551→      videos: (res.videos || []).map(mapVideo),
+   552→      learningPoints: (res.learningPoints || (res as any).learning_points || []).map(mapLearningPoint),
+   553→    };
+   554→  },
+   555→};
+   556→
+   557→// ============ INSTRUCTOR API ============
+   558→export const instructorApi = {
+   559→  list: async (params?: { search?: string; limit?: number; offset?: number }): Promise<{ instructors: Instructor[]; total: number }> => {
+   560→    const query = new URLSearchParams();
+   561→    if (params?.search) query.set('search', params.search);
+   562→    if (params?.limit) query.set('limit', String(params.limit));
+   563→    if (params?.offset) query.set('offset', String(params.offset));
+   564→    const qs = query.toString();
+   565→    const res = await api.get<{ instructors: Record<string, unknown>[]; total: number }>(`/api/instructors${qs ? `?${qs}` : ''}`);
+   566→    return { instructors: res.instructors.map(mapInstructor), total: res.total };
+   567→  },
+   568→  get: async (id: string): Promise<{ instructor: Instructor }> => {
+   569→    const res = await api.get<{ instructor: Record<string, unknown> }>(`/api/instructors/${id}`);
+   570→    return { instructor: mapInstructor(res.instructor) };
+   571→  },
+   572→  courses: async (id: string): Promise<{ courses: Course[] }> => {
+   573→    const res = await api.get<{ courses: Record<string, unknown>[] }>(`/api/instructors/${id}/courses`);
+   574→    return { courses: res.courses.map(mapCourse) };
+   575→  },
+   576→};
+   577→
+   578→// ============ CATEGORY API ============
+   579→export const categoryApi = {
+   580→  list: async (): Promise<{ categories: Category[] }> => {
+   581→    // Categories may come from technologies in D1 or a dedicated categories table
+   582→    try {
+   583→      const res = await api.get<{ categories: Record<string, unknown>[] }>('/api/categories');
+   584→      return {
+   585→        categories: res.categories.map((c) => ({
+   586→          id: String(c.id ?? ''),
+   587→          name: String(c.name ?? ''),
+   588→          slug: String(c.slug ?? c.short_code ?? ''),
+   589→          icon: String(c.icon ?? ''),
+   590→          color: String(c.color ?? ''),
+   591→          courseCount: Number(c.course_count ?? c.courseCount ?? 0),
+   592→        })),
+   593→      };
+   594→    } catch {
+   595→      // Fallback: use technologies as categories
+   596→      const res = await technologyApi.list();
+   597→      return {
+   598→        categories: res.technologies.map((t) => ({
+   599→          id: String(t.id),
+   600→          name: t.name_bn || t.name,
+   601→          slug: t.short_code,
+   602→          icon: '',
+   603→          color: '',
+   604→          courseCount: 0,
+   605→        })),
+   606→      };
+   607→    }
+   608→  },
+   609→};
+   610→
+   611→// ============ VIDEO STREAMING API ============
+   612→export interface VideoStreamSession {
+   613→  success: boolean;
+   614→  sessionId: string;
+   615→  token: string;
+   616→  expiresAt: number;
+   617→  hlsReady: boolean;
+   618→  availableQualities: string[];
+   619→  processingStatus: string;
+   620→}
+   621→
+   622→export interface VideoStreamInfo {
+   623→  success: boolean;
+   624→  video: {
+   625→    id: string;
+   626→    title: string;
+   627→    duration: number;
+   628→    thumbnailUrl: string;
+   629→    isPreview: boolean;
+   630→    hlsReady: boolean;
+   631→    availableQualities: string[];
+   632→    processingStatus: string;
+   633→    fallbackUrl: string | null;
+   634→  };
+   635→}
+   636→
+   637→export const videoApi = {
+   638→  /** Legacy: Get signed stream URL (for non-HLS fallback) */
+   639→  streamUrl: (key: string, bucket?: string) =>
+   640→    api.get<{ url: string }>(`/api/video/stream-url?key=${key}&bucket=${bucket || 'videos'}`),
+   641→
+   642→  /** Create a streaming session for a video (requires auth) */
+   643→  createSession: (videoId: string) =>
+   644→    api.post<VideoStreamSession>(`/api/video/stream/session/${videoId}`, {}),
+   645→
+   646→  /** Get video streaming info (hlsReady, qualities, etc.) */
+   647→  getInfo: (videoId: string) =>
+   648→    api.get<VideoStreamInfo>(`/api/video/stream/info/${videoId}`),
+   649→
+   650→  /** Get the master playlist URL with session token */
+   651→  getPlaylistUrl: (videoId: string, sessionId: string, token: string) =>
+   652→    `${API_BASE}/api/video/stream/playlist/${videoId}?session=${sessionId}&token=${encodeURIComponent(token)}`,
+   653→};
+   654→
+   655→// ============ SUPPORT / HELP DESK API ============
+   656→
+   657→export interface SupportTicket {
+   658→  id: number;
+   659→  ticket_id: string;
+   660→  user_id: string | null;
+   661→  name: string | null;
+   662→  email: string;
+   663→  subject: string;
+   664→  category: string;
+   665→  priority: string;
+   666→  status: string;
+   667→  description: string | null;
+   668→  resolved_content: string | null;
+   669→  resolved_at: string | null;
+   670→  resolved_by: string | null;
+   671→  created_at: string;
+   672→  updated_at: string;
+   673→}
+   674→
+   675→export interface SupportMessage {
+   676→  id: number;
+   677→  ticket_id: string;
+   678→  sender_type: string;
+   679→  sender_name: string | null;
+   680→  message: string;
+   681→  attachments: string;
+   682→  source: string;
+   683→  created_at: string;
+   684→}
+   685→
+   686→export const supportApi = {
+   687→  createTicket: async (data: {
+   688→    subject: string;
+   689→    category: string;
+   690→    priority: string;
+   691→    description: string;
+   692→    email: string;
+   693→    name?: string;
+   694→  }, files?: File[]): Promise<{ success: boolean; ticketId: string; message: string }> => {
+   695→    if (files && files.length > 0) {
+   696→      const formData = new FormData();
+   697→      formData.append('subject', data.subject);
+   698→      formData.append('category', data.category);
+   699→      formData.append('priority', data.priority);
+   700→      formData.append('description', data.description);
+   701→      formData.append('email', data.email);
+   702→      if (data.name) formData.append('name', data.name);
+   703→      files.forEach(f => formData.append('files', f));
+   704→
+   705→      const url = `${API_BASE}/api/support/tickets`;
+   706→      const headers: Record<string, string> = {};
+   707→      const token = getAuthToken();
+   708→      if (token) headers['Authorization'] = `Bearer ${token}`;
+   709→
+   710→      const res = await fetch(url, { method: 'POST', headers, body: formData });
+   711→      if (!res.ok) {
+   712→        const errData = await res.json().catch(() => ({}));
+   713→        throw { status: res.status, message: errData.error || 'Failed to create ticket', ...errData };
+   714→      }
+   715→      return res.json();
+   716→    }
+   717→    return api.post('/api/support/tickets', data);
+   718→  },
+   719→
+   720→  listTickets: (params: { email?: string; userId?: string }) => {
+   721→    const query = new URLSearchParams();
+   722→    if (params.email) query.set('email', params.email);
+   723→    if (params.userId) query.set('userId', params.userId);
+   724→    return api.get<{ tickets: SupportTicket[] }>(`/api/support/tickets?${query.toString()}`);
+   725→  },
+   726→
+   727→  getTicket: (ticketId: string) =>
+   728→    api.get<{ ticket: SupportTicket; messages: SupportMessage[] }>(`/api/support/tickets/${ticketId}`),
+   729→
+   730→  addMessage: async (ticketId: string, data: {
+   731→    message: string;
+   732→    name?: string;
+   733→    senderType?: string;
+   734→  }, files?: File[]): Promise<{ success: boolean }> => {
+   735→    if (files && files.length > 0) {
+   736→      const formData = new FormData();
+   737→      formData.append('message', data.message);
+   738→      if (data.name) formData.append('name', data.name);
+   739→      if (data.senderType) formData.append('senderType', data.senderType);
+   740→      files.forEach(f => formData.append('files', f));
+   741→
+   742→      const url = `${API_BASE}/api/support/tickets/${ticketId}/messages`;
+   743→      const headers: Record<string, string> = {};
+   744→      const token = getAuthToken();
+   745→      if (token) headers['Authorization'] = `Bearer ${token}`;
+   746→
+   747→      const res = await fetch(url, { method: 'POST', headers, body: formData });
+   748→      if (!res.ok) {
+   749→        const errData = await res.json().catch(() => ({}));
+   750→        throw { status: res.status, message: errData.error || 'Failed to send message', ...errData };
+   751→      }
+   752→      return res.json();
+   753→    }
+   754→    return api.post(`/api/support/tickets/${ticketId}/messages`, data);
+   755→  },
+   756→
+   757→  getAttachmentUrl: (key: string) =>
+   758→    `${API_BASE}/api/support/attachment-url?key=${encodeURIComponent(key)}`,
+   759→};
+   760→
+   761→// ============ NOTIFICATION API ============
+   762→export interface ServerNotification {
+   763→  id: string;
+   764→  title: string;
+   765→  message: string;
+   766→  type: string;
+   767→  category: string;
+   768→  actionUrl: string;
+   769→  read: boolean;
+   770→  createdAt: string;
+   771→}
+   772→
+   773→export interface NotificationPreferences {
+   774→  pushEnabled: boolean;
+   775→  emailEnabled: boolean;
+   776→  smsEnabled: boolean;
+   777→  quietHoursEnabled: boolean;
+   778→  quietHoursStart: string;
+   779→  quietHoursEnd: string;
+   780→  courseUpdates: { push: boolean; email: boolean };
+   781→  grades: { push: boolean; email: boolean };
+   782→  schedule: { push: boolean; email: boolean };
+   783→  payment: { push: boolean; email: boolean };
+   784→  promotions: { push: boolean; email: boolean };
+   785→  social: { push: boolean; email: boolean };
+   786→  system: { push: boolean; email: boolean };
+   787→}
+   788→
+   789→export const notificationApi = {
+   790→  list: (params?: { limit?: number; offset?: number; unread?: boolean }) => {
+   791→    const query = new URLSearchParams();
+   792→    if (params?.limit) query.set('limit', String(params.limit));
+   793→    if (params?.offset) query.set('offset', String(params.offset));
+   794→    if (params?.unread) query.set('unread', 'true');
+   795→    const qs = query.toString();
+   796→    return api.get<{ notifications: ServerNotification[]; total: number }>(`/api/notifications${qs ? `?${qs}` : ''}`);
+   797→  },
+   798→  markRead: (id: string) =>
+   799→    api.put<{ success: boolean }>(`/api/notifications/${id}/read`, {}),
+   800→  markAllRead: () =>
+   801→    api.put<{ success: boolean }>('/api/notifications/read-all', {}),
+   802→  getSettings: () =>
+   803→    api.get<{ preferences: NotificationPreferences }>('/api/settings'),
+   804→  updateSettings: (prefs: NotificationPreferences) =>
+   805→    api.put<{ success: boolean }>('/api/settings', prefs),
+   806→};
+   807→
+   808→// ============ WEB PUSH API ============
+   809→export const webPushApi = {
+   810→  getVapidKey: () =>
+   811→    api.get<{ publicKey: string }>('/api/push/vapid-key'),
+   812→  subscribe: (subscription: PushSubscriptionJSON) =>
+   813→    api.post<{ success: boolean }>('/api/push/subscribe', { subscription }),
+   814→};
+   815→
+   816→// ============ WATCH HISTORY API ============
+   817→export interface WatchHistoryItem {
+   818→  id: string;
+   819→  videoId: string;
+   820→  videoTitle: string;
+   821→  courseId: string;
+   822→  courseName: string;
+   823→  watchedAt: string;
+   824→  progress: number;
+   825→  lastPosition: number;
+   826→  duration: number;
+   827→  videoThumbnail: string;
+   828→  courseThumbnail: string;
+   829→}
+   830→
+   831→export const watchHistoryApi = {
+   832→  list: (params?: { limit?: number; offset?: number }) => {
+   833→    const query = new URLSearchParams();
+   834→    if (params?.limit) query.set('limit', String(params.limit));
+   835→    if (params?.offset) query.set('offset', String(params.offset));
+   836→    const qs = query.toString();
+   837→    return api.get<{ history: WatchHistoryItem[]; total: number; limit: number; offset: number }>(`/api/watch-history${qs ? `?${qs}` : ''}`);
+   838→  },
+   839→  upsert: (data: { videoId: string; videoTitle?: string; courseId?: string; progress?: number; lastPosition?: number; duration?: number }) =>
+   840→    api.post<{ success: boolean; id: string; action: string }>('/api/watch-history', data),
+   841→  clear: () =>
+   842→    api.delete<{ success: boolean; deleted: number }>('/api/watch-history'),
+   843→  remove: (id: string) =>
+   844→    api.delete<{ success: boolean }>(`/api/watch-history/${id}`),
+   845→};
+   846→
+   847→// ─── Student-specific API endpoints ───
+   848→
+   849→export const achievementsApi = {
+   850→  list: () =>
+   851→    api.get<{ achievements: any[] }>('/api/achievements'),
+   852→  unlock: (id: number) =>
+   853→    api.post<{ success: boolean }>(`/api/achievements/${id}/unlock`, {}),
+   854→};
+   855→
+   856→export const leaderboardApi = {
+   857→  get: (params?: { technologyId?: number; period?: string }) => {
+   858→    const query = new URLSearchParams();
+   859→    if (params?.technologyId) query.set('technologyId', String(params.technologyId));
+   860→    if (params?.period) query.set('period', params.period);
+   861→    const qs = query.toString();
+   862→    return api.get<{ leaderboard: any[] }>(`/api/leaderboard${qs ? `?${qs}` : ''}`);
+   863→  },
+   864→};
+   865→
+   866→export const learningStatsApi = {
+   867→  get: () =>
+   868→    api.get<{ stats: any }>('/api/profile/learning-stats'),
+   869→};
+   870→
+   871→export const studentNotificationsApi = {
+   872→  list: (params?: { limit?: number; offset?: number; unreadOnly?: boolean }) => {
+   873→    const query = new URLSearchParams();
+   874→    if (params?.limit) query.set('limit', String(params.limit));
+   875→    if (params?.offset) query.set('offset', String(params.offset));
+   876→    if (params?.unreadOnly) query.set('unreadOnly', 'true');
+   877→    const qs = query.toString();
+   878→    return api.get<{ notifications: any[]; total: number }>(`/api/notifications${qs ? `?${qs}` : ''}`);
+   879→  },
+   880→  markRead: (id: string) =>
+   881→    api.put<{ success: boolean }>(`/api/notifications/${id}/read`, {}),
+   882→  markAllRead: () =>
+   883→    api.put<{ success: boolean }>('/api/notifications/read-all', {}),
+   884→};
+   885→
+   886→export const studentProfileApi = {
+   887→  get: () =>
+   888→    api.get<{ user: any }>('/api/profile'),
+   889→  update: (data: any) =>
+   890→    api.put<{ success: boolean; user: any }>('/api/profile', data),
+   891→  uploadAvatar: (formData: FormData) =>
+   892→    fetch(`${API_BASE}/api/profile/avatar`, {
+   893→      method: 'POST',
+   894→      headers: { Authorization: `Bearer ${getAuthToken()}` },
+   895→      body: formData,
+   896→    }).then(r => r.json()),
+   897→  deleteAccount: () =>
+   898→    api.delete<{ success: boolean }>('/api/profile'),
+   899→  sendVerificationEmail: () =>
+   900→    api.post<{ success: boolean }>('/api/profile/send-verification', {}),
+   901→};
+   902→
+   903→export const studentSettingsApi = {
+   904→  getNotificationPreferences: () =>
+   905→    api.get<{ preferences: any }>('/api/settings/notifications'),
+   906→  updateNotificationPreferences: (data: any) =>
+   907→    api.put<{ success: boolean }>('/api/settings/notifications', data),
+   908→};
+   909→
