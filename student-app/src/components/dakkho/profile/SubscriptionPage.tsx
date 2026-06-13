@@ -269,14 +269,14 @@ export function SubscriptionPage() {
   );
 
   const getDiscountedPrice = (): number => {
-    if (!selectedPackage || !coupon.valid || !coupon.coupon) return selectedPackage?.price || 0;
+    if (!selectedPackage || !coupon.valid || !coupon.coupon) return Math.round(selectedPackage?.price || 0);
     if (coupon.coupon.discount_type === 'percentage') {
-      return Math.max(0, selectedPackage.price - (selectedPackage.price * coupon.coupon.discount_value / 100));
+      return Math.round(Math.max(0, selectedPackage.price - (selectedPackage.price * coupon.coupon.discount_value / 100)));
     }
     if (coupon.coupon.discount_type === 'flat') {
-      return Math.max(0, selectedPackage.price - coupon.coupon.discount_value);
+      return Math.round(Math.max(0, selectedPackage.price - coupon.coupon.discount_value));
     }
-    return selectedPackage?.price || 0;
+    return Math.round(selectedPackage?.price || 0);
   };
 
   // ============ RENDER ============
@@ -393,7 +393,7 @@ export function SubscriptionPage() {
                           )}
                         </div>
                         <div className="text-right ml-3 flex-shrink-0">
-                          <p className="text-lg font-extrabold text-foreground">&#2547;{pkg.price}</p>
+                          <p className="text-lg font-extrabold text-foreground">&#2547;{Math.round(pkg.price)}</p>
                           <p className="text-[10px] text-muted-foreground">{pkg.duration_months} months</p>
                         </div>
                       </div>
@@ -452,7 +452,7 @@ export function SubscriptionPage() {
                           </div>
                         </div>
                         <div className="text-right ml-3 flex-shrink-0">
-                          <p className="text-lg font-extrabold text-foreground">&#2547;{pkg.price}</p>
+                          <p className="text-lg font-extrabold text-foreground">&#2547;{Math.round(pkg.price)}</p>
                           <p className="text-[10px] text-muted-foreground">{pkg.duration_months} months</p>
                         </div>
                       </div>
@@ -681,7 +681,7 @@ export function SubscriptionPage() {
 
                                 {/* Price */}
                                 <div className="text-right ml-4 flex-shrink-0">
-                                  <p className="text-2xl font-extrabold text-foreground">&#2547;{pkg.price}</p>
+                                  <p className="text-2xl font-extrabold text-foreground">&#2547;{Math.round(pkg.price)}</p>
                                   <p className="text-[10px] text-muted-foreground">per package</p>
                                 </div>
                               </div>
@@ -752,11 +752,11 @@ export function SubscriptionPage() {
                       <div className="text-right flex-shrink-0">
                         {coupon.valid && coupon.coupon ? (
                           <>
-                            <p className="text-xs text-muted-foreground line-through">&#2547;{selectedPackage.price}</p>
+                            <p className="text-xs text-muted-foreground line-through">&#2547;{Math.round(selectedPackage.price)}</p>
                             <p className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400">&#2547;{getDiscountedPrice()}</p>
                           </>
                         ) : (
-                          <p className="text-lg font-extrabold text-foreground">&#2547;{selectedPackage.price}</p>
+                          <p className="text-lg font-extrabold text-foreground">&#2547;{Math.round(selectedPackage.price)}</p>
                         )}
                       </div>
                     </div>
@@ -882,11 +882,11 @@ export function SubscriptionPage() {
                                   <div className="text-right">
                                     {coupon.valid && coupon.coupon ? (
                                       <div className="flex items-center gap-2">
-                                        <span className="text-xs text-muted-foreground line-through">&#2547;{selectedPackage.price}</span>
+                                        <span className="text-xs text-muted-foreground line-through">&#2547;{Math.round(selectedPackage.price)}</span>
                                         <span className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400">&#2547;{getDiscountedPrice()}</span>
                                       </div>
                                     ) : (
-                                      <span className="text-xl font-extrabold text-foreground">&#2547;{selectedPackage.price}</span>
+                                      <span className="text-xl font-extrabold text-foreground">&#2547;{Math.round(selectedPackage.price)}</span>
                                     )}
                                   </div>
                                 </div>
@@ -931,7 +931,7 @@ export function SubscriptionPage() {
                                 loading={isSubmitting}
                               >
                                 <ExternalLink className="w-4 h-4" />
-                                {isSubmitting ? 'Creating Payment...' : `Pay \u09F3${coupon.valid && coupon.coupon ? getDiscountedPrice() : selectedPackage.price} Now`}
+                                {isSubmitting ? 'Creating Payment...' : `Pay \u09F3${coupon.valid && coupon.coupon ? getDiscountedPrice() : Math.round(selectedPackage.price)} Now`}
                               </GradientButton>
 
                               <p className="text-[10px] text-muted-foreground text-center">
@@ -996,11 +996,11 @@ export function SubscriptionPage() {
                                   <div className="text-right">
                                     {coupon.valid && coupon.coupon ? (
                                       <div className="flex items-center gap-2">
-                                        <span className="text-xs text-muted-foreground line-through">&#2547;{selectedPackage.price}</span>
+                                        <span className="text-xs text-muted-foreground line-through">&#2547;{Math.round(selectedPackage.price)}</span>
                                         <span className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400">&#2547;{getDiscountedPrice()}</span>
                                       </div>
                                     ) : (
-                                      <span className="text-xl font-extrabold text-foreground">&#2547;{selectedPackage.price}</span>
+                                      <span className="text-xl font-extrabold text-foreground">&#2547;{Math.round(selectedPackage.price)}</span>
                                     )}
                                   </div>
                                 </div>

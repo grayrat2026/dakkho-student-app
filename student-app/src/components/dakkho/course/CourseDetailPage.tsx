@@ -158,14 +158,14 @@ export function CourseDetailPage() {
   };
 
   const getDiscountedPrice = (): number => {
-    if (!selectedPackage || !coupon.valid || !coupon.coupon) return selectedPackage?.price || 0;
+    if (!selectedPackage || !coupon.valid || !coupon.coupon) return Math.round(selectedPackage?.price || 0);
     if (coupon.coupon.discount_type === 'percentage') {
-      return Math.max(0, selectedPackage.price - (selectedPackage.price * coupon.coupon.discount_value / 100));
+      return Math.round(Math.max(0, selectedPackage.price - (selectedPackage.price * coupon.coupon.discount_value / 100)));
     }
     if (coupon.coupon.discount_type === 'flat') {
-      return Math.max(0, selectedPackage.price - coupon.coupon.discount_value);
+      return Math.round(Math.max(0, selectedPackage.price - coupon.coupon.discount_value));
     }
-    return selectedPackage?.price || 0;
+    return Math.round(selectedPackage?.price || 0);
   };
 
   // Lookup duo member by email
@@ -813,7 +813,7 @@ export function CourseDetailPage() {
 
                             {/* Price */}
                             <div className="text-right ml-4 flex-shrink-0">
-                              <p className="text-2xl font-extrabold text-foreground">&#2547;{pkg.price}</p>
+                              <p className="text-2xl font-extrabold text-foreground">&#2547;{Math.round(pkg.price)}</p>
                               <p className="text-[10px] text-muted-foreground">per package</p>
                             </div>
                           </div>
@@ -918,11 +918,11 @@ export function CourseDetailPage() {
                         <div className="text-right flex-shrink-0">
                           {coupon.valid && coupon.coupon ? (
                             <>
-                              <p className="text-xs text-muted-foreground line-through">&#2547;{selectedPackage.price}</p>
+                              <p className="text-xs text-muted-foreground line-through">&#2547;{Math.round(selectedPackage.price)}</p>
                               <p className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400">&#2547;{getDiscountedPrice()}</p>
                             </>
                           ) : (
-                            <p className="text-lg font-extrabold text-foreground">&#2547;{selectedPackage.price}</p>
+                            <p className="text-lg font-extrabold text-foreground">&#2547;{Math.round(selectedPackage.price)}</p>
                           )}
                         </div>
                       </div>
@@ -1008,7 +1008,7 @@ export function CourseDetailPage() {
                           loading={isSubmitting}
                         >
                           <Wallet className="w-4 h-4" />
-                          Pay &#2547;{coupon.valid && coupon.coupon ? getDiscountedPrice() : selectedPackage.price} Now
+                          Pay &#2547;{coupon.valid && coupon.coupon ? getDiscountedPrice() : Math.round(selectedPackage.price)} Now
                         </GradientButton>
                         <div className="flex items-center gap-1 text-[10px] text-sky-500 justify-center">
                           <Shield className="w-3 h-3" />
