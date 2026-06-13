@@ -1,0 +1,1044 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import {
+     6→  Package, User, Users, Clock, ChevronRight, Sparkles,
+     7→  CreditCard, CheckCircle, AlertCircle, Loader2, BookOpen,
+     8→  Tag, X, ArrowRight, Shield, Info, Copy, Check, Search,
+     9→  CalendarDays, Wallet, Phone, Hash, ExternalLink, ShoppingBag,
+    10→} from 'lucide-react';
+    11→import { useNavigationStore, useAuthStore } from '@/lib/store';
+    12→import { packageApi, paymentApi, courseApi, couponApi } from '@/lib/api-client';
+    13→import type { CoursePackage, UserPackage, PaymentConfig } from '@/lib/api-client';
+    14→import { GlassCard } from '../shared/GlassCard';
+    15→import { AnimatedPage } from '../shared/AnimatedPage';
+    16→import { GradientButton } from '../shared/GradientButton';
+    17→
+    18→// ============ TYPES ============
+    19→interface CourseItem {
+    20→  id: string;
+    21→  title: string;
+    22→  technology?: string;
+    23→  thumbnail_url?: string;
+    24→}
+    25→
+    26→interface CouponState {
+    27→  code: string;
+    28→  valid: boolean | null;
+    29→  coupon: any | null;
+    30→  error: string | null;
+    31→  isValidating: boolean;
+    32→}
+    33→
+    34→type PurchaseStep = 'select-course' | 'select-package' | 'payment' | 'submitted';
+    35→
+    36→// ============ HELPER FUNCTIONS ============
+    37→function formatDate(dateStr: string): string {
+    38→  if (!dateStr) return '—';
+    39→  try {
+    40→    const d = new Date(dateStr);
+    41→    return d.toLocaleDateString('en-BD', { year: 'numeric', month: 'short', day: 'numeric' });
+    42→  } catch {
+    43→    return dateStr;
+    44→  }
+    45→}
+    46→
+    47→function getDaysRemaining(expiresAt: string): number {
+    48→  if (!expiresAt) return 0;
+    49→  const now = new Date();
+    50→  const exp = new Date(expiresAt);
+    51→  const diff = exp.getTime() - now.getTime();
+    52→  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+    53→}
+    54→
+    55→function getPackageTypeLabel(type: string): { label: string; icon: React.ComponentType<{ className?: string }>; color: string; bgColor: string; description: string } {
+    56→  switch (type) {
+    57→    case 'single':
+    58→      return { label: 'Single', icon: User, color: 'text-sky-600 dark:text-sky-400', bgColor: 'bg-sky-50 dark:bg-sky-900/30', description: '1 user access' };
+    59→    case 'friend':
+    60→      return { label: 'Friend Pack', icon: Users, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50 dark:bg-emerald-900/30', description: '2 users, shared access' };
+    61→    default:
+    62→      return { label: type, icon: Package, color: 'text-muted-foreground', bgColor: 'bg-muted/30', description: '' };
+    63→  }
+    64→}
+    65→
+    66→function getStatusBadge(status: string): { label: string; color: string; bgColor: string } {
+    67→  switch (status) {
+    68→    case 'active':
+    69→      return { label: 'Active', color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-50 dark:bg-emerald-900/30' };
+    70→    case 'pending':
+    71→      return { label: 'Pending', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-50 dark:bg-amber-900/30' };
+    72→    case 'expired':
+    73→      return { label: 'Expired', color: 'text-red-500 dark:text-red-400', bgColor: 'bg-red-50 dark:bg-red-900/30' };
+    74→    case 'cancelled':
+    75→      return { label: 'Cancelled', color: 'text-muted-foreground', bgColor: 'bg-muted/30' };
+    76→    default:
+    77→      return { label: status, color: 'text-muted-foreground', bgColor: 'bg-muted/30' };
+    78→  }
+    79→}
+    80→
+    81→// ============ MAIN COMPONENT ============
+    82→export function SubscriptionPage() {
+    83→  const { navigate } = useNavigationStore();
+    84→  const { user, isAuthenticated } = useAuthStore();
+    85→
+    86→  // Data state
+    87→  const [myPackages, setMyPackages] = useState<UserPackage[]>([]);
+    88→  const [courses, setCourses] = useState<CourseItem[]>([]);
+    89→  const [coursePackages, setCoursePackages] = useState<CoursePackage[]>([]);
+    90→  const [paymentConfigs, setPaymentConfigs] = useState<PaymentConfig[]>([]);
+    91→
+    92→  // UI state
+    93→  const [isLoadingPackages, setIsLoadingPackages] = useState(true);
+    94→  const [isLoadingCourses, setIsLoadingCourses] = useState(true);
+    95→  const [isLoadingPackagesForCourse, setIsLoadingPackagesForCourse] = useState(false);
+    96→  const [isSubmitting, setIsSubmitting] = useState(false);
+    97→
+    98→  // Selection state
+    99→  const [selectedCourseId, setSelectedCourseId] = useState<string>('');
+   100→  const [selectedPackage, setSelectedPackage] = useState<CoursePackage | null>(null);
+   101→  const [purchaseStep, setPurchaseStep] = useState<PurchaseStep>('select-course');
+   102→  const [courseSearch, setCourseSearch] = useState('');
+   103→
+   104→  // Payment form state
+   105→  const [trxId, setTrxId] = useState('');
+   106→  const [phone, setPhone] = useState('');
+   107→  const [coupon, setCoupon] = useState<CouponState>({
+   108→    code: '', valid: null, coupon: null, error: null, isValidating: false,
+   109→  });
+   110→
+   111→  // Submit result state
+   112→  const [submitResult, setSubmitResult] = useState<{ success: boolean; message: string } | null>(null);
+   113→
+   114→  // ============ FETCH DATA ============
+   115→  const fetchMyPackages = useCallback(async () => {
+   116→    if (!isAuthenticated) { setIsLoadingPackages(false); return; }
+   117→    setIsLoadingPackages(true);
+   118→    try {
+   119→      const res = await packageApi.mine();
+   120→      setMyPackages(res.packages || []);
+   121→    } catch {
+   122→      setMyPackages([]);
+   123→    } finally {
+   124→      setIsLoadingPackages(false);
+   125→    }
+   126→  }, [isAuthenticated]);
+   127→
+   128→  const fetchCourses = useCallback(async () => {
+   129→    setIsLoadingCourses(true);
+   130→    try {
+   131→      const res = await courseApi.list({ limit: 100 });
+   132→      setCourses((res.courses || []).map((c: any) => ({
+   133→        id: c.id || c.$id || '',
+   134→        title: c.title || c.name || 'Untitled Course',
+   135→        technology: c.technology || '',
+   136→        thumbnail_url: c.thumbnail_url || c.thumbnail || '',
+   137→      })));
+   138→    } catch {
+   139→      setCourses([]);
+   140→    } finally {
+   141→      setIsLoadingCourses(false);
+   142→    }
+   143→  }, []);
+   144→
+   145→  const fetchPaymentConfigs = useCallback(async () => {
+   146→    try {
+   147→      const res = await paymentApi.config();
+   148→      setPaymentConfigs(res.paymentConfig || []);
+   149→    } catch {
+   150→      setPaymentConfigs([]);
+   151→    }
+   152→  }, []);
+   153→
+   154→  useEffect(() => {
+   155→    fetchMyPackages();
+   156→    fetchCourses();
+   157→    fetchPaymentConfigs();
+   158→  }, [fetchMyPackages, fetchCourses, fetchPaymentConfigs]);
+   159→
+   160→  // Fetch packages when course is selected
+   161→  useEffect(() => {
+   162→    if (!selectedCourseId) { setCoursePackages([]); return; }
+   163→    const fetchPackages = async () => {
+   164→      setIsLoadingPackagesForCourse(true);
+   165→      try {
+   166→        const res = await packageApi.list(selectedCourseId);
+   167→        setCoursePackages((res.packages || []).filter((p: CoursePackage) => p.is_active === 1));
+   168→      } catch {
+   169→        setCoursePackages([]);
+   170→      } finally {
+   171→        setIsLoadingPackagesForCourse(false);
+   172→      }
+   173→    };
+   174→    fetchPackages();
+   175→  }, [selectedCourseId]);
+   176→
+   177→  // ============ HANDLERS ============
+   178→  const handleSelectCourse = (courseId: string) => {
+   179→    setSelectedCourseId(courseId);
+   180→    setSelectedPackage(null);
+   181→    setPurchaseStep('select-package');
+   182→    setCoupon({ code: '', valid: null, coupon: null, error: null, isValidating: false });
+   183→    setTrxId('');
+   184→    setPhone('');
+   185→    setSubmitResult(null);
+   186→  };
+   187→
+   188→  const handleSelectPackage = (pkg: CoursePackage) => {
+   189→    setSelectedPackage(pkg);
+   190→    setPurchaseStep('payment');
+   191→    setCoupon({ code: '', valid: null, coupon: null, error: null, isValidating: false });
+   192→    setTrxId('');
+   193→    setPhone('');
+   194→    setSubmitResult(null);
+   195→  };
+   196→
+   197→  const handleValidateCoupon = async () => {
+   198→    if (!coupon.code.trim()) return;
+   199→    setCoupon((prev) => ({ ...prev, isValidating: true, valid: null, error: null, coupon: null }));
+   200→    try {
+   201→      const res = await couponApi.validate(coupon.code.trim());
+   202→      if (res.valid) {
+   203→        setCoupon((prev) => ({ ...prev, valid: true, coupon: res.coupon, error: null, isValidating: false }));
+   204→      } else {
+   205→        setCoupon((prev) => ({ ...prev, valid: false, coupon: null, error: res.error || 'Invalid coupon code', isValidating: false }));
+   206→      }
+   207→    } catch (err: any) {
+   208→      setCoupon((prev) => ({ ...prev, valid: false, coupon: null, error: err.message || 'Failed to validate coupon', isValidating: false }));
+   209→    }
+   210→  };
+   211→
+   212→  const handleSubmitPayment = async () => {
+   213→    if (!selectedPackage || !trxId.trim()) return;
+   214→    setIsSubmitting(true);
+   215→    setSubmitResult(null);
+   216→    try {
+   217→      const data: { package_id: number; trx_id: string; phone?: string; proof_url?: string } = {
+   218→        package_id: selectedPackage.id,
+   219→        trx_id: trxId.trim(),
+   220→      };
+   221→      if (phone.trim()) data.phone = phone.trim();
+   222→      const res = await paymentApi.submit(data);
+   223→      if (res.success) {
+   224→        setSubmitResult({ success: true, message: res.message || 'Payment submitted successfully! Waiting for admin verification.' });
+   225→        setPurchaseStep('submitted');
+   226→        fetchMyPackages(); // Refresh packages
+   227→      } else {
+   228→        setSubmitResult({ success: false, message: res.message || 'Payment submission failed. Please try again.' });
+   229→      }
+   230→    } catch (err: any) {
+   231→      setSubmitResult({ success: false, message: err.message || 'Something went wrong. Please try again.' });
+   232→    } finally {
+   233→      setIsSubmitting(false);
+   234→    }
+   235→  };
+   236→
+   237→  const handleResetFlow = () => {
+   238→    setSelectedCourseId('');
+   239→    setSelectedPackage(null);
+   240→    setPurchaseStep('select-course');
+   241→    setCoupon({ code: '', valid: null, coupon: null, error: null, isValidating: false });
+   242→    setTrxId('');
+   243→    setPhone('');
+   244→    setSubmitResult(null);
+   245→    setCourseSearch('');
+   246→  };
+   247→
+   248→  const handleCopyToClipboard = (text: string) => {
+   249→    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+   250→      navigator.clipboard.writeText(text);
+   251→    }
+   252→  };
+   253→
+   254→  // Computed
+   255→  const activePackages = myPackages.filter((p) => p.status === 'active');
+   256→  const pendingPackages = myPackages.filter((p) => p.status === 'pending');
+   257→  const filteredCourses = courses.filter((c) =>
+   258→    !courseSearch.trim() || c.title.toLowerCase().includes(courseSearch.toLowerCase())
+   259→  );
+   260→
+   261→  const getDiscountedPrice = (): number => {
+   262→    if (!selectedPackage || !coupon.valid || !coupon.coupon) return selectedPackage?.price || 0;
+   263→    if (coupon.coupon.discount_type === 'percentage') {
+   264→      return Math.round(Math.max(0, selectedPackage.price - (selectedPackage.price * coupon.coupon.discount_value / 100)));
+   265→    }
+   266→    if (coupon.coupon.discount_type === 'flat') {
+   267→      return Math.round(Math.max(0, selectedPackage.price - coupon.coupon.discount_value));
+   268→    }
+   269→    return selectedPackage?.price || 0;
+   270→  };
+   271→
+   272→  // ============ RENDER ============
+   273→  return (
+   274→    <AnimatedPage keyProp="subscription">
+   275→      <div className="pb-20 lg:pb-0">
+   276→        {/* Breadcrumb */}
+   277→        <motion.div
+   278→          className="flex items-center gap-2 text-sm text-muted-foreground mb-4"
+   279→          initial={{ opacity: 0 }}
+   280→          animate={{ opacity: 1 }}
+   281→        >
+   282→          <button onClick={() => navigate('home')} className="hover:text-sky-500 transition-colors">Home</button>
+   283→          <span>/</span>
+   284→          <button onClick={() => navigate('profile')} className="hover:text-sky-500 transition-colors">Profile</button>
+   285→          <span>/</span>
+   286→          <span className="text-foreground font-semibold">Subscription</span>
+   287→        </motion.div>
+   288→
+   289→        {/* Header */}
+   290→        <GlassCard className="p-6 mb-6 text-center">
+   291→          <motion.div
+   292→            initial={{ scale: 0 }}
+   293→            animate={{ scale: 1 }}
+   294→            transition={{ type: 'spring', delay: 0.2 }}
+   295→          >
+   296→            <Package className="w-10 h-10 text-sky-400 mx-auto mb-3" />
+   297→          </motion.div>
+   298→          <h1 className="text-2xl font-extrabold text-foreground">Course Packages</h1>
+   299→          <p className="text-sm text-muted-foreground mt-2 max-w-lg mx-auto">
+   300→            Purchase course packages to unlock premium content. Choose a single pack for yourself or a friend pack to share.
+   301→          </p>
+   302→        </GlassCard>
+   303→
+   304→        {/* ===== ACTIVE PACKAGES SECTION ===== */}
+   305→        <motion.div
+   306→          initial={{ opacity: 0, y: 20 }}
+   307→          animate={{ opacity: 1, y: 0 }}
+   308→          transition={{ delay: 0.15 }}
+   309→          className="mb-6"
+   310→        >
+   311→          <h2 className="text-base font-bold text-foreground mb-3 flex items-center gap-2">
+   312→            <Shield className="w-4 h-4 text-sky-500" />
+   313→            Your Active Packages
+   314→          </h2>
+   315→
+   316→          {isLoadingPackages ? (
+   317→            <GlassCard className="p-6">
+   318→              <div className="flex items-center justify-center gap-2 text-muted-foreground">
+   319→                <Loader2 className="w-5 h-5 animate-spin" />
+   320→                <span className="text-sm">Loading your packages...</span>
+   321→              </div>
+   322→            </GlassCard>
+   323→          ) : activePackages.length === 0 && pendingPackages.length === 0 ? (
+   324→            <GlassCard className="p-6 text-center">
+   325→              <div className="flex flex-col items-center gap-3">
+   326→                <div className="w-14 h-14 rounded-2xl bg-sky-50 dark:bg-sky-900/20 flex items-center justify-center">
+   327→                  <ShoppingBag className="w-7 h-7 text-sky-500" />
+   328→                </div>
+   329→                <div>
+   330→                  <p className="text-sm font-semibold text-foreground">No Active Packages</p>
+   331→                  <p className="text-xs text-muted-foreground mt-1">You don&apos;t have any active course packages yet.</p>
+   332→                </div>
+   333→                <GradientButton
+   334→                  size="sm"
+   335→                  onClick={() => {
+   336→                    setPurchaseStep('select-course');
+   337→                    document.getElementById('purchase-section')?.scrollIntoView({ behavior: 'smooth' });
+   338→                  }}
+   339→                >
+   340→                  Browse Courses
+   341→                  <ArrowRight className="w-4 h-4" />
+   342→                </GradientButton>
+   343→              </div>
+   344→            </GlassCard>
+   345→          ) : (
+   346→            <div className="space-y-3 max-h-96 overflow-y-auto pr-1 custom-scrollbar">
+   347→              {/* Pending packages first */}
+   348→              {pendingPackages.map((pkg, i) => {
+   349→                const status = getStatusBadge(pkg.status);
+   350→                const typeInfo = getPackageTypeLabel(pkg.package_type);
+   351→                return (
+   352→                  <motion.div
+   353→                    key={pkg.id}
+   354→                    initial={{ opacity: 0, x: -20 }}
+   355→                    animate={{ opacity: 1, x: 0 }}
+   356→                    transition={{ delay: i * 0.05 }}
+   357→                  >
+   358→                    <GlassCard className="p-4 border-amber-200 dark:border-amber-800/40">
+   359→                      <div className="flex items-start justify-between">
+   360→                        <div className="flex-1 min-w-0">
+   361→                          <div className="flex items-center gap-2 mb-1">
+   362→                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${status.bgColor} ${status.color}`}>
+   363→                              {status.label}
+   364→                            </span>
+   365→                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${typeInfo.bgColor} ${typeInfo.color}`}>
+   366→                              {typeInfo.label}
+   367→                            </span>
+   368→                          </div>
+   369→                          <p className="text-sm font-bold text-foreground truncate">
+   370→                            Course ID: {pkg.course_id}
+   371→                          </p>
+   372→                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+   373→                            <span className="flex items-center gap-1">
+   374→                              <CalendarDays className="w-3 h-3" />
+   375→                              {formatDate(pkg.activated_at)} — {formatDate(pkg.expires_at)}
+   376→                            </span>
+   377→                          </div>
+   378→                          {pkg.status === 'pending' && (
+   379→                            <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-600 dark:text-amber-400">
+   380→                              <AlertCircle className="w-3 h-3" />
+   381→                              <span>Payment verification pending. Admin will review shortly.</span>
+   382→                            </div>
+   383→                          )}
+   384→                        </div>
+   385→                        <div className="text-right ml-3 flex-shrink-0">
+   386→                          <p className="text-lg font-extrabold text-foreground">&#2547;{pkg.price}</p>
+   387→                          <p className="text-[10px] text-muted-foreground">{pkg.duration_months} months</p>
+   388→                        </div>
+   389→                      </div>
+   390→                    </GlassCard>
+   391→                  </motion.div>
+   392→                );
+   393→              })}
+   394→
+   395→              {/* Active packages */}
+   396→              {activePackages.map((pkg, i) => {
+   397→                const status = getStatusBadge(pkg.status);
+   398→                const typeInfo = getPackageTypeLabel(pkg.package_type);
+   399→                const daysLeft = getDaysRemaining(pkg.expires_at);
+   400→                return (
+   401→                  <motion.div
+   402→                    key={pkg.id}
+   403→                    initial={{ opacity: 0, x: -20 }}
+   404→                    animate={{ opacity: 1, x: 0 }}
+   405→                    transition={{ delay: (pendingPackages.length + i) * 0.05 }}
+   406→                  >
+   407→                    <GlassCard className="p-4">
+   408→                      <div className="flex items-start justify-between">
+   409→                        <div className="flex-1 min-w-0">
+   410→                          <div className="flex items-center gap-2 mb-1">
+   411→                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${status.bgColor} ${status.color}`}>
+   412→                              {status.label}
+   413→                            </span>
+   414→                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${typeInfo.bgColor} ${typeInfo.color}`}>
+   415→                              {typeInfo.label}
+   416→                            </span>
+   417→                          </div>
+   418→                          <p className="text-sm font-bold text-foreground truncate">
+   419→                            Course ID: {pkg.course_id}
+   420→                          </p>
+   421→                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+   422→                            <span className="flex items-center gap-1">
+   423→                              <CalendarDays className="w-3 h-3" />
+   424→                              {formatDate(pkg.activated_at)} — {formatDate(pkg.expires_at)}
+   425→                            </span>
+   426→                          </div>
+   427→                          <div className="mt-2">
+   428→                            <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+   429→                              <span>Time remaining</span>
+   430→                              <span className={daysLeft < 30 ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}>
+   431→                                {daysLeft} days left
+   432→                              </span>
+   433→                            </div>
+   434→                            <div className="w-full h-1.5 bg-muted/50 rounded-full overflow-hidden">
+   435→                              <motion.div
+   436→                                className={`h-full rounded-full ${daysLeft < 30 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+   437→                                initial={{ width: 0 }}
+   438→                                animate={{ width: `${Math.min(100, (daysLeft / (pkg.duration_months * 30)) * 100)}%` }}
+   439→                                transition={{ duration: 1, delay: 0.3 }}
+   440→                              />
+   441→                            </div>
+   442→                          </div>
+   443→                        </div>
+   444→                        <div className="text-right ml-3 flex-shrink-0">
+   445→                          <p className="text-lg font-extrabold text-foreground">&#2547;{pkg.price}</p>
+   446→                          <p className="text-[10px] text-muted-foreground">{pkg.duration_months} months</p>
+   447→                        </div>
+   448→                      </div>
+   449→                    </GlassCard>
+   450→                  </motion.div>
+   451→                );
+   452→              })}
+   453→            </div>
+   454→          )}
+   455→        </motion.div>
+   456→
+   457→        {/* ===== PURCHASE SECTION ===== */}
+   458→        <div id="purchase-section">
+   459→          <motion.div
+   460→            initial={{ opacity: 0, y: 20 }}
+   461→            animate={{ opacity: 1, y: 0 }}
+   462→            transition={{ delay: 0.25 }}
+   463→          >
+   464→            <h2 className="text-base font-bold text-foreground mb-3 flex items-center gap-2">
+   465→              <Sparkles className="w-4 h-4 text-sky-500" />
+   466→              Get a Course Package
+   467→            </h2>
+   468→
+   469→            {/* Step Indicator */}
+   470→            <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+   471→              {[
+   472→                { step: 'select-course', label: '1. Course', icon: BookOpen },
+   473→                { step: 'select-package', label: '2. Package', icon: Package },
+   474→                { step: 'payment', label: '3. Payment', icon: CreditCard },
+   475→              ].map((s, i) => {
+   476→                const stepOrder = ['select-course', 'select-package', 'payment', 'submitted'];
+   477→                const currentIndex = stepOrder.indexOf(purchaseStep);
+   478→                const thisIndex = stepOrder.indexOf(s.step);
+   479→                const isActive = purchaseStep === s.step;
+   480→                const isCompleted = currentIndex > thisIndex;
+   481→                const Icon = s.icon;
+   482→
+   483→                return (
+   484→                  <div key={s.step} className="flex items-center gap-2">
+   485→                    {i > 0 && (
+   486→                      <div className={`w-6 h-0.5 ${isCompleted ? 'bg-sky-500' : 'bg-muted/50'}`} />
+   487→                    )}
+   488→                    <button
+   489→                      onClick={() => {
+   490→                        if (isCompleted) setPurchaseStep(s.step as PurchaseStep);
+   491→                      }}
+   492→                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${
+   493→                        isActive
+   494→                          ? 'bg-sky-500 text-white shadow-md shadow-sky-500/20'
+   495→                          : isCompleted
+   496→                            ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 cursor-pointer hover:bg-sky-100 dark:hover:bg-sky-900/50'
+   497→                            : 'bg-muted/30 text-muted-foreground'
+   498→                      }`}
+   499→                    >
+   500→                      <Icon className="w-3.5 h-3.5" />
+   501→                      {s.label}
+   502→                    </button>
+   503→                  </div>
+   504→                );
+   505→              })}
+   506→            </div>
+   507→
+   508→            <AnimatePresence mode="wait">
+   509→              {/* ===== STEP 1: SELECT COURSE ===== */}
+   510→              {purchaseStep === 'select-course' && (
+   511→                <motion.div
+   512→                  key="select-course"
+   513→                  initial={{ opacity: 0, y: 10 }}
+   514→                  animate={{ opacity: 1, y: 0 }}
+   515→                  exit={{ opacity: 0, y: -10 }}
+   516→                  transition={{ duration: 0.2 }}
+   517→                >
+   518→                  <GlassCard className="p-4">
+   519→                    {/* Search */}
+   520→                    <div className="relative mb-4">
+   521→                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   522→                      <input
+   523→                        type="text"
+   524→                        placeholder="Search courses..."
+   525→                        value={courseSearch}
+   526→                        onChange={(e) => setCourseSearch(e.target.value)}
+   527→                        className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-all"
+   528→                      />
+   529→                    </div>
+   530→
+   531→                    {isLoadingCourses ? (
+   532→                      <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+   533→                        <Loader2 className="w-5 h-5 animate-spin" />
+   534→                        <span className="text-sm">Loading courses...</span>
+   535→                      </div>
+   536→                    ) : filteredCourses.length === 0 ? (
+   537→                      <div className="text-center py-8">
+   538→                        <BookOpen className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+   539→                        <p className="text-sm text-muted-foreground">
+   540→                          {courseSearch ? 'No courses found matching your search.' : 'No courses available yet.'}
+   541→                        </p>
+   542→                      </div>
+   543→                    ) : (
+   544→                      <div className="space-y-2 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
+   545→                        {filteredCourses.map((course, i) => (
+   546→                          <motion.button
+   547→                            key={course.id}
+   548→                            initial={{ opacity: 0, x: -10 }}
+   549→                            animate={{ opacity: 1, x: 0 }}
+   550→                            transition={{ delay: i * 0.03 }}
+   551→                            onClick={() => handleSelectCourse(course.id)}
+   552→                            className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/30 dark:bg-slate-800/30 hover:bg-sky-50/50 dark:hover:bg-sky-900/20 border border-transparent hover:border-sky-200 dark:hover:border-sky-700/50 transition-all text-left group"
+   553→                          >
+   554→                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center flex-shrink-0">
+   555→                              <BookOpen className="w-5 h-5 text-white" />
+   556→                            </div>
+   557→                            <div className="flex-1 min-w-0">
+   558→                              <p className="text-sm font-semibold text-foreground truncate group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+   559→                                {course.title}
+   560→                              </p>
+   561→                              {course.technology && (
+   562→                                <p className="text-[11px] text-muted-foreground">{course.technology}</p>
+   563→                              )}
+   564→                            </div>
+   565→                            <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-sky-500 transition-colors flex-shrink-0" />
+   566→                          </motion.button>
+   567→                        ))}
+   568→                      </div>
+   569→                    )}
+   570→                  </GlassCard>
+   571→                </motion.div>
+   572→              )}
+   573→
+   574→              {/* ===== STEP 2: SELECT PACKAGE ===== */}
+   575→              {purchaseStep === 'select-package' && (
+   576→                <motion.div
+   577→                  key="select-package"
+   578→                  initial={{ opacity: 0, y: 10 }}
+   579→                  animate={{ opacity: 1, y: 0 }}
+   580→                  exit={{ opacity: 0, y: -10 }}
+   581→                  transition={{ duration: 0.2 }}
+   582→                >
+   583→                  <GlassCard className="p-4">
+   584→                    {/* Back button */}
+   585→                    <button
+   586→                      onClick={() => { setPurchaseStep('select-course'); setSelectedCourseId(''); }}
+   587→                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-sky-500 transition-colors mb-4"
+   588→                    >
+   589→                      <ChevronRight className="w-3 h-3 rotate-180" />
+   590→                      Back to courses
+   591→                    </button>
+   592→
+   593→                    {/* Selected course name */}
+   594→                    {selectedCourseId && (
+   595→                      <div className="flex items-center gap-2 mb-4 p-2.5 rounded-xl bg-sky-50/50 dark:bg-sky-900/20 border border-sky-200/50 dark:border-sky-700/30">
+   596→                        <BookOpen className="w-4 h-4 text-sky-500 flex-shrink-0" />
+   597→                        <span className="text-sm font-medium text-foreground truncate">
+   598→                          {courses.find((c) => c.id === selectedCourseId)?.title || `Course: ${selectedCourseId}`}
+   599→                        </span>
+   600→                      </div>
+   601→                    )}
+   602→
+   603→                    {isLoadingPackagesForCourse ? (
+   604→                      <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+   605→                        <Loader2 className="w-5 h-5 animate-spin" />
+   606→                        <span className="text-sm">Loading packages...</span>
+   607→                      </div>
+   608→                    ) : coursePackages.length === 0 ? (
+   609→                      <div className="text-center py-8">
+   610→                        <Package className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+   611→                        <p className="text-sm text-muted-foreground">No packages available for this course yet.</p>
+   612→                        <button
+   613→                          onClick={() => { setPurchaseStep('select-course'); setSelectedCourseId(''); }}
+   614→                          className="mt-3 text-sm text-sky-500 hover:text-sky-600 font-medium"
+   615→                        >
+   616→                          Choose a different course
+   617→                        </button>
+   618→                      </div>
+   619→                    ) : (
+   620→                      <div className="space-y-3">
+   621→                        {coursePackages.map((pkg, i) => {
+   622→                          const typeInfo = getPackageTypeLabel(pkg.package_type);
+   623→                          const TypeIcon = typeInfo.icon;
+   624→                          const isSelected = selectedPackage?.id === pkg.id;
+   625→
+   626→                          return (
+   627→                            <motion.button
+   628→                              key={pkg.id}
+   629→                              initial={{ opacity: 0, y: 10 }}
+   630→                              animate={{ opacity: 1, y: 0 }}
+   631→                              transition={{ delay: i * 0.08 }}
+   632→                              onClick={() => handleSelectPackage(pkg)}
+   633→                              className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+   634→                                isSelected
+   635→                                  ? 'border-sky-500 bg-sky-50/50 dark:bg-sky-900/20 shadow-lg shadow-sky-500/10'
+   636→                                  : 'border-white/30 dark:border-white/10 bg-white/30 dark:bg-slate-800/30 hover:border-sky-300 dark:hover:border-sky-700/50 hover:bg-sky-50/30 dark:hover:bg-sky-900/10'
+   637→                              }`}
+   638→                            >
+   639→                              <div className="flex items-start justify-between">
+   640→                                <div className="flex-1">
+   641→                                  {/* Package type badge */}
+   642→                                  <div className="flex items-center gap-2 mb-2">
+   643→                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${typeInfo.bgColor} ${typeInfo.color}`}>
+   644→                                      <TypeIcon className="w-3.5 h-3.5" />
+   645→                                      {typeInfo.label}
+   646→                                    </span>
+   647→                                    {pkg.package_type === 'friend' && (
+   648→                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400">
+   649→                                        Best Value
+   650→                                      </span>
+   651→                                    )}
+   652→                                  </div>
+   653→
+   654→                                  {/* Description */}
+   655→                                  <p className="text-sm text-muted-foreground">
+   656→                                    {typeInfo.description} &middot; {pkg.duration_months} months access
+   657→                                  </p>
+   658→
+   659→                                  {/* Max users */}
+   660→                                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+   661→                                    <span className="flex items-center gap-1">
+   662→                                      <Users className="w-3 h-3" />
+   663→                                      Up to {pkg.max_users} user{pkg.max_users > 1 ? 's' : ''}
+   664→                                    </span>
+   665→                                    <span className="flex items-center gap-1">
+   666→                                      <Clock className="w-3 h-3" />
+   667→                                      {pkg.duration_months} months
+   668→                                    </span>
+   669→                                  </div>
+   670→                                </div>
+   671→
+   672→                                {/* Price */}
+   673→                                <div className="text-right ml-4 flex-shrink-0">
+   674→                                  <p className="text-2xl font-extrabold text-foreground">&#2547;{pkg.price}</p>
+   675→                                  <p className="text-[10px] text-muted-foreground">per package</p>
+   676→                                </div>
+   677→                              </div>
+   678→
+   679→                              {isSelected && (
+   680→                                <motion.div
+   681→                                  initial={{ opacity: 0, height: 0 }}
+   682→                                  animate={{ opacity: 1, height: 'auto' }}
+   683→                                  className="mt-3 pt-3 border-t border-sky-200/50 dark:border-sky-700/30"
+   684→                                >
+   685→                                  <div className="flex items-center justify-between">
+   686→                                    <span className="text-sm font-semibold text-sky-600 dark:text-sky-400">Selected</span>
+   687→                                    <span className="flex items-center gap-1 text-sm text-sky-600 dark:text-sky-400 font-medium">
+   688→                                      Continue to payment
+   689→                                      <ArrowRight className="w-4 h-4" />
+   690→                                    </span>
+   691→                                  </div>
+   692→                                </motion.div>
+   693→                              )}
+   694→                            </motion.button>
+   695→                          );
+   696→                        })}
+   697→                      </div>
+   698→                    )}
+   699→                  </GlassCard>
+   700→                </motion.div>
+   701→              )}
+   702→
+   703→              {/* ===== STEP 3: PAYMENT ===== */}
+   704→              {purchaseStep === 'payment' && selectedPackage && (
+   705→                <motion.div
+   706→                  key="payment"
+   707→                  initial={{ opacity: 0, y: 10 }}
+   708→                  animate={{ opacity: 1, y: 0 }}
+   709→                  exit={{ opacity: 0, y: -10 }}
+   710→                  transition={{ duration: 0.2 }}
+   711→                >
+   712→                  {/* Order Summary */}
+   713→                  <GlassCard className="p-4 mb-4">
+   714→                    <div className="flex items-center justify-between mb-3">
+   715→                      <h3 className="text-sm font-bold text-foreground">Order Summary</h3>
+   716→                      <button
+   717→                        onClick={() => { setPurchaseStep('select-package'); setSelectedPackage(null); }}
+   718→                        className="text-xs text-muted-foreground hover:text-sky-500 transition-colors"
+   719→                      >
+   720→                        Change package
+   721→                      </button>
+   722→                    </div>
+   723→
+   724→                    <div className="flex items-center gap-3 p-3 rounded-xl bg-sky-50/50 dark:bg-sky-900/20">
+   725→                      {(() => {
+   726→                        const typeInfo = getPackageTypeLabel(selectedPackage.package_type);
+   727→                        const TypeIcon = typeInfo.icon;
+   728→                        return (
+   729→                          <div className={`w-10 h-10 rounded-lg ${typeInfo.bgColor} flex items-center justify-center flex-shrink-0`}>
+   730→                            <TypeIcon className={`w-5 h-5 ${typeInfo.color}`} />
+   731→                          </div>
+   732→                        );
+   733→                      })()}
+   734→                      <div className="flex-1 min-w-0">
+   735→                        <p className="text-sm font-semibold text-foreground">
+   736→                          {getPackageTypeLabel(selectedPackage.package_type).label} Package
+   737→                        </p>
+   738→                        <p className="text-xs text-muted-foreground">
+   739→                          {selectedPackage.duration_months} months &middot; Up to {selectedPackage.max_users} user{selectedPackage.max_users > 1 ? 's' : ''}
+   740→                        </p>
+   741→                      </div>
+   742→                      <div className="text-right flex-shrink-0">
+   743→                        {coupon.valid && coupon.coupon ? (
+   744→                          <>
+   745→                            <p className="text-xs text-muted-foreground line-through">&#2547;{selectedPackage.price}</p>
+   746→                            <p className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400">&#2547;{getDiscountedPrice()}</p>
+   747→                          </>
+   748→                        ) : (
+   749→                          <p className="text-lg font-extrabold text-foreground">&#2547;{selectedPackage.price}</p>
+   750→                        )}
+   751→                      </div>
+   752→                    </div>
+   753→                  </GlassCard>
+   754→
+   755→                  {/* Coupon Code */}
+   756→                  <GlassCard className="p-4 mb-4">
+   757→                    <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+   758→                      <Tag className="w-4 h-4 text-sky-500" />
+   759→                      Have a Coupon Code?
+   760→                    </h3>
+   761→                    <div className="flex items-center gap-2">
+   762→                      <input
+   763→                        type="text"
+   764→                        placeholder="Enter coupon code"
+   765→                        value={coupon.code}
+   766→                        onChange={(e) => setCoupon((prev) => ({
+   767→                          ...prev,
+   768→                          code: e.target.value.toUpperCase(),
+   769→                          valid: null,
+   770→                          error: null,
+   771→                        }))}
+   772→                        className="flex-1 px-3 py-2.5 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-all uppercase tracking-wider font-mono"
+   773→                      />
+   774→                      <GradientButton
+   775→                        size="sm"
+   776→                        onClick={handleValidateCoupon}
+   777→                        disabled={!coupon.code.trim() || coupon.isValidating}
+   778→                        loading={coupon.isValidating}
+   779→                      >
+   780→                        Apply
+   781→                      </GradientButton>
+   782→                    </div>
+   783→                    {coupon.valid === true && coupon.coupon && (
+   784→                      <motion.div
+   785→                        initial={{ opacity: 0, y: -5 }}
+   786→                        animate={{ opacity: 1, y: 0 }}
+   787→                        className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400"
+   788→                      >
+   789→                        <CheckCircle className="w-3.5 h-3.5" />
+   790→                        <span>
+   791→                          Coupon applied! You save &#2547;{Math.round(selectedPackage.price - getDiscountedPrice())}
+   792→                          {coupon.coupon.discount_type === 'percentage' && ` (${coupon.coupon.discount_value}% off)`}
+   793→                        </span>
+   794→                      </motion.div>
+   795→                    )}
+   796→                    {coupon.valid === false && (
+   797→                      <motion.div
+   798→                        initial={{ opacity: 0, y: -5 }}
+   799→                        animate={{ opacity: 1, y: 0 }}
+   800→                        className="mt-2 flex items-center gap-1.5 text-xs text-red-500"
+   801→                      >
+   802→                        <X className="w-3.5 h-3.5" />
+   803→                        <span>{coupon.error || 'Invalid coupon code'}</span>
+   804→                      </motion.div>
+   805→                    )}
+   806→                  </GlassCard>
+   807→
+   808→                  {/* Payment Instructions */}
+   809→                  {paymentConfigs.length > 0 && (
+   810→                    <GlassCard className="p-4 mb-4">
+   811→                      <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+   812→                        <Info className="w-4 h-4 text-sky-500" />
+   813→                        Payment Instructions
+   814→                      </h3>
+   815→                      <div className="space-y-3">
+   816→                        {paymentConfigs.map((config) => (
+   817→                          <div
+   818→                            key={config.id}
+   819→                            className="p-3 rounded-xl bg-white/30 dark:bg-slate-800/30 border border-white/20 dark:border-white/5"
+   820→                          >
+   821→                            <div className="flex items-center justify-between mb-2">
+   822→                              <span className="text-sm font-semibold text-foreground flex items-center gap-2">
+   823→                                <Wallet className="w-4 h-4 text-sky-500" />
+   824→                                {config.gateway}
+   825→                              </span>
+   826→                              {config.sandbox_mode === 1 && (
+   827→                                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+   828→                                  Sandbox Mode
+   829→                                </span>
+   830→                              )}
+   831→                            </div>
+   832→                            <div className="text-xs text-muted-foreground whitespace-pre-line leading-relaxed">
+   833→                              {config.instructions}
+   834→                            </div>
+   835→                            {/* Copyable account number detection - simple approach */}
+   836→                            {config.instructions && (
+   837→                              <button
+   838→                                onClick={() => handleCopyToClipboard(config.instructions)}
+   839→                                className="mt-2 flex items-center gap-1 text-[10px] text-sky-500 hover:text-sky-600 transition-colors"
+   840→                              >
+   841→                                <Copy className="w-3 h-3" />
+   842→                                Copy payment details
+   843→                              </button>
+   844→                            )}
+   845→                          </div>
+   846→                        ))}
+   847→                      </div>
+   848→                    </GlassCard>
+   849→                  )}
+   850→
+   851→                  {/* Payment Form */}
+   852→                  <GlassCard className="p-4">
+   853→                    <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+   854→                      <CreditCard className="w-4 h-4 text-sky-500" />
+   855→                      Submit Payment Proof
+   856→                    </h3>
+   857→
+   858→                    <div className="space-y-4">
+   859→                      {/* Transaction ID */}
+   860→                      <div>
+   861→                        <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+   862→                          <Hash className="w-3 h-3 inline mr-1" />
+   863→                          Transaction ID <span className="text-red-500">*</span>
+   864→                        </label>
+   865→                        <input
+   866→                          type="text"
+   867→                          placeholder="e.g. TXN123456789"
+   868→                          value={trxId}
+   869→                          onChange={(e) => setTrxId(e.target.value.toUpperCase())}
+   870→                          className="w-full px-3 py-2.5 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-all uppercase tracking-wider font-mono"
+   871→                        />
+   872→                      </div>
+   873→
+   874→                      {/* Phone Number */}
+   875→                      <div>
+   876→                        <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+   877→                          <Phone className="w-3 h-3 inline mr-1" />
+   878→                          Phone Number (bKash/Nagad)
+   879→                        </label>
+   880→                        <input
+   881→                          type="tel"
+   882→                          placeholder="e.g. 01XXXXXXXXX"
+   883→                          value={phone}
+   884→                          onChange={(e) => setPhone(e.target.value)}
+   885→                          className="w-full px-3 py-2.5 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-sky-500/30 transition-all"
+   886→                        />
+   887→                      </div>
+   888→
+   889→                      {/* Total */}
+   890→                      <div className="p-3 rounded-xl bg-sky-50/50 dark:bg-sky-900/20 border border-sky-200/50 dark:border-sky-700/30">
+   891→                        <div className="flex items-center justify-between">
+   892→                          <span className="text-sm font-semibold text-foreground">Total Amount</span>
+   893→                          <div className="text-right">
+   894→                            {coupon.valid && coupon.coupon ? (
+   895→                              <div className="flex items-center gap-2">
+   896→                                <span className="text-xs text-muted-foreground line-through">&#2547;{selectedPackage.price}</span>
+   897→                                <span className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400">&#2547;{getDiscountedPrice()}</span>
+   898→                              </div>
+   899→                            ) : (
+   900→                              <span className="text-xl font-extrabold text-foreground">&#2547;{selectedPackage.price}</span>
+   901→                            )}
+   902→                          </div>
+   903→                        </div>
+   904→                      </div>
+   905→
+   906→                      {/* Error message */}
+   907→                      {submitResult && !submitResult.success && (
+   908→                        <motion.div
+   909→                          initial={{ opacity: 0, y: -5 }}
+   910→                          animate={{ opacity: 1, y: 0 }}
+   911→                          className="flex items-start gap-2 p-3 rounded-xl bg-red-50/50 dark:bg-red-900/20 border border-red-200/50 dark:border-red-700/30"
+   912→                        >
+   913→                          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+   914→                          <p className="text-xs text-red-600 dark:text-red-400">{submitResult.message}</p>
+   915→                        </motion.div>
+   916→                      )}
+   917→
+   918→                      {/* Submit button */}
+   919→                      <GradientButton
+   920→                        className="w-full"
+   921→                        onClick={handleSubmitPayment}
+   922→                        disabled={!trxId.trim() || isSubmitting}
+   923→                        loading={isSubmitting}
+   924→                      >
+   925→                        {!trxId.trim() ? 'Enter Transaction ID' : isSubmitting ? 'Submitting...' : 'Submit Payment'}
+   926→                      </GradientButton>
+   927→
+   928→                      <p className="text-[10px] text-muted-foreground text-center">
+   929→                        Your payment will be verified by an admin. You&apos;ll gain access once approved.
+   930→                      </p>
+   931→                    </div>
+   932→                  </GlassCard>
+   933→                </motion.div>
+   934→              )}
+   935→
+   936→              {/* ===== STEP 4: SUBMITTED ===== */}
+   937→              {purchaseStep === 'submitted' && (
+   938→                <motion.div
+   939→                  key="submitted"
+   940→                  initial={{ opacity: 0, scale: 0.95 }}
+   941→                  animate={{ opacity: 1, scale: 1 }}
+   942→                  transition={{ duration: 0.3 }}
+   943→                >
+   944→                  <GlassCard className="p-6 text-center">
+   945→                    <motion.div
+   946→                      initial={{ scale: 0 }}
+   947→                      animate={{ scale: 1 }}
+   948→                      transition={{ type: 'spring', delay: 0.2 }}
+   949→                    >
+   950→                      <div className="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center mx-auto mb-4">
+   951→                        <CheckCircle className="w-8 h-8 text-emerald-500" />
+   952→                      </div>
+   953→                    </motion.div>
+   954→
+   955→                    <h3 className="text-lg font-extrabold text-foreground mb-2">Payment Submitted!</h3>
+   956→                    <p className="text-sm text-muted-foreground mb-1">
+   957→                      Your payment proof has been submitted successfully.
+   958→                    </p>
+   959→                    <p className="text-xs text-muted-foreground mb-6">
+   960→                      An admin will verify your payment. You&apos;ll gain access to the course once your payment is approved. This usually takes 1-24 hours.
+   961→                    </p>
+   962→
+   963→                    <div className="p-3 rounded-xl bg-amber-50/50 dark:bg-amber-900/20 border border-amber-200/50 dark:border-amber-700/30 mb-6">
+   964→                      <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+   965→                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+   966→                        <span>Your package status will show as <strong>Pending</strong> until verified.</span>
+   967→                      </div>
+   968→                    </div>
+   969→
+   970→                    <div className="flex flex-col sm:flex-row gap-3">
+   971→                      <GradientButton
+   972→                        className="flex-1"
+   973→                        onClick={handleResetFlow}
+   974→                      >
+   975→                        Purchase Another Package
+   976→                      </GradientButton>
+   977→                      <GradientButton
+   978→                        variant="success"
+   979→                        className="flex-1"
+   980→                        onClick={() => navigate('my-courses')}
+   981→                      >
+   982→                        View My Courses
+   983→                      </GradientButton>
+   984→                    </div>
+   985→                  </GlassCard>
+   986→                </motion.div>
+   987→              )}
+   988→            </AnimatePresence>
+   989→
+   990→            {/* Reset flow button (when in step 2/3) */}
+   991→            {purchaseStep !== 'select-course' && purchaseStep !== 'submitted' && (
+   992→              <motion.div
+   993→                initial={{ opacity: 0 }}
+   994→                animate={{ opacity: 1 }}
+   995→                className="mt-4 text-center"
+   996→              >
+   997→                <button
+   998→                  onClick={handleResetFlow}
+   999→                  className="text-xs text-muted-foreground hover:text-sky-500 transition-colors"
+  1000→                >
+  1001→                  Start over with a different course
+  1002→                </button>
+  1003→              </motion.div>
+  1004→            )}
+  1005→          </motion.div>
+  1006→        </div>
+  1007→
+  1008→        {/* ===== FAQ SECTION ===== */}
+  1009→        <motion.div
+  1010→          initial={{ opacity: 0, y: 20 }}
+  1011→          animate={{ opacity: 1, y: 0 }}
+  1012→          transition={{ delay: 0.35 }}
+  1013→          className="mt-6"
+  1014→        >
+  1015→          <GlassCard className="p-6">
+  1016→            <h3 className="text-base font-bold text-foreground mb-4">Frequently Asked Questions</h3>
+  1017→            <div className="space-y-4">
+  1018→              {[
+  1019→                { q: 'What is a Friend Pack?', a: 'A Friend Pack allows 2 students to share access to a course at a discounted price. Both users get full access to all course content.' },
+  1020→                { q: 'How long does package access last?', a: 'Each package provides 6 months (1 semester) of access from the date of activation.' },
+  1021→                { q: 'How do I pay?', a: 'Send payment via bKash/Nagad to the number shown in the payment instructions, then enter your Transaction ID and submit. An admin will verify your payment.' },
+  1022→                { q: 'How long does payment verification take?', a: 'Payment verification usually takes 1-24 hours. Your package will show as "Pending" until an admin approves it.' },
+  1023→                { q: 'Can I use a coupon code?', a: 'Yes! Enter your coupon code before submitting payment to get a discount on your package price.' },
+  1024→                { q: 'What happens after my package expires?', a: 'You will lose access to the course content. You can purchase a new package to regain access.' },
+  1025→              ].map((faq, i) => (
+  1026→                <motion.div
+  1027→                  key={i}
+  1028→                  className="border-b border-white/20 dark:border-white/5 pb-3 last:border-b-0"
+  1029→                  initial={{ opacity: 0 }}
+  1030→                  animate={{ opacity: 1 }}
+  1031→                  transition={{ delay: 0.4 + i * 0.05 }}
+  1032→                >
+  1033→                  <h4 className="text-sm font-bold text-foreground">{faq.q}</h4>
+  1034→                  <p className="text-xs text-muted-foreground mt-1">{faq.a}</p>
+  1035→                </motion.div>
+  1036→              ))}
+  1037→            </div>
+  1038→          </GlassCard>
+  1039→        </motion.div>
+  1040→      </div>
+  1041→    </AnimatedPage>
+  1042→  );
+  1043→}
+  1044→
