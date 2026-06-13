@@ -71,25 +71,35 @@ export default function AdminClientPage({ currentPage: initialPage }: { currentP
   const { adminUser, setAdminUser, sidebarCollapsed } = useAdminStore();
   const [checking, setChecking] = useState(true);
   const [isDesktop, setIsDesktop] = useState(false);
-  const [currentPage, setCurrentPage] = useState(initialPage);
 
-  const getPageFromPath = (pathname: string): string => {
+  const getPageFromPath = useCallback((pathname: string): string => {
     const clean = pathname.replace(/^\/+|\/+$/g, '');
     const segments = clean.split('/');
     const twoSegment = segments.length >= 2 ? `${segments[0]}-${segments[1]}` : '';
     if (validPages.includes(twoSegment)) return twoSegment;
     const firstSegment = segments[0] || 'dashboard';
     return validPages.includes(firstSegment) ? firstSegment : 'dashboard';
-  };
+  }, []);
+
+  // Always use URL as source of truth for initial page state
+  // This fixes direct page loads where RSC data may not match the URL
+  const [currentPage, setCurrentPage] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return getPageFromPath(window.location.pathname);
+    }
+    return validPages.includes(initialPage) ? initialPage : 'dashboard';
+  });
 
   // Track URL changes for SPA routing (pushState + popstate + replaceState)
   const syncPageFromUrl = useCallback(() => {
     setCurrentPage(getPageFromPath(window.location.pathname));
-  }, []);
+  }, [getPageFromPath]);
 
   useEffect(() => {
-    setCurrentPage(validPages.includes(initialPage) ? initialPage : 'dashboard');
-  }, [initialPage]);
+    // Sync from URL on mount and whenever the page prop changes
+    // URL is always the source of truth
+    syncPageFromUrl();
+  }, [initialPage, syncPageFromUrl]);
 
   useEffect(() => {
     // Listen for popstate (back/forward navigation)
@@ -112,10 +122,6 @@ export default function AdminClientPage({ currentPage: initialPage }: { currentP
       history.pushState = originalPushState;
       history.replaceState = originalReplaceState;
     };
-  }, [syncPageFromUrl]);
-
-  useEffect(() => {
-    syncPageFromUrl();
   }, [syncPageFromUrl]);
 
   useEffect(() => {
