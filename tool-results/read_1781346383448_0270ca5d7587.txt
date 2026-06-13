@@ -1,0 +1,598 @@
+     1→<div align="center">
+     2→
+     3→<img src="public/dakkho-logo.png" alt="DAKKHO Logo" width="140" />
+     4→
+     5→# 🎓 DAKKHO — Student App
+     6→
+     7→**Netflix-like EdTech Streaming App for Polytechnic Students in Bangladesh**
+     8→
+     9→[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
+    10→[![TypeScript 5](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+    11→[![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+    12→[![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-latest-18181B?style=for-the-badge&logo=shadcnui&logoColor=white)](https://ui.shadcn.com/)
+    13→[![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](https://pages.cloudflare.com/)
+    14→[![MIT License](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
+    15→
+    16→**🌐 Live:** [dakkho-student.pages.dev](https://dakkho-student.pages.dev)
+    17→
+    18→</div>
+    19→
+    20→---
+    21→
+    22→## 📑 Table of Contents
+    23→
+    24→- [🆕 Recent Updates](#-recent-updates)
+    25→- [📖 Overview](#-overview)
+    26→- [🔗 Related Repositories](#-related-repositories)
+    27→- [🏗️ Architecture](#-architecture)
+    28→- [📱 App Sections](#-app-sections)
+    29→- [🧰 Tech Stack](#-tech-stack)
+    30→- [🚀 Quick Start](#-quick-start)
+    31→- [🔐 Environment Variables](#-environment-variables)
+    32→- [📡 API Client — 21 Namespaces](#-api-client--21-namespaces)
+    33→- [🗄️ Zustand Stores — 9 Stores](#-zustand-stores--9-stores)
+    34→- [📡 API Routes Used](#-api-routes-used)
+    35→- [🚢 Deployment](#-deployment)
+    36→- [📁 Project Structure](#-project-structure)
+    37→- [🤝 Contributing](#-contributing)
+    38→- [📄 License](#-license)
+    39→
+    40→---
+    41→
+    42→## 🆕 Recent Updates
+    43→
+    44→| # | Update | Details |
+    45→|---|--------|---------|
+    46→| 1 | **My Courses — User-specific enrollments** | My Courses page now shows only the logged-in user's enrolled courses via `GET /api/enrollments/mine` instead of all courses |
+    47→| 2 | **Instructor profile pictures** | Home page Featured Instructors section now displays instructor avatar/profile pictures |
+    48→| 3 | **PipraPay payment integration** | Added PipraPay as a payment gateway option alongside SSLCommerz, bKash API, and manual payments |
+    49→| 4 | **Watch history API** | Watch history backed by server API (`GET /api/watch-history`) with progress tracking (`POST /api/watch-progress`) |
+    50→| 5 | **Enrollment with package selection** | Enrollment flow now supports package selection (monthly/quarterly/yearly) with expiry tracking per package |
+    51→
+    52→---
+    53→
+    54→## 📖 Overview
+    55→
+    56→**DAKKHO Student App** is a Netflix-like streaming application for polytechnic students in Bangladesh. Built with Next.js 16 as a static SPA, it provides course browsing, video playback, progress tracking, bookmarks, achievements, social features, 20+ polytechnic department pages, and semester pages — all communicating with a shared Cloudflare Worker API.
+    57→
+    58→The app runs entirely on **Cloudflare Pages** as a static export (`output: "export"`) with client-side routing powered by Zustand stores and the History API.
+    59→
+    60→---
+    61→
+    62→## 🔗 Related Repositories
+    63→
+    64→| Repository | Description | URL |
+    65→|------------|-------------|-----|
+    66→| ⚡ **Worker API** | Hono-based Cloudflare Worker backend — auth, CRUD, file uploads, payments, push notifications | [github.com/grayrat2026/dakkho-worker](https://github.com/grayrat2026/dakkho-worker) |
+    67→| 🖥️ **Admin Panel** | Next.js 16 admin dashboard with 25 management panels | [github.com/grayrat2026/dakkho-admin-web](https://github.com/grayrat2026/dakkho-admin-web) |
+    68→| 🎓 **Instructor App** | Instructor-facing dashboard for course management, analytics, and student progress | [github.com/grayrat2026/dakkho-instructor](https://github.com/grayrat2026/dakkho-instructor) |
+    69→
+    70→---
+    71→
+    72→## 🏗️ Architecture
+    73→
+    74→```
+    75→  ┌─────────────────────────────────────────────────────────────────┐
+    76→  │                     ☁️  Cloudflare Edge                         │
+    77→  │                                                                 │
+    78→  │  📱 Student App              ⚡ Worker API (shared)             │
+    79→  │  ┌───────────────┐          ┌───────────────┐                  │
+    80→  │  │  Next.js 16   │          │  Hono + D1    │                  │
+    81→  │  │  Static SPA   │  /api/*  │  (Workers)    │                  │
+    82→  │  │  (Pages CDN)  │ ───────► │               │                  │
+    83→  │  └───────────────┘          └───────┬───────┘                  │
+    84→  │                                     │                           │
+    85→  │          ┌──────────────────────────┤                           │
+    86→  │          │              │           │                           │
+    87→  │          ▼              ▼           ▼                           │
+    88→  │       ┌────┐        ┌────┐     ┌─────────┐┌──────────┐        │
+    89→  │       │ 🗄️ │        │ ⚡ │     │  📧    ││  🔔     │        │
+    90→  │       │ D1 │        │ KV │     │ Resend ││OneSignal │        │
+    91→  │       │ DB │        │Cache│    │ Email  ││  Push    │        │
+    92→  │       └────┘        └────┘     └───────┘└──────────┘        │
+    93→  │                                                                 │
+    94→  │  Also connected to same Worker API:                             │
+    95→  │  🖥️ Admin Panel ──────► /admin/*                               │
+    96→  │  🎓 Instructor App ───► /instructor/*                          │
+    97→  │                                                                 │
+    98→  └─────────────────────────────────────────────────────────────────┘
+    99→```
+   100→
+   101→**Key architectural decisions:**
+   102→
+   103→- 🌍 **Edge-first** — Student App is a static SPA served from Cloudflare Pages CDN; all data flows through the shared Worker API
+   104→- 🗄️ **Shared D1 (SQLite) database** — Student App, Admin Panel, and Instructor App all read/write to the same D1 database via the Worker API
+   105→- 🎯 **Static SPA deployment** — `output: "export"` for zero-cost static hosting on Cloudflare Pages, with client-side routing via Zustand + History API
+   106→- ⚡ **KV-cached server config** — UI configuration (feature flags, navigation, content protection) is fetched from `GET /api/config` and cached in a Zustand store
+   107→- 📦 **R2 media delivery** — Videos, thumbnails, avatars, and resources are served from R2 buckets through the Worker API with 7-day browser cache headers
+   108→
+   109→---
+   110→
+   111→## 📱 App Sections
+   112→
+   113→| Section | Features |
+   114→|---------|----------|
+   115→| 🔐 **Auth** | Login, Signup, Forgot Password, OTP verification |
+   116→| 🏠 **Home** | Hero section, continue watching, trending courses, featured instructors (with profile pictures), category pills |
+   117→| 📚 **Courses** | My Courses (user's enrolled courses via `/api/enrollments/mine`), Course Detail, Curriculum, Reviews, Q&A, Resources, Notes, Quizzes, Progress, Announcements |
+   118→| 🎬 **Video** | Video player with progress tracking, downloads |
+   119→| 🎓 **Instructors** | Directory, profiles (with avatars), courses, reviews, schedule, contact |
+   120→| 👤 **Profile** | Edit profile, change password, learning stats, subscription, referral, delete account |
+   121→| ⚙️ **Settings** | Account, notifications, privacy, language, theme, downloads, content protection, sessions, video quality, network data |
+   122→| 🌐 **Social** | Leaderboard, study groups, peer connections, community, feedback, roadmap |
+   123→| 📝 **Exam** | Prep, schedule, results, practice, tips |
+   124→| 🏛️ **Departments** | 20 polytechnic department pages (CSE, EEE, ME, CE, CST, ETE, Architecture, Textile, Chemical, Automobile, RAC, Glass & Ceramic, Printing, Surveying, Mechatronics, Mining, Metallurgical, Power, Instrumentation, Food, Leather) |
+   125→| 📆 **Semesters** | Semester 1–8 pages |
+   126→| 🔍 **Other** | Search, bookmarks, watch history, live sessions, achievements, discussion, certificates, about, help (FAQ, terms, privacy, refund, contact), pricing, changelog |
+   127→
+   128→---
+   129→
+   130→## 🧰 Tech Stack
+   131→
+   132→| Category | Technology |
+   133→|----------|------------|
+   134→| **Framework** | ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js) App Router, Turbopack, Static Export |
+   135→| **Language** | ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript) |
+   136→| **Styling** | ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss) + shadcn/ui (40+ Radix components) |
+   137→| **State Management** | Zustand (9 stores) |
+   138→| **Data Fetching** | TanStack React Query |
+   139→| **Charts** | Recharts |
+   140→| **Forms** | React Hook Form + Zod |
+   141→| **Animations** | Framer Motion |
+   142→| **Push Notifications** | OneSignal |
+   143→| **Payments** | PipraPay, SSLCommerz, bKash API, Manual (bKash/Nagad) |
+   144→| **Hosting** | Cloudflare Pages (CDN) |
+   145→
+   146→---
+   147→
+   148→## 🚀 Quick Start
+   149→
+   150→### Prerequisites
+   151→
+   152→- **Node.js** ≥ 18 or **Bun** runtime
+   153→- The **DAKKHO Worker API** must be deployed and running (see [dakkho-worker](https://github.com/grayrat2026/dakkho-worker))
+   154→
+   155→### Installation
+   156→
+   157→```bash
+   158→# 1. Clone the repository
+   159→git clone https://github.com/grayrat2026/dakkho-student-app.git
+   160→cd dakkho-student-app
+   161→
+   162→# 2. Install dependencies
+   163→npm install
+   164→
+   165→# 3. Set up environment variables
+   166→cp .env.example .env.local
+   167→# Edit .env.local and set NEXT_PUBLIC_API_BASE_URL to your Worker API URL
+   168→
+   169→# 4. Start development server
+   170→npm run dev
+   171→```
+   172→
+   173→The app will be available at `http://localhost:3000`.
+   174→
+   175→---
+   176→
+   177→## 🔐 Environment Variables
+   178→
+   179→| Variable | Required | Default | Description |
+   180→|----------|----------|---------|-------------|
+   181→| `NEXT_PUBLIC_API_BASE_URL` | ❌ No | `https://dakkho-admin-api.dakkho-admin.workers.dev` | Worker API URL |
+   182→
+   183→---
+   184→
+   185→## 📡 API Client — 21 Namespaces
+   186→
+   187→The Student App communicates with the shared Worker API through a typed API client (`src/lib/student-api-client.ts`) with **21 API namespaces**:
+   188→
+   189→| # | Namespace | Key Methods | Description |
+   190→|---|-----------|-------------|-------------|
+   191→| 1 | `authApi` | `signup`, `login`, `logout`, `me`, `verifyOTP`, `forgotPassword`, `resendOTP` | Student authentication & session management |
+   192→| 2 | `courseApi` | `list`, `get`, `videos` | Course catalog, details, and video listings |
+   193→| 3 | `videoApi` | `streamUrl` | R2 video stream URL generation |
+   194→| 4 | `instructorApi` | `getDashboard`, `getProfile`, `updateProfile`, `getCourses`, `getCourse`, `getSchedule`, `getReviews`, `getNotifications`, `changePassword` | Instructor dashboard, profile, courses, and management |
+   195→| 5 | `enrollmentApi` | `mine`, `enroll`, `get` | User enrollments with package selection and expiry tracking |
+   196→| 6 | `packageApi` | `list`, `mine` | Course packages and user's active packages |
+   197→| 7 | `paymentApi` | `submit`, `config` | Payment submission and gateway configuration (PipraPay, SSLCommerz, bKash, manual) |
+   198→| 8 | `couponApi` | `validate` | Discount coupon validation |
+   199→| 9 | `configApi` | `get` | Server-driven UI configuration (feature flags, navigation, content protection) |
+   200→| 10 | `pushApi` | `register`, `unregister` | OneSignal push notification token management |
+   201→| 11 | `instituteApi` | `list`, `get`, `requestNew`, `myRequests` | Polytechnic institute directory and requests |
+   202→| 12 | `technologyApi` | `list` | Department/technology listings |
+   203→| 13 | `eventApi` | `list` | Events, holidays, and exam calendar |
+   204→| 14 | `liveClassApi` | `list` | Live class schedule |
+   205→| 15 | `watchHistoryApi` | `list`, `clear` | Watch history (GET /api/watch-history) |
+   206→| 16 | `watchProgressApi` | `save`, `get` | Watch progress tracking (POST /api/watch-progress) |
+   207→| 17 | `bookmarkApi` | `list`, `toggle`, `isBookmarked` | Course bookmarks (localStorage-backed) |
+   208→| 18 | `searchApi` | `search`, `recent`, `clearRecent` | Search queries and recent searches |
+   209→| 19 | `profileApi` | `get`, `update`, `changePassword`, `deleteAccount` | User profile management |
+   210→| 20 | `achievementApi` | `list`, `unlock` | Student achievements |
+   211→| 21 | `reviewApi` | `list`, `create` | Course and instructor reviews |
+   212→
+   213→**API Client features:**
+   214→
+   215→- Routes all requests to `NEXT_PUBLIC_API_BASE_URL` (falls back to default Worker URL)
+   216→- Auto-attaches Bearer token from `localStorage` (`dakkho_student_token`)
+   217→- Type-safe helpers: `api.get`, `api.post`, `api.put`, `api.delete`
+   218→- Error handling with structured `ApiError` objects
+   219→
+   220→---
+   221→
+   222→## 🗄️ Zustand Stores — 9 Stores
+   223→
+   224→All client-side state is managed by **9 Zustand stores** in `src/lib/student-store.ts`:
+   225→
+   226→| # | Store | Purpose | Persistence |
+   227→|---|-------|---------|-------------|
+   228→| 1 | `useNavigationStore` | SPA routing — page ↔ URL sync via History API, navigation history, sidebar state | Memory |
+   229→| 2 | `useAuthStore` | Auth state — login, signup, logout, OTP, password reset, profile refresh, session persistence | `localStorage` (30-day expiry) |
+   230→| 3 | `useThemeStore` | Light/dark theme toggle | DOM class |
+   231→| 4 | `useWatchProgressStore` | Video watch progress per video — position, completion, last watched timestamp | `localStorage` |
+   232→| 5 | `useBookmarkStore` | Course bookmarks — toggle and check bookmarked status | `localStorage` |
+   233→| 6 | `useNotificationStore` | In-app notifications — mark read, unread count, add/remove | Memory |
+   234→| 7 | `useSearchStore` | Search queries and recent search history (max 10) | `localStorage` |
+   235→| 8 | `useContentProtectionStore` | Content protection toggles — no-copy, no-right-click, no-screenshot, watermark, drag protection | Memory |
+   236→| 9 | `useServerConfigStore` | Server-driven UI config — feature flags, home sections, sidebar sections, bottom nav tabs, top bar elements, card style | Fetched from `/api/config` |
+   237→
+   238→---
+   239→
+   240→## 📡 API Routes Used
+   241→
+   242→The Student App communicates with the shared Worker API using these Student routes (prefixed with `/api/`):
+   243→
+   244→### Public Routes
+   245→
+   246→| Method | Endpoint | Description |
+   247→|--------|----------|-------------|
+   248→| `GET` | `/api/config` | Get server config (feature flags, UI settings) |
+   249→| `GET` | `/api/config/payment` | Get active payment gateway config |
+   250→| `GET` | `/api/courses` | Published course catalog |
+   251→| `GET` | `/api/courses/:id` | Course detail |
+   252→| `GET` | `/api/courses/:id/videos` | Videos for a course |
+   253→| `GET` | `/api/instructors` | Instructor list |
+   254→| `GET` | `/api/institutes` | Institute list |
+   255→| `GET` | `/api/technologies` | Technology/department list |
+   256→| `GET` | `/api/events` | Events list |
+   257→| `GET` | `/api/live-classes` | Live class schedule |
+   258→| `POST` | `/api/coupons/validate` | Validate a coupon code |
+   259→| `GET` | `/api/course-packages` | Get packages for a course |
+   260→
+   261→### Auth Routes
+   262→
+   263→| Method | Endpoint | Description |
+   264→|--------|----------|-------------|
+   265→| `POST` | `/api/auth/signup` | Student signup |
+   266→| `POST` | `/api/auth/login` | Student login |
+   267→| `POST` | `/api/auth/logout` | Student logout |
+   268→| `GET` | `/api/auth/me` | Current student profile |
+   269→| `POST` | `/api/auth/verify-otp` | Verify email with OTP |
+   270→| `POST` | `/api/auth/forgot-password` | Request password reset |
+   271→| `POST` | `/api/auth/reset-password` | Reset password with OTP |
+   272→| `POST` | `/api/auth/resend-otp` | Resend verification OTP |
+   273→| `PUT` | `/api/auth/profile` | Update student profile |
+   274→
+   275→### Authenticated Routes
+   276→
+   277→| Method | Endpoint | Description |
+   278→|--------|----------|-------------|
+   279→| `GET` | `/api/enrollments/mine` | Logged-in user's enrolled courses |
+   280→| `POST` | `/api/enrollments` | Enroll in a course with package selection |
+   281→| `GET` | `/api/watch-history` | User's watch history |
+   282→| `POST` | `/api/watch-progress` | Save watch progress |
+   283→| `POST` | `/api/video/stream-url` | Get R2 stream URL |
+   284→| `POST` | `/api/push/register` | Register push token |
+   285→| `POST` | `/api/push/unregister` | Unregister push token |
+   286→| `POST` | `/api/payments/submit` | Submit payment (PipraPay, SSLCommerz, bKash, manual) |
+   287→| `GET` | `/api/packages/mine` | User's active packages |
+   288→| `POST` | `/api/institutes/requests` | Request new institute |
+   289→
+   290→### File Serving
+   291→
+   292→| Method | Endpoint | Description |
+   293→|--------|----------|-------------|
+   294→| `GET` | `/upload/:bucketType/:key` | Serve R2 files (7-day cache) |
+   295→
+   296→Bucket types: `videos`, `thumbnails`, `avatars`, `resources`
+   297→
+   298→---
+   299→
+   300→## 🚢 Deployment
+   301→
+   302→### Build & Deploy to Cloudflare Pages
+   303→
+   304→```bash
+   305→# Build static export
+   306→npm run build
+   307→
+   308→# Deploy to Cloudflare Pages
+   309→npx wrangler pages deploy out --project-name=dakkho-student
+   310→```
+   311→
+   312→The app will be live at `https://dakkho-student.pages.dev`.
+   313→
+   314→### Environment Setup
+   315→
+   316→Make sure `NEXT_PUBLIC_API_BASE_URL` is set in your build environment (Cloudflare Pages dashboard → Settings → Environment variables) to point to your deployed Worker API.
+   317→
+   318→---
+   319→
+   320→## 📁 Project Structure
+   321→
+   322→```
+   323→dakkho-student-app/
+   324→├── src/
+   325→│   ├── app/
+   326→│   │   ├── layout.tsx                   # Root layout
+   327→│   │   ├── page.tsx                     # SPA entry point
+   328→│   │   ├── not-found.tsx                # 404 page
+   329→│   │   ├── globals.css                  # Student theme styles
+   330→│   │   └── [[...slug]]/
+   331→│   │       ├── page.tsx                 # SPA catch-all entry
+   332→│   │       └── error.tsx                # Error boundary
+   333→│   │
+   334→│   ├── components/
+   335→│   │   ├── student/                     # 📱 Student App (80+ pages & components)
+   336→│   │   │   ├── DakkhoApp.tsx            # Root app component
+   337→│   │   │   ├── AppShell.tsx             # App shell wrapper
+   338→│   │   │   ├── StudentShell.tsx         # Student layout (sidebar, topbar, bottom nav)
+   339→│   │   │   ├── ContentProtection.tsx    # Content protection wrapper
+   340→│   │   │   ├── CustomContextMenu.tsx    # Custom right-click menu
+   341→│   │   │   │
+   342→│   │   │   ├── auth/                    # 🔐 Authentication
+   343→│   │   │   │   ├── LoginPage.tsx
+   344→│   │   │   │   ├── SignupPage.tsx
+   345→│   │   │   │   ├── ForgotPasswordPage.tsx
+   346→│   │   │   │   ├── OTPInput.tsx
+   347→│   │   │   │   └── PasswordStrengthIndicator.tsx
+   348→│   │   │   │
+   349→│   │   │   ├── home/                    # 🏠 Home page
+   350→│   │   │   │   ├── HomePage.tsx
+   351→│   │   │   │   ├── HeroSection.tsx
+   352→│   │   │   │   ├── EnrolledHero.tsx
+   353→│   │   │   │   ├── ContinueWatching.tsx
+   354→│   │   │   │   ├── TrendingCourses.tsx
+   355→│   │   │   │   ├── FeaturedInstructors.tsx
+   356→│   │   │   │   └── CategoryPills.tsx
+   357→│   │   │   │
+   358→│   │   │   ├── course/                  # 📚 Course detail pages
+   359→│   │   │   │   ├── CourseDetailPage.tsx
+   360→│   │   │   │   ├── CourseCurriculumPage.tsx
+   361→│   │   │   │   ├── CourseReviewsPage.tsx
+   362→│   │   │   │   ├── CourseQAPage.tsx
+   363→│   │   │   │   ├── CourseAnnouncementsPage.tsx
+   364→│   │   │   │   ├── CourseResourcesPage.tsx
+   365→│   │   │   │   ├── CourseNotesPage.tsx
+   366→│   │   │   │   ├── CourseQuizzesPage.tsx
+   367→│   │   │   │   └── CourseProgressPage.tsx
+   368→│   │   │   │
+   369→│   │   │   ├── courses/                 # 📖 My Courses
+   370→│   │   │   │   └── MyCoursesPage.tsx
+   371→│   │   │   │
+   372→│   │   │   ├── video/                   # 🎬 Video player
+   373→│   │   │   │   └── VideoPlayerPage.tsx
+   374→│   │   │   │
+   375→│   │   │   ├── instructor/              # 🎓 Instructors
+   376→│   │   │   │   ├── InstructorsPage.tsx
+   377→│   │   │   │   ├── InstructorProfilePage.tsx
+   378→│   │   │   │   ├── InstructorCoursesPage.tsx
+   379→│   │   │   │   ├── InstructorReviewsPage.tsx
+   380→│   │   │   │   ├── InstructorSchedulePage.tsx
+   381→│   │   │   │   └── InstructorContactPage.tsx
+   382→│   │   │   │
+   383→│   │   │   ├── profile/                 # 👤 User profile
+   384→│   │   │   │   ├── ProfilePage.tsx
+   385→│   │   │   │   ├── EditProfilePage.tsx
+   386→│   │   │   │   ├── ChangePasswordPage.tsx
+   387→│   │   │   │   ├── LearningStatsPage.tsx
+   388→│   │   │   │   ├── SubscriptionPage.tsx
+   389→│   │   │   │   ├── ReferralPage.tsx
+   390→│   │   │   │   └── DeleteAccountPage.tsx
+   391→│   │   │   │
+   392→│   │   │   ├── settings/                # ⚙️ Settings
+   393→│   │   │   │   ├── SettingsPage.tsx
+   394→│   │   │   │   ├── AccountSettingsPage.tsx
+   395→│   │   │   │   ├── NotificationSettingsPage.tsx
+   396→│   │   │   │   ├── PrivacySettingsPage.tsx
+   397→│   │   │   │   ├── LanguageSettingsPage.tsx
+   398→│   │   │   │   ├── ThemeSettingsPage.tsx
+   399→│   │   │   │   ├── DownloadSettingsPage.tsx
+   400→│   │   │   │   ├── ContentProtectionSettingsPage.tsx
+   401→│   │   │   │   ├── ActiveSessionsPage.tsx
+   402→│   │   │   │   ├── VideoQualityPage.tsx
+   403→│   │   │   │   ├── NetworkDataPage.tsx
+   404→│   │   │   │   └── HelpPage.tsx
+   405→│   │   │   │
+   406→│   │   │   ├── social/                  # 🌐 Social / Community
+   407→│   │   │   │   ├── LeaderboardPage.tsx
+   408→│   │   │   │   ├── StudyGroupsPage.tsx
+   409→│   │   │   │   ├── PeerConnectionsPage.tsx
+   410→│   │   │   │   ├── CommunityPage.tsx
+   411→│   │   │   │   ├── FeedbackPage.tsx
+   412→│   │   │   │   └── RoadmapPage.tsx
+   413→│   │   │   │
+   414→│   │   │   ├── exam/                    # 📝 Exam
+   415→│   │   │   │   ├── ExamPrepPage.tsx
+   416→│   │   │   │   ├── ExamSchedulePage.tsx
+   417→│   │   │   │   ├── ExamResultsPage.tsx
+   418→│   │   │   │   ├── ExamPracticePage.tsx
+   419→│   │   │   │   └── ExamTipsPage.tsx
+   420→│   │   │   │
+   421→│   │   │   ├── department/              # 🏛️ 20 polytechnic departments
+   422→│   │   │   │   ├── DepartmentPageTemplate.tsx
+   423→│   │   │   │   ├── CSEPage.tsx
+   424→│   │   │   │   ├── EEEPage.tsx
+   425→│   │   │   │   ├── MEPage.tsx
+   426→│   │   │   │   ├── CEPage.tsx
+   427→│   │   │   │   ├── ETEPage.tsx
+   428→│   │   │   │   ├── ArchitecturePage.tsx
+   429→│   │   │   │   ├── TextilePage.tsx
+   430→│   │   │   │   ├── ChemicalPage.tsx
+   431→│   │   │   │   ├── AutomobilePage.tsx
+   432→│   │   │   │   ├── RACPage.tsx
+   433→│   │   │   │   ├── GlassCeramicPage.tsx
+   434→│   │   │   │   ├── PrintingPage.tsx
+   435→│   │   │   │   ├── SurveyingPage.tsx
+   436→│   │   │   │   ├── MechatronicsPage.tsx
+   437→│   │   │   │   ├── MiningPage.tsx
+   438→│   │   │   │   ├── MetallurgicalPage.tsx
+   439→│   │   │   │   ├── PowerPage.tsx
+   440→│   │   │   │   ├── InstrumentationPage.tsx
+   441→│   │   │   │   ├── FoodPage.tsx
+   442→│   │   │   │   └── LeatherPage.tsx
+   443→│   │   │   │
+   444→│   │   │   ├── semester/                # 📆 Semester 1–8
+   445→│   │   │   │   ├── SemesterPageTemplate.tsx
+   446→│   │   │   │   ├── Semester1Page.tsx
+   447→│   │   │   │   ├── Semester2Page.tsx
+   448→│   │   │   │   ├── Semester3Page.tsx
+   449→│   │   │   │   ├── Semester4Page.tsx
+   450→│   │   │   │   ├── Semester5Page.tsx
+   451→│   │   │   │   ├── Semester6Page.tsx
+   452→│   │   │   │   ├── Semester7Page.tsx
+   453→│   │   │   │   └── Semester8Page.tsx
+   454→│   │   │   │
+   455→│   │   │   ├── shared/                  # 🧩 Shared UI components
+   456→│   │   │   │   ├── TopBar.tsx
+   457→│   │   │   │   ├── Sidebar.tsx
+   458→│   │   │   │   ├── BottomNav.tsx
+   459→│   │   │   │   ├── GlassCard.tsx
+   460→│   │   │   │   ├── GradientButton.tsx
+   461→│   │   │   │   ├── ProgressBar.tsx
+   462→│   │   │   │   ├── CourseCardGrid.tsx
+   463→│   │   │   │   ├── AnimatedPage.tsx
+   464→│   │   │   │   ├── AnimatedCounter.tsx
+   465→│   │   │   │   ├── EmptyState.tsx
+   466→│   │   │   │   ├── LoadingSkeleton.tsx
+   467→│   │   │   │   └── SensitiveActionPrompt.tsx
+   468→│   │   │   │
+   469→│   │   │   ├── search/                  # 🔍 Search
+   470→│   │   │   │   └── SearchPage.tsx
+   471→│   │   │   │
+   472→│   │   │   ├── bookmarks/               # 🔖 Bookmarks
+   473→│   │   │   │   └── BookmarksPage.tsx
+   474→│   │   │   │
+   475→│   │   │   ├── history/                 # 🕐 Watch History
+   476→│   │   │   │   └── WatchHistoryPage.tsx
+   477→│   │   │   │
+   478→│   │   │   ├── notifications/           # 🔔 Notifications
+   479→│   │   │   │   └── NotificationsPage.tsx
+   480→│   │   │   │
+   481→│   │   │   ├── downloads/               # ⬇️ Downloads
+   482→│   │   │   │   └── DownloadsPage.tsx
+   483→│   │   │   │
+   484→│   │   │   ├── live/                    # 🔴 Live Sessions
+   485→│   │   │   │   └── LiveSessionsPage.tsx
+   486→│   │   │   │
+   487→│   │   │   ├── achievements/            # 🏆 Achievements
+   488→│   │   │   │   └── AchievementsPage.tsx
+   489→│   │   │   │
+   490→│   │   │   ├── certificates/            # 📜 Certificates
+   491→│   │   │   │   └── CertificatesPage.tsx
+   492→│   │   │   │
+   493→│   │   │   ├── assignment/              # 📋 Assignments
+   494→│   │   │   │   └── AssignmentPage.tsx
+   495→│   │   │   │
+   496→│   │   │   ├── discussion/              # 💬 Discussion
+   497→│   │   │   │   └── DiscussionPage.tsx
+   498→│   │   │   │
+   499→│   │   │   ├── category/                # 🏷️ Category
+   500→│   │   │   │   └── CategoryPage.tsx
+   501→│   │   │   │
+   502→│   │   │   ├── explore/                 # 🧭 Explore
+   503→│   │   │   │   └── ExplorePage.tsx
+   504→│   │   │   │
+   505→│   │   │   ├── about/                   # ℹ️ About
+   506→│   │   │   │   └── AboutPage.tsx
+   507→│   │   │   │
+   508→│   │   │   ├── help/                    # ❓ Help pages
+   509→│   │   │   │   ├── FAQPage.tsx
+   510→│   │   │   │   ├── ContactSupportPage.tsx
+   511→│   │   │   │   ├── ReportIssuePage.tsx
+   512→│   │   │   │   ├── TermsOfServicePage.tsx
+   513→│   │   │   │   ├── PrivacyPolicyPage.tsx
+   514→│   │   │   │   └── RefundPolicyPage.tsx
+   515→│   │   │   │
+   516→│   │   │   ├── misc/                    # 📄 Misc pages
+   517→│   │   │   │   ├── PricingPage.tsx
+   518→│   │   │   │   ├── ChangelogPage.tsx
+   519→│   │   │   │   ├── MaintenancePage.tsx
+   520→│   │   │   │   ├── TermsPage.tsx
+   521→│   │   │   │   └── PrivacyPage.tsx
+   522→│   │   │   │
+   523→│   │   │   └── error/                   # ⚠️ Error pages
+   524→│   │   │       ├── Error404Page.tsx
+   525→│   │   │       └── Error500Page.tsx
+   526→│   │   │
+   527→│   │   └── ui/                          # 40+ shadcn/ui components
+   528→│   │       ├── button.tsx
+   529→│   │       ├── card.tsx
+   530→│   │       ├── dialog.tsx
+   531→│   │       ├── tabs.tsx
+   532→│   │       └── ...
+   533→│   │
+   534→│   └── lib/
+   535→│       ├── student-store.ts             # 9 Zustand stores (navigation, auth, theme, etc.)
+   536→│       ├── student-api-client.ts        # Student API client (12 namespaces)
+   537→│       ├── instructor-api-client.ts     # Instructor API client (1 namespace)
+   538→│       ├── api-client.ts                # Admin API client (used by admin components)
+   539→│       ├── store.ts                     # Admin Zustand store
+   540→│       ├── mock-data.ts                 # Mock data for development
+   541→│       ├── constants.ts                 # App-wide constants
+   542→│       ├── student-constants.ts         # Student-specific constants
+   543→│       ├── types.ts                     # Shared TypeScript types
+   544→│       └── utils.ts                     # Utility functions
+   545→│
+   546→├── public/
+   547→│   ├── dakkho-logo.png                  # DAKKHO brand logo
+   548→│   ├── _headers                         # Cloudflare Pages security headers
+   549→│   ├── _redirects                       # SPA fallback routing
+   550→│   └── _routes.json                     # Pages route exclusion
+   551→│
+   552→├── next.config.ts                       # Static export config
+   553→├── wrangler.jsonc                       # Cloudflare Pages deployment config
+   554→├── components.json                      # shadcn/ui configuration
+   555→├── tailwind.config.ts                   # Tailwind CSS configuration
+   556→├── tsconfig.json                        # TypeScript configuration
+   557→├── postcss.config.mjs                   # PostCSS configuration
+   558→├── .env.example                         # Environment variable template
+   559→└── package.json                         # Dependencies and scripts
+   560→```
+   561→
+   562→---
+   563→
+   564→## 🤝 Contributing
+   565→
+   566→Contributions are welcome! Please follow these steps:
+   567→
+   568→1. **Fork** the repository
+   569→2. Create a **feature branch** (`git checkout -b feature/amazing-feature`)
+   570→3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
+   571→4. **Push** to the branch (`git push origin feature/amazing-feature`)
+   572→5. Open a **Pull Request**
+   573→
+   574→### Development Guidelines
+   575→
+   576→- ✅ Follow the existing TypeScript and Tailwind CSS conventions
+   577→- ✅ Use **Zod** schemas for all form validation
+   578→- ✅ Maintain the glassmorphism theme consistency
+   579→- ✅ Keep components modular and reusable
+   580→- ✅ Test changes locally with `npm run dev` before deploying
+   581→- ✅ All API calls must go through the typed API client (`student-api-client.ts`)
+   582→
+   583→---
+   584→
+   585→## 📄 License
+   586→
+   587→This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+   588→
+   589→---
+   590→
+   591→<div align="center">
+   592→
+   593→**Built for the DAKKHO Student Streaming Platform** 🎓
+   594→
+   595→[Worker API](https://github.com/grayrat2026/dakkho-worker) · [Admin Panel](https://github.com/grayrat2026/dakkho-admin-web) · [Instructor App](https://github.com/grayrat2026/dakkho-instructor)
+   596→
+   597→</div>
+   598→
