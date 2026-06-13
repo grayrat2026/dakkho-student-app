@@ -1,36 +1,149 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<div align="center">
 
-## Getting Started
+# 📚 DAKKHO — Student App
 
-First, run the development server:
+**Student-facing application for the DAKKHO Online Learning Platform**
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](https://pages.cloudflare.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+
+**🌐 Live:** [dakkho-student.pages.dev](https://dakkho-student.pages.dev)
+
+</div>
+
+---
+
+## 📖 Overview
+
+DAKKHO Student App is a mobile-first SPA built with Next.js 16 (static export) that provides polytechnic students in Bangladesh with access to video courses, live classes, and academic resources. The app features tokenized HLS video streaming, PipraPay/bKash/Nagad payment integration, enrollment management, progress tracking, achievements, certificates, and a full support system.
+
+## 🔗 Related Repositories
+
+| Repository | Description | Live URL |
+|---|---|---|
+| [dakkho-worker](https://github.com/grayrat2026/dakkho-worker) | Backend API (Hono + Cloudflare Workers) | [dakkho-admin-api.dakkho-admin.workers.dev](https://dakkho-admin-api.dakkho-admin.workers.dev) |
+| [dakkho-instructor](https://github.com/grayrat2026/dakkho-instructor) | Instructor-facing Next.js 16 SPA | [dakkho-instructor.pages.dev](https://dakkho-instructor.pages.dev) |
+| [dakkho-admin-web](https://github.com/grayrat2026/dakkho-admin-web) | Admin panel Next.js 16 SPA | [dakkho-admin.pages.dev](https://dakkho-admin.pages.dev) |
+
+## 🏗 Architecture
+
+- **Framework**: Next.js 16 with App Router, static export (`next export`)
+- **Hosting**: Cloudflare Pages
+- **State Management**: Zustand (navigation, auth, bookmarks, etc.)
+- **Styling**: Tailwind CSS 4 + custom glassmorphism components
+- **Animations**: Framer Motion
+- **API Client**: Custom fetch wrapper with interceptors
+- **Auth**: Bearer token (student_sessions) with email OTP verification
+
+## 📱 Key Features
+
+### Course Browsing & Enrollment
+- Browse courses by department (technology), semester, and category
+- Course detail page with curriculum overview, instructor info, and reviews
+- Smart enrollment check — enrolled users see "Continue Learning" instead of "Enroll Now"
+- Multi-package enrollment: Single, Duo/Friend Pack, Custom packages
+
+### Payment System
+- **PipraPay**: Full-page redirect to `pay.dakkho.pro.bd` (bKash, Nagad, Rocket)
+- **Manual Payment**: TRX ID submission with admin verification
+- Coupon code support with percentage and flat discounts
+- All amounts displayed as round figures (Math.round)
+
+### Video Streaming
+- Tokenized HLS streaming with HMAC-SHA256 signed URLs
+- Custom video player with progress tracking
+- Watch history and resume playback
+- Chapter/lesson organized curriculum
+
+### Profile & Learning
+- Student profile with institute and technology info
+- Learning statistics dashboard (streak, total hours, courses)
+- Achievement system with unlockable badges
+- Certificate generation for completed courses
+
+### Support
+- Support ticket system with real-time messaging
+- Telegram integration for admin notifications
+- File attachment support via R2
+
+## 📁 Project Structure
+
+```
+src/
+├── app/                          # Next.js App Router
+│   ├── layout.tsx                # Root layout with PWA meta
+│   └── [[...slug]]/page.tsx      # SPA catch-all route
+├── components/
+│   └── dakkho/
+│       ├── DakkhoApp.tsx         # Main SPA router (route registry)
+│       ├── course/               # Course pages (detail, catalog)
+│       ├── profile/              # Profile, subscription, settings
+│       ├── auth/                 # Login, register, OTP
+│       ├── misc/                 # Payment result, about, support
+│       ├── shared/               # Reusable UI components
+│       ├── department/           # Department listing templates
+│       └── semester/             # Semester listing templates
+├── lib/
+│   ├── api-client.ts             # API client (auth, courses, payments, etc.)
+│   ├── store.ts                  # Zustand stores (navigation, auth, etc.)
+│   ├── data-hooks.ts             # SWR data fetching hooks
+│   └── mock-data.ts              # Utility functions
+└── hooks/
+    └── use-piprapay.ts           # PipraPay payment hook
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 Quick Start
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Prerequisites
+- Node.js 18+
+- npm or bun
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Installation
 
-## Learn More
+```bash
+# Clone the repository
+git clone https://github.com/grayrat2026/dakkho-student-app.git
+cd dakkho-student-app
 
-To learn more about Next.js, take a look at the following resources:
+# Install dependencies
+npm install
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Start development server
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Build & Deploy
 
-## Deploy on Vercel
+```bash
+# Build static export
+npm run build
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Deploy to Cloudflare Pages
+npx wrangler pages deploy out --project-name dakkho-student
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🔑 Environment Variables
+
+| Variable | Description |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | Worker API base URL (default: `https://dakkho-admin-api.dakkho-admin.workers.dev`) |
+
+## 📋 Recent Changes (June 2026)
+
+- **Enrollment status on course detail**: Enrolled users now see "Continue Learning" + "Enrolled ✓" badge instead of "Enroll Now — ৳XXX"
+- **Payment verification by payment_id**: PaymentResultPage now verifies using `payment_id` from URL, fixing the `{pp_id}` placeholder issue
+- **PipraPay natural redirect**: Full-page redirect instead of iframe for better payment gateway compatibility
+- **Round figure amounts**: All prices and discounted amounts display as whole numbers (Math.round)
+- **Discounted price calculation**: `getDiscountedPrice()` returns rounded values in both SubscriptionPage and CourseDetailPage
+
+## 📄 License
+
+This project is proprietary and confidential. All rights reserved.
+
+---
+
+<p align="center">
+  Built with ❤️ for the DAKKHO Platform
+</p>
