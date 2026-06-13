@@ -130,9 +130,15 @@ export function VideoPlayerPage() {
   const { pageParams, navigate, goBack } = useNavigationStore();
   const { updateProgress, getProgress } = useWatchProgressStore();
 
-  // --- Route params ---
-  const videoId = pageParams.videoId as string;
-  const courseId = pageParams.courseId as string;
+  // --- Route params (fallback to URL path when store is empty after refresh) ---
+  const urlVideoId = typeof window !== 'undefined'
+    ? window.location.pathname.split('/').pop() || undefined
+    : undefined;
+  const urlCourseId = typeof window !== 'undefined'
+    ? window.location.pathname.split('/')[3] || undefined
+    : undefined;
+  const videoId = (pageParams.videoId as string) || urlVideoId || '';
+  const courseId = (pageParams.courseId as string) || urlCourseId || '';
 
   // --- API-fetched data ---
   const [course, setCourse] = useState<any>(null);
