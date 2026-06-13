@@ -41,6 +41,8 @@ export type Page =
   | 'category'
   // Misc pages
   | 'pricing' | 'changelog' | 'maintenance' | 'terms' | 'privacy'
+  // Payment pages
+  | 'payment-result' | 'payment-cancel'
   // Error pages
   | 'error-404' | 'error-500';
 
@@ -151,6 +153,8 @@ const pageToPath: Record<string, string> = {
   'maintenance': '/maintenance',
   'terms': '/terms',
   'privacy': '/privacy',
+  'payment-result': '/payment-result',
+  'payment-cancel': '/payment-cancel',
   'error-404': '/error/404',
   'error-500': '/error/500',
 };

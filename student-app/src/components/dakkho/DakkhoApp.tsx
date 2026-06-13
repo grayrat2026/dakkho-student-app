@@ -94,6 +94,7 @@ import { ChangePasswordPage } from './profile/ChangePasswordPage';
 import { LearningStatsPage } from './profile/LearningStatsPage';
 import { SubscriptionPage } from './profile/SubscriptionPage';
 import { PaymentResultPage } from './misc/PaymentResultPage';
+import { PaymentCancelPage } from './misc/PaymentCancelPage';
 import { ReferralPage } from './profile/ReferralPage';
 import { DeleteAccountPage } from './profile/DeleteAccountPage';
 
@@ -219,6 +220,7 @@ function PageRouter() {
     'learning-stats': <LearningStatsPage />,
     subscription: <SubscriptionPage />,
     'payment-result': <PaymentResultPage />,
+    'payment-cancel': <PaymentCancelPage />,
     referral: <ReferralPage />,
     'delete-account': <DeleteAccountPage />,
     // Settings sub-pages

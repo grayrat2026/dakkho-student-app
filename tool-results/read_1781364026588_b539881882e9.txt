@@ -1,0 +1,563 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo, useRef } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import {
+     6→  ArrowLeft, Upload, Link as LinkIcon, Youtube, Play,
+     7→  Image as ImageIcon, Plus, Check, FileVideo, Clock,
+     8→  Search, Video,
+     9→} from 'lucide-react';
+    10→import { toast } from 'sonner';
+    11→import { GlassCard } from '@/components/shared/GlassCard';
+    12→import { GradientButton } from '@/components/shared/GradientButton';
+    13→import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
+    14→import {
+    15→  useCourse, useCurriculum, useCourseSubjects,
+    16→  useUploadLessonVideo, useCreateLesson, useCourseVideos,
+    17→} from '@/lib/api-hooks';
+    18→import { useNavigationStore } from '@/lib/store';
+    19→import { cn, formatDurationShort } from '@/lib/utils';
+    20→import { staggerChildren } from '@/lib/animations';
+    21→
+    22→type AddTab = 'upload' | 'link' | 'youtube' | 'document' | 'myvideos';
+    23→
+    24→function getVideoDuration(file: File): Promise<number> {
+    25→  return new Promise((resolve) => {
+    26→    const video = document.createElement('video');
+    27→    video.preload = 'metadata';
+    28→    video.onloadedmetadata = () => {
+    29→      resolve(Math.round(video.duration));
+    30→      URL.revokeObjectURL(video.src);
+    31→    };
+    32→    video.onerror = () => resolve(0);
+    33→    video.src = URL.createObjectURL(file);
+    34→  });
+    35→}
+    36→
+    37→export function CourseAddVideo() {
+    38→  const params = useNavigationStore((s) => s.params);
+    39→  const navigate = useNavigationStore((s) => s.navigate);
+    40→  const courseId = params.courseId || '';
+    41→
+    42→  const { data: courseData, loading: courseLoading } = useCourse(courseId);
+    43→  const { data: subjectsData, loading: subjectsLoading } = useCourseSubjects(courseId);
+    44→  const { data: curriculumData, loading: curriculumLoading } = useCurriculum(courseId);
+    45→  const { upload: uploadVideo, uploadProgress, loading: uploading } = useUploadLessonVideo(courseId);
+    46→  const { mutate: createLesson, loading: creatingLesson } = useCreateLesson(courseId);
+    47→  const { data: videosData } = useCourseVideos(courseId);
+    48→
+    49→  const course = courseData?.course || courseData;
+    50→  const subjects = useMemo(() => subjectsData?.subjects || [], [subjectsData]);
+    51→  const curriculum = curriculumData?.curriculum || { chapters: [], lessons: [] };
+    52→  const allVideos = useMemo(() => videosData?.videos || [], [videosData]);
+    53→
+    54→  // Form state
+    55→  const [tab, setTab] = useState<AddTab>('upload');
+    56→  const [title, setTitle] = useState('');
+    57→  const [selectedChapterId, setSelectedChapterId] = useState('');
+    58→  const [selectedSubjectId, setSelectedSubjectId] = useState<string | number>('');
+    59→  const [videoUrl, setVideoUrl] = useState('');
+    60→  const [duration, setDuration] = useState(0);
+    61→  const [description, setDescription] = useState('');
+    62→  const [isPreview, setIsPreview] = useState(false);
+    63→  const [videoFile, setVideoFile] = useState<File | null>(null);
+    64→  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+    65→  const [documentFile, setDocumentFile] = useState<File | null>(null);
+    66→
+    67→  // My Videos tab state
+    68→  const [myVideosSearch, setMyVideosSearch] = useState('');
+    69→  const [selectedExistingVideo, setSelectedExistingVideo] = useState<any>(null);
+    70→
+    71→  const fileInputRef = useRef<HTMLInputElement>(null);
+    72→  const thumbInputRef = useRef<HTMLInputElement>(null);
+    73→  const docInputRef = useRef<HTMLInputElement>(null);
+    74→
+    75→  // Get chapters for selected subject
+    76→  const availableChapters = useMemo(() => {
+    77→    if (!selectedSubjectId) return (curriculum.chapters || []);
+    78→    return (curriculum.chapters || []).filter(
+    79→      (ch: any) => String(ch.subjectId || ch.subject_id) === String(selectedSubjectId)
+    80→    );
+    81→  }, [curriculum, selectedSubjectId]);
+    82→
+    83→  // Filter existing videos by search
+    84→  const filteredVideos = useMemo(() => {
+    85→    let result = allVideos;
+    86→    if (myVideosSearch.trim()) {
+    87→      const q = myVideosSearch.toLowerCase();
+    88→      result = result.filter((v: any) => (v.title || '').toLowerCase().includes(q));
+    89→    }
+    90→    return result;
+    91→  }, [allVideos, myVideosSearch]);
+    92→
+    93→  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    94→    const file = e.target.files?.[0];
+    95→    if (file) {
+    96→      setVideoFile(file);
+    97→      if (!title.trim()) setTitle(file.name.replace(/\.[^/.]+$/, ''));
+    98→      const dur = await getVideoDuration(file);
+    99→      if (dur > 0) setDuration(dur);
+   100→    }
+   101→  };
+   102→
+   103→  const handleSelectExistingVideo = (video: any) => {
+   104→    if (selectedExistingVideo?.id === video.id) {
+   105→      setSelectedExistingVideo(null);
+   106→      return;
+   107→    }
+   108→    setSelectedExistingVideo(video);
+   109→    // Auto-populate form fields
+   110→    setTitle(video.title || '');
+   111→    setDescription(video.description || '');
+   112→    setDuration(video.duration || 0);
+   113→    setVideoUrl(video.videoUrl || '');
+   114→    if (video.subjectId || video.subject_id) {
+   115→      setSelectedSubjectId(video.subjectId || video.subject_id);
+   116→    }
+   117→    if (video.chapterId || video.chapter_id) {
+   118→      setSelectedChapterId(video.chapterId || video.chapter_id);
+   119→    }
+   120→  };
+   121→
+   122→  const handleSubmit = async () => {
+   123→    if (!title.trim()) { toast.error('Enter video title'); return; }
+   124→
+   125→    if (tab === 'myvideos' && selectedExistingVideo) {
+   126→      // Create lesson linked to existing video
+   127→      const lessonData: any = {
+   128→        title: title.trim(),
+   129→        chapterId: selectedChapterId || undefined,
+   130→        subjectId: selectedSubjectId || undefined,
+   131→        lessonType: selectedExistingVideo.lessonType || 'video',
+   132→        videoUrl: selectedExistingVideo.videoUrl || videoUrl.trim() || undefined,
+   133→        thumbnailUrl: selectedExistingVideo.thumbnailUrl || undefined,
+   134→        isPreview,
+   135→        duration: duration || selectedExistingVideo.duration || undefined,
+   136→        description: description.trim() || undefined,
+   137→        sortOrder: 1,
+   138→      };
+   139→
+   140→      const result = await createLesson(lessonData);
+   141→      if (result) {
+   142→        toast.success('Lesson created from existing video');
+   143→        navigate('course-videos', { courseId });
+   144→      } else {
+   145→        toast.error('Failed to create lesson');
+   146→      }
+   147→    } else if (tab === 'upload' && videoFile) {
+   148→      // Upload via multipart
+   149→      const fd = new FormData();
+   150→      fd.append('video', videoFile);
+   151→      if (thumbnailFile) fd.append('thumbnail', thumbnailFile);
+   152→      fd.append('title', title.trim());
+   153→      if (selectedChapterId) fd.append('chapter_id', selectedChapterId);
+   154→      if (selectedSubjectId) fd.append('subject_id', String(selectedSubjectId));
+   155→      fd.append('lesson_type', 'video');
+   156→      fd.append('sort_order', '1');
+   157→      if (isPreview) fd.append('is_preview', '1');
+   158→      if (duration > 0) fd.append('duration', String(duration));
+   159→      if (description.trim()) fd.append('description', description.trim());
+   160→
+   161→      const result = await uploadVideo(fd);
+   162→      if (result) {
+   163→        toast.success('Video uploaded successfully');
+   164→        navigate('course-videos', { courseId });
+   165→      } else {
+   166→        toast.error('Video upload failed');
+   167→      }
+   168→    } else {
+   169→      // Create lesson via JSON API
+   170→      const lessonData: any = {
+   171→        title: title.trim(),
+   172→        chapterId: selectedChapterId || undefined,
+   173→        subjectId: selectedSubjectId || undefined,
+   174→        lessonType: tab === 'youtube' ? 'youtube' : tab === 'document' ? 'document' : 'link',
+   175→        videoUrl: videoUrl.trim() || undefined,
+   176→        isPreview,
+   177→        duration: duration || undefined,
+   178→        description: description.trim() || undefined,
+   179→        sortOrder: 1,
+   180→      };
+   181→
+   182→      const result = await createLesson(lessonData);
+   183→      if (result) {
+   184→        toast.success('Lesson added successfully');
+   185→        navigate('course-videos', { courseId });
+   186→      } else {
+   187→        toast.error('Failed to add lesson');
+   188→      }
+   189→    }
+   190→  };
+   191→
+   192→  if (courseLoading || subjectsLoading || curriculumLoading) {
+   193→    return <LoadingSkeleton type="card" count={3} />;
+   194→  }
+   195→
+   196→  const tabs = [
+   197→    { key: 'upload' as const, label: 'Upload', icon: Upload },
+   198→    { key: 'myvideos' as const, label: 'My Videos', icon: Video },
+   199→    { key: 'link' as const, label: 'Link', icon: LinkIcon },
+   200→    { key: 'youtube' as const, label: 'YouTube', icon: Youtube },
+   201→    { key: 'document' as const, label: 'Document/PDF', icon: FileVideo },
+   202→  ];
+   203→
+   204→  return (
+   205→    <div className="space-y-6 max-w-4xl mx-auto">
+   206→      {/* Header */}
+   207→      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+   208→        <div className="flex items-center gap-3">
+   209→          <button
+   210→            onClick={() => navigate('course-videos', { courseId })}
+   211→            className="w-10 h-10 rounded-xl bg-black/[0.03] dark:bg-white/[0.03] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors"
+   212→          >
+   213→            <ArrowLeft className="w-5 h-5" />
+   214→          </button>
+   215→          <div className="flex-1 min-w-0">
+   216→            <h1 className="text-2xl md:text-3xl font-extrabold text-foreground">
+   217→              Add <span className="gradient-text">Content</span>
+   218→            </h1>
+   219→            <p className="text-muted-foreground mt-0.5 text-sm">{course?.title || ''}</p>
+   220→          </div>
+   221→        </div>
+   222→      </motion.div>
+   223→
+   224→      {/* Content Type Tabs */}
+   225→      <motion.div {...staggerChildren(0, 0.04)}>
+   226→        <div className="flex items-center gap-1 p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.03] overflow-x-auto">
+   227→          {tabs.map((t) => (
+   228→            <button
+   229→              key={t.key}
+   230→              onClick={() => setTab(t.key)}
+   231→              className={cn(
+   232→                'relative flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-semibold rounded-lg transition-colors whitespace-nowrap',
+   233→                tab === t.key ? 'text-white dark:text-black' : 'text-muted-foreground hover:text-foreground'
+   234→              )}
+   235→            >
+   236→              {tab === t.key && (
+   237→                <motion.div
+   238→                  layoutId="add-video-tab"
+   239→                  className="absolute inset-0 bg-gradient-to-r from-neutral-900 via-neutral-800 to-black dark:from-white dark:via-neutral-200 dark:to-white rounded-lg shadow-[0_4px_15px_rgba(0,0,0,0.1)]"
+   240→                  transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+   241→                />
+   242→              )}
+   243→              <t.icon className="w-4 h-4 relative z-10" />
+   244→              <span className="relative z-10">{t.label}</span>
+   245→            </button>
+   246→          ))}
+   247→        </div>
+   248→      </motion.div>
+   249→
+   250→      {/* Tab Content */}
+   251→      <AnimatePresence mode="wait">
+   252→        {tab === 'upload' && (
+   253→          <motion.div key="upload" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-4">
+   254→            <GlassCard className="p-5" glow>
+   255→              <h3 className="text-base font-bold gradient-text mb-3">Video File</h3>
+   256→              <div
+   257→                className="border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer hover:border-black/20 dark:hover:border-white/20 transition-colors"
+   258→                onClick={() => fileInputRef.current?.click()}
+   259→              >
+   260→                {videoFile ? (
+   261→                  <div className="space-y-2">
+   262→                    <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto">
+   263→                      <Check className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
+   264→                    </div>
+   265→                    <p className="text-sm font-semibold text-foreground">{videoFile.name}</p>
+   266→                    <p className="text-xs text-muted-foreground">{(videoFile.size / (1024 * 1024)).toFixed(1)} MB{duration > 0 ? ` · ${formatDurationShort(duration)}` : ''}</p>
+   267→                    {uploading && (
+   268→                      <div className="w-full max-w-xs mx-auto mt-2">
+   269→                        <div className="h-2 rounded-full bg-black/[0.06] dark:bg-white/[0.06] overflow-hidden">
+   270→                          <motion.div
+   271→                            className="h-full bg-gradient-to-r from-neutral-900 via-neutral-800 to-black dark:from-white dark:via-neutral-200 dark:to-white rounded-full"
+   272→                            animate={{ width: `${uploadProgress}%` }}
+   273→                            transition={{ duration: 0.3 }}
+   274→                          />
+   275→                        </div>
+   276→                        <p className="text-xs text-muted-foreground mt-1">{uploadProgress}% uploaded</p>
+   277→                      </div>
+   278→                    )}
+   279→                  </div>
+   280→                ) : (
+   281→                  <div className="space-y-3">
+   282→                    <div className="w-14 h-14 rounded-2xl bg-black/[0.04] dark:bg-white/[0.04] flex items-center justify-center mx-auto">
+   283→                      <FileVideo className="w-7 h-7 text-muted-foreground/60" />
+   284→                    </div>
+   285→                    <div>
+   286→                      <p className="text-sm font-semibold text-foreground">Click to upload video</p>
+   287→                      <p className="text-xs text-muted-foreground mt-1">MP4, WEBM, MOV (max 500MB)</p>
+   288→                    </div>
+   289→                  </div>
+   290→                )}
+   291→                <input ref={fileInputRef} type="file" accept="video/*" className="hidden" onChange={handleFileSelect} />
+   292→              </div>
+   293→
+   294→              {/* Thumbnail upload */}
+   295→              <div className="mt-4">
+   296→                <h4 className="text-sm font-semibold text-foreground mb-2">Thumbnail (optional)</h4>
+   297→                <div
+   298→                  className="border-2 border-dashed rounded-xl p-4 text-center cursor-pointer hover:border-black/20 dark:hover:border-white/20 transition-colors"
+   299→                  onClick={() => thumbInputRef.current?.click()}
+   300→                >
+   301→                  {thumbnailFile ? (
+   302→                    <div className="flex items-center gap-2 justify-center">
+   303→                      <Check className="w-4 h-4 text-emerald-600" />
+   304→                      <span className="text-sm text-foreground">{thumbnailFile.name}</span>
+   305→                    </div>
+   306→                  ) : (
+   307→                    <div className="flex items-center gap-2 justify-center text-muted-foreground">
+   308→                      <ImageIcon className="w-4 h-4" />
+   309→                      <span className="text-xs">Click to upload thumbnail</span>
+   310→                    </div>
+   311→                  )}
+   312→                  <input ref={thumbInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) setThumbnailFile(e.target.files[0]); }} />
+   313→                </div>
+   314→              </div>
+   315→            </GlassCard>
+   316→          </motion.div>
+   317→        )}
+   318→
+   319→        {tab === 'myvideos' && (
+   320→          <motion.div key="myvideos" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-4">
+   321→            <GlassCard className="p-5" glow>
+   322→              <h3 className="text-base font-bold gradient-text mb-3">Select from My Videos</h3>
+   323→              <p className="text-xs text-muted-foreground mb-3">Choose a video you've already uploaded to create a lesson linked to it.</p>
+   324→
+   325→              {/* Search bar */}
+   326→              <div className="relative mb-4">
+   327→                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   328→                <input
+   329→                  value={myVideosSearch}
+   330→                  onChange={(e) => setMyVideosSearch(e.target.value)}
+   331→                  placeholder="Search your videos..."
+   332→                  className="w-full text-sm premium-input rounded-xl pl-9 pr-4 py-2.5 placeholder:text-muted-foreground/50"
+   333→                />
+   334→              </div>
+   335→
+   336→              {/* Video List */}
+   337→              {filteredVideos.length === 0 ? (
+   338→                <div className="text-center py-8">
+   339→                  <Video className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
+   340→                  <p className="text-sm text-muted-foreground">{myVideosSearch ? 'No videos match your search' : 'No videos uploaded yet'}</p>
+   341→                </div>
+   342→              ) : (
+   343→                <div className="space-y-2 max-h-80 overflow-y-auto">
+   344→                  {filteredVideos.map((video: any, i: number) => {
+   345→                    const isSelected = selectedExistingVideo?.id === video.id;
+   346→                    return (
+   347→                      <button
+   348→                        key={video.id || i}
+   349→                        onClick={() => handleSelectExistingVideo(video)}
+   350→                        className={cn(
+   351→                          'w-full flex items-center gap-3 p-3 rounded-xl transition-colors text-left',
+   352→                          isSelected
+   353→                            ? 'bg-black/[0.06] dark:bg-white/[0.06] border-2 border-black/10 dark:border-white/10'
+   354→                            : 'bg-black/[0.01] dark:bg-white/[0.01] border-2 border-transparent hover:bg-black/[0.03] dark:hover:bg-white/[0.03]'
+   355→                        )}
+   356→                      >
+   357→                        {/* Thumbnail */}
+   358→                        <div className="w-16 h-10 rounded-lg bg-gradient-to-br from-black/[0.06] to-black/[0.08] dark:from-white/[0.06] dark:to-white/[0.08] flex items-center justify-center flex-shrink-0 overflow-hidden relative">
+   359→                          {video.thumbnailUrl ? (
+   360→                            <img src={video.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+   361→                          ) : (
+   362→                            <Play className="w-4 h-4 text-foreground/30" />
+   363→                          )}
+   364→                          {(video.duration || 0) > 0 && (
+   365→                            <span className="absolute bottom-0.5 right-0.5 text-[8px] font-bold bg-black/60 text-white px-1 py-0.5 rounded">
+   366→                              {formatDurationShort(video.duration)}
+   367→                            </span>
+   368→                          )}
+   369→                        </div>
+   370→
+   371→                        {/* Info */}
+   372→                        <div className="flex-1 min-w-0">
+   373→                          <p className="text-sm font-semibold text-foreground truncate">{video.title}</p>
+   374→                          <div className="flex items-center gap-2 mt-0.5">
+   375→                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-black/[0.03] dark:bg-white/[0.03] text-muted-foreground uppercase">
+   376→                              {video.lessonType || 'video'}
+   377→                            </span>
+   378→                          </div>
+   379→                        </div>
+   380→
+   381→                        {/* Check icon */}
+   382→                        {isSelected && (
+   383→                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-neutral-900 via-neutral-800 to-black dark:from-white dark:via-neutral-200 dark:to-white flex items-center justify-center flex-shrink-0">
+   384→                            <Check className="w-3.5 h-3.5 text-white dark:text-neutral-900" />
+   385→                          </div>
+   386→                        )}
+   387→                      </button>
+   388→                    );
+   389→                  })}
+   390→                </div>
+   391→              )}
+   392→
+   393→              {/* Selected video preview */}
+   394→              {selectedExistingVideo && (
+   395→                <motion.div
+   396→                  initial={{ opacity: 0, height: 0 }}
+   397→                  animate={{ opacity: 1, height: 'auto' }}
+   398→                  className="mt-4 p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.03] dark:border-white/[0.03]"
+   399→                >
+   400→                  <p className="text-xs font-semibold text-muted-foreground mb-2">Selected Video Preview</p>
+   401→                  <div className="flex items-center gap-3">
+   402→                    <div className="w-20 h-14 rounded-lg overflow-hidden flex-shrink-0">
+   403→                      {selectedExistingVideo.thumbnailUrl ? (
+   404→                        <img src={selectedExistingVideo.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+   405→                      ) : (
+   406→                        <div className="w-full h-full bg-black/[0.04] dark:bg-white/[0.04] flex items-center justify-center">
+   407→                          <Play className="w-5 h-5 text-foreground/30" />
+   408→                        </div>
+   409→                      )}
+   410→                    </div>
+   411→                    <div className="flex-1 min-w-0">
+   412→                      <p className="text-sm font-bold text-foreground truncate">{selectedExistingVideo.title}</p>
+   413→                      {(selectedExistingVideo.duration || 0) > 0 && (
+   414→                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+   415→                          <Clock className="w-3 h-3" />
+   416→                          {formatDurationShort(selectedExistingVideo.duration)}
+   417→                        </p>
+   418→                      )}
+   419→                    </div>
+   420→                  </div>
+   421→                </motion.div>
+   422→              )}
+   423→            </GlassCard>
+   424→          </motion.div>
+   425→        )}
+   426→
+   427→        {tab === 'link' && (
+   428→          <motion.div key="link" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+   429→            <GlassCard className="p-5" glow>
+   430→              <h3 className="text-base font-bold gradient-text mb-3">External Link / Live URL</h3>
+   431→              <div className="space-y-3">
+   432→                <div>
+   433→                  <label className="text-sm font-semibold text-foreground mb-1 block">Video/Link URL *</label>
+   434→                  <input type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://example.com/video.mp4" className="w-full px-4 py-2.5 rounded-xl text-sm premium-input placeholder:text-muted-foreground/60" />
+   435→                </div>
+   436→                <div>
+   437→                  <label className="text-sm font-semibold text-foreground mb-1 block">Duration (seconds)</label>
+   438→                  <input type="number" value={duration || ''} onChange={(e) => setDuration(Number(e.target.value) || 0)} placeholder="e.g. 900" className="w-full px-4 py-2.5 rounded-xl text-sm premium-input placeholder:text-muted-foreground/60" />
+   439→                </div>
+   440→              </div>
+   441→            </GlassCard>
+   442→          </motion.div>
+   443→        )}
+   444→
+   445→        {tab === 'youtube' && (
+   446→          <motion.div key="youtube" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+   447→            <GlassCard className="p-5" glow>
+   448→              <h3 className="text-base font-bold gradient-text mb-3">YouTube Video</h3>
+   449→              <div className="space-y-3">
+   450→                <div>
+   451→                  <label className="text-sm font-semibold text-foreground mb-1 block">YouTube URL *</label>
+   452→                  <input type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..." className="w-full px-4 py-2.5 rounded-xl text-sm premium-input placeholder:text-muted-foreground/60" />
+   453→                </div>
+   454→                {videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be') ? (
+   455→                  <div className="rounded-xl overflow-hidden bg-black aspect-video flex items-center justify-center">
+   456→                    <div className="text-center text-white/60">
+   457→                      <Youtube className="w-10 h-10 mx-auto mb-2" />
+   458→                      <p className="text-xs">YouTube Embed Preview</p>
+   459→                    </div>
+   460→                  </div>
+   461→                ) : null}
+   462→              </div>
+   463→            </GlassCard>
+   464→          </motion.div>
+   465→        )}
+   466→
+   467→        {tab === 'document' && (
+   468→          <motion.div key="document" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+   469→            <GlassCard className="p-5" glow>
+   470→              <h3 className="text-base font-bold gradient-text mb-3">Document / PDF / Note</h3>
+   471→              <div className="space-y-3">
+   472→                <div>
+   473→                  <label className="text-sm font-semibold text-foreground mb-1 block">Document URL</label>
+   474→                  <input type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://example.com/document.pdf" className="w-full px-4 py-2.5 rounded-xl text-sm premium-input placeholder:text-muted-foreground/60" />
+   475→                </div>
+   476→                <p className="text-xs text-muted-foreground">Or upload a file (PDF, DOCX, PPTX, etc.) via the Resources section in Curriculum.</p>
+   477→              </div>
+   478→            </GlassCard>
+   479→          </motion.div>
+   480→        )}
+   481→      </AnimatePresence>
+   482→
+   483→      {/* Common Fields */}
+   484→      <motion.div {...staggerChildren(2, 0.04)}>
+   485→        <GlassCard className="p-5" glow>
+   486→          <h3 className="text-base font-bold gradient-text mb-4">Details</h3>
+   487→          <div className="space-y-4">
+   488→            <div>
+   489→              <label className="text-sm font-semibold text-foreground mb-1.5 block">Title *</label>
+   490→              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter content title" className="w-full px-4 py-2.5 rounded-xl text-sm premium-input placeholder:text-muted-foreground/60" />
+   491→            </div>
+   492→
+   493→            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   494→              <div>
+   495→                <label className="text-sm font-semibold text-foreground mb-1.5 block">Subject</label>
+   496→                <select value={selectedSubjectId} onChange={(e) => { setSelectedSubjectId(e.target.value); setSelectedChapterId(''); }} className="w-full px-4 py-2.5 rounded-xl text-sm premium-input">
+   497→                  <option value="">Select subject</option>
+   498→                  {subjects.map((s: any) => (
+   499→                    <option key={s.subjectId || s.id} value={s.subjectId || s.id}>{s.subjectName || s.subject_name || s.name}</option>
+   500→                  ))}
+   501→                </select>
+   502→              </div>
+   503→              <div>
+   504→                <label className="text-sm font-semibold text-foreground mb-1.5 block">Chapter</label>
+   505→                <select value={selectedChapterId} onChange={(e) => setSelectedChapterId(e.target.value)} className="w-full px-4 py-2.5 rounded-xl text-sm premium-input">
+   506→                  <option value="">Select chapter</option>
+   507→                  {availableChapters.map((ch: any) => (
+   508→                    <option key={ch.id} value={ch.id}>{ch.title}</option>
+   509→                  ))}
+   510→                </select>
+   511→              </div>
+   512→            </div>
+   513→
+   514→            <div>
+   515→              <label className="text-sm font-semibold text-foreground mb-1.5 block">Description</label>
+   516→              <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" rows={3} className="w-full px-4 py-2.5 rounded-xl text-sm premium-input placeholder:text-muted-foreground/60 resize-none" />
+   517→            </div>
+   518→
+   519→            {/* Preview toggle */}
+   520→            <div className="flex items-center justify-between p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02]">
+   521→              <div>
+   522→                <p className="text-sm font-semibold text-foreground">Preview / Free Access</p>
+   523→                <p className="text-xs text-muted-foreground">Students can watch this without enrolling</p>
+   524→              </div>
+   525→              <button
+   526→                onClick={() => setIsPreview(!isPreview)}
+   527→                className={cn(
+   528→                  'w-11 h-6 rounded-full transition-colors relative',
+   529→                  isPreview
+   530→                    ? 'bg-gradient-to-r from-neutral-900 via-neutral-800 to-black dark:from-white dark:via-neutral-200 dark:to-white'
+   531→                    : 'bg-muted/60'
+   532→                )}
+   533→              >
+   534→                <motion.div
+   535→                  className="w-5 h-5 bg-white dark:bg-black rounded-full shadow-md absolute top-0.5"
+   536→                  animate={{ left: isPreview ? '22px' : '2px' }}
+   537→                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+   538→                />
+   539→              </button>
+   540→            </div>
+   541→          </div>
+   542→        </GlassCard>
+   543→      </motion.div>
+   544→
+   545→      {/* Submit */}
+   546→      <motion.div className="flex items-center justify-between gap-4 pt-2" {...staggerChildren(3, 0.04)}>
+   547→        <GradientButton variant="ghost" onClick={() => navigate('course-videos', { courseId })}>
+   548→          Cancel
+   549→        </GradientButton>
+   550→        <GradientButton
+   551→          onClick={handleSubmit}
+   552→          loading={uploading || creatingLesson}
+   553→          disabled={!title.trim() || (tab === 'upload' && !videoFile) || (tab === 'myvideos' && !selectedExistingVideo)}
+   554→          icon={<Plus className="w-4 h-4" />}
+   555→          size="lg"
+   556→        >
+   557→          {uploading ? `Uploading... ${uploadProgress}%` : creatingLesson ? 'Creating...' : tab === 'upload' ? 'Upload & Create' : tab === 'myvideos' ? 'Create Lesson' : 'Add Content'}
+   558→        </GradientButton>
+   559→      </motion.div>
+   560→    </div>
+   561→  );
+   562→}
+   563→

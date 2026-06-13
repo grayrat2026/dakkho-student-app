@@ -1,0 +1,502 @@
+   550→                      <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+   551→                        <button
+   552→                          onClick={() => startAddChapter(subjKey)}
+   553→                          className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors"
+   554→                          title="Add chapter"
+   555→                        >
+   556→                          <Plus className="w-3.5 h-3.5" />
+   557→                        </button>
+   558→                        <button
+   559→                          onClick={() => handleRemoveSubject(subject.subjectId || subject.id)}
+   560→                          disabled={removingId === (subject.subjectId || subject.id)}
+   561→                          className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+   562→                        >
+   563→                          <Trash2 className="w-3.5 h-3.5" />
+   564→                        </button>
+   565→                      </div>
+   566→                    </div>
+   567→                  </div>
+   568→
+   569→                  {/* Expanded Subject Content */}
+   570→                  <AnimatePresence>
+   571→                    {isSubjectExpanded && (
+   572→                      <motion.div
+   573→                        initial={{ height: 0, opacity: 0 }}
+   574→                        animate={{ height: 'auto', opacity: 1 }}
+   575→                        exit={{ height: 0, opacity: 0 }}
+   576→                        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+   577→                        className="overflow-hidden"
+   578→                      >
+   579→                        <div className="border-t border-black/[0.03] dark:border-white/[0.03] bg-black/[0.005] dark:bg-white/[0.005]">
+   580→                          {/* Inline Add Chapter Form */}
+   581→                          <AnimatePresence>
+   582→                            {addMode === 'chapter' && addSubjectId === subjKey && (
+   583→                              <motion.div
+   584→                                initial={{ height: 0, opacity: 0 }}
+   585→                                animate={{ height: 'auto', opacity: 1 }}
+   586→                                exit={{ height: 0, opacity: 0 }}
+   587→                                transition={{ duration: 0.25 }}
+   588→                                className="overflow-hidden"
+   589→                              >
+   590→                                <div className="p-4 m-3 rounded-xl bg-white/60 dark:bg-neutral-800/40 border border-black/[0.04] dark:border-white/[0.04]">
+   591→                                  <div className="flex items-center justify-between mb-3">
+   592→                                    <h4 className="text-sm font-bold gradient-text">New Chapter</h4>
+   593→                                    <button onClick={() => setAddMode(null)} className="w-7 h-7 rounded-lg bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+   594→                                      <X className="w-3.5 h-3.5" />
+   595→                                    </button>
+   596→                                  </div>
+   597→                                  <div className="space-y-2.5">
+   598→                                    <input
+   599→                                      type="text"
+   600→                                      value={chapterTitle}
+   601→                                      onChange={(e) => setChapterTitle(e.target.value)}
+   602→                                      placeholder="Chapter title *"
+   603→                                      className="w-full px-3 py-2 rounded-lg text-sm premium-input placeholder:text-muted-foreground/60"
+   604→                                      autoFocus
+   605→                                    />
+   606→                                    <textarea
+   607→                                      value={chapterDesc}
+   608→                                      onChange={(e) => setChapterDesc(e.target.value)}
+   609→                                      placeholder="Optional description"
+   610→                                      rows={2}
+   611→                                      className="w-full px-3 py-2 rounded-lg text-sm premium-input placeholder:text-muted-foreground/60 resize-none"
+   612→                                    />
+   613→                                    <div className="flex justify-end gap-2">
+   614→                                      <GradientButton variant="ghost" size="sm" onClick={() => setAddMode(null)}>Cancel</GradientButton>
+   615→                                      <GradientButton size="sm" onClick={handleCreateChapter} loading={creatingChapter} disabled={!chapterTitle.trim()} icon={<Save className="w-3 h-3" />}>
+   616→                                        Create
+   617→                                      </GradientButton>
+   618→                                    </div>
+   619→                                  </div>
+   620→                                </div>
+   621→                              </motion.div>
+   622→                            )}
+   623→                          </AnimatePresence>
+   624→
+   625→                          {/* Inline Edit Chapter Form */}
+   626→                          <AnimatePresence>
+   627→                            {editMode === 'chapter' && editSubjectId === subjKey && (
+   628→                              <motion.div
+   629→                                initial={{ height: 0, opacity: 0 }}
+   630→                                animate={{ height: 'auto', opacity: 1 }}
+   631→                                exit={{ height: 0, opacity: 0 }}
+   632→                                transition={{ duration: 0.25 }}
+   633→                                className="overflow-hidden"
+   634→                              >
+   635→                                <div className="p-4 m-3 rounded-xl bg-white/60 dark:bg-neutral-800/40 border border-amber-200/50 dark:border-amber-800/30">
+   636→                                  <div className="flex items-center justify-between mb-3">
+   637→                                    <h4 className="text-sm font-bold gradient-text">Edit Chapter</h4>
+   638→                                    <button onClick={cancelEdit} className="w-7 h-7 rounded-lg bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+   639→                                      <X className="w-3.5 h-3.5" />
+   640→                                    </button>
+   641→                                  </div>
+   642→                                  <div className="space-y-2.5">
+   643→                                    <input
+   644→                                      type="text"
+   645→                                      value={editChapterTitle}
+   646→                                      onChange={(e) => setEditChapterTitle(e.target.value)}
+   647→                                      placeholder="Chapter title *"
+   648→                                      className="w-full px-3 py-2 rounded-lg text-sm premium-input placeholder:text-muted-foreground/60"
+   649→                                      autoFocus
+   650→                                    />
+   651→                                    <textarea
+   652→                                      value={editChapterDesc}
+   653→                                      onChange={(e) => setEditChapterDesc(e.target.value)}
+   654→                                      placeholder="Optional description"
+   655→                                      rows={2}
+   656→                                      className="w-full px-3 py-2 rounded-lg text-sm premium-input placeholder:text-muted-foreground/60 resize-none"
+   657→                                    />
+   658→                                    <div className="flex justify-end gap-2">
+   659→                                      <GradientButton variant="ghost" size="sm" onClick={cancelEdit}>Cancel</GradientButton>
+   660→                                      <GradientButton size="sm" onClick={handleUpdateChapter} loading={updatingChapter} disabled={!editChapterTitle.trim()} icon={<Save className="w-3 h-3" />}>
+   661→                                        Save
+   662→                                      </GradientButton>
+   663→                                    </div>
+   664→                                  </div>
+   665→                                </div>
+   666→                              </motion.div>
+   667→                            )}
+   668→                          </AnimatePresence>
+   669→
+   670→                          {/* Inline Add Lesson Form */}
+   671→                          <AnimatePresence>
+   672→                            {addMode === 'lesson' && addSubjectId === subjKey && (
+   673→                              <motion.div
+   674→                                initial={{ height: 0, opacity: 0 }}
+   675→                                animate={{ height: 'auto', opacity: 1 }}
+   676→                                exit={{ height: 0, opacity: 0 }}
+   677→                                transition={{ duration: 0.25 }}
+   678→                                className="overflow-hidden"
+   679→                              >
+   680→                                <div className="p-4 m-3 rounded-xl bg-white/60 dark:bg-neutral-800/40 border border-black/[0.04] dark:border-white/[0.04]">
+   681→                                  <div className="flex items-center justify-between mb-3">
+   682→                                    <h4 className="text-sm font-bold gradient-text">New Lesson</h4>
+   683→                                    <button onClick={() => setAddMode(null)} className="w-7 h-7 rounded-lg bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+   684→                                      <X className="w-3.5 h-3.5" />
+   685→                                    </button>
+   686→                                  </div>
+   687→                                  <div className="space-y-2.5">
+   688→                                    <select
+   689→                                      value={addChapterId}
+   690→                                      onChange={(e) => setAddChapterId(e.target.value)}
+   691→                                      className="w-full px-3 py-2 rounded-lg text-sm premium-input"
+   692→                                    >
+   693→                                      <option value="">Select chapter</option>
+   694→                                      {subject.chapters?.map((ch: any) => (
+   695→                                        <option key={ch.id} value={ch.id}>{ch.title}</option>
+   696→                                      ))}
+   697→                                    </select>
+   698→                                    <input
+   699→                                      type="text"
+   700→                                      value={lessonTitle}
+   701→                                      onChange={(e) => setLessonTitle(e.target.value)}
+   702→                                      placeholder="Lesson title *"
+   703→                                      className="w-full px-3 py-2 rounded-lg text-sm premium-input placeholder:text-muted-foreground/60"
+   704→                                    />
+   705→                                    <div className="grid grid-cols-2 gap-2.5">
+   706→                                      <select
+   707→                                        value={lessonType}
+   708→                                        onChange={(e) => setLessonType(e.target.value as any)}
+   709→                                        className="w-full px-3 py-2 rounded-lg text-sm premium-input"
+   710→                                      >
+   711→                                        <option value="video">Video</option>
+   712→                                        <option value="link">Link / Live</option>
+   713→                                        <option value="youtube">YouTube</option>
+   714→                                        <option value="document">Document / PDF</option>
+   715→                                      </select>
+   716→                                      <input
+   717→                                        type="url"
+   718→                                        value={lessonVideoUrl}
+   719→                                        onChange={(e) => setLessonVideoUrl(e.target.value)}
+   720→                                        placeholder="Video/Link URL"
+   721→                                        className="w-full px-3 py-2 rounded-lg text-sm premium-input placeholder:text-muted-foreground/60"
+   722→                                      />
+   723→                                    </div>
+   724→                                    <div className="flex items-center justify-between">
+   725→                                      <label className="flex items-center gap-2 cursor-pointer">
+   726→                                        <input
+   727→                                          type="checkbox"
+   728→                                          checked={lessonIsPreview}
+   729→                                          onChange={(e) => setLessonIsPreview(e.target.checked)}
+   730→                                          className="w-4 h-4 rounded"
+   731→                                        />
+   732→                                        <span className="text-xs font-semibold text-foreground">Preview (free)</span>
+   733→                                      </label>
+   734→                                      <div className="flex gap-2">
+   735→                                        <GradientButton variant="ghost" size="sm" onClick={() => setAddMode(null)}>Cancel</GradientButton>
+   736→                                        <GradientButton size="sm" onClick={handleCreateLesson} loading={creatingLesson} disabled={!lessonTitle.trim() || !addChapterId} icon={<Save className="w-3 h-3" />}>
+   737→                                          Add
+   738→                                        </GradientButton>
+   739→                                      </div>
+   740→                                    </div>
+   741→                                  </div>
+   742→                                </div>
+   743→                              </motion.div>
+   744→                            )}
+   745→                          </AnimatePresence>
+   746→
+   747→                          {/* Inline Edit Lesson Form */}
+   748→                          <AnimatePresence>
+   749→                            {editMode === 'lesson' && editSubjectId === subjKey && (
+   750→                              <motion.div
+   751→                                initial={{ height: 0, opacity: 0 }}
+   752→                                animate={{ height: 'auto', opacity: 1 }}
+   753→                                exit={{ height: 0, opacity: 0 }}
+   754→                                transition={{ duration: 0.25 }}
+   755→                                className="overflow-hidden"
+   756→                              >
+   757→                                <div className="p-4 m-3 rounded-xl bg-white/60 dark:bg-neutral-800/40 border border-amber-200/50 dark:border-amber-800/30">
+   758→                                  <div className="flex items-center justify-between mb-3">
+   759→                                    <h4 className="text-sm font-bold gradient-text">Edit Lesson</h4>
+   760→                                    <button onClick={cancelEdit} className="w-7 h-7 rounded-lg bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+   761→                                      <X className="w-3.5 h-3.5" />
+   762→                                    </button>
+   763→                                  </div>
+   764→                                  <div className="space-y-2.5">
+   765→                                    <input
+   766→                                      type="text"
+   767→                                      value={editLessonTitle}
+   768→                                      onChange={(e) => setEditLessonTitle(e.target.value)}
+   769→                                      placeholder="Lesson title *"
+   770→                                      className="w-full px-3 py-2 rounded-lg text-sm premium-input placeholder:text-muted-foreground/60"
+   771→                                      autoFocus
+   772→                                    />
+   773→                                    <div className="grid grid-cols-2 gap-2.5">
+   774→                                      <select
+   775→                                        value={editLessonType}
+   776→                                        onChange={(e) => setEditLessonType(e.target.value as any)}
+   777→                                        className="w-full px-3 py-2 rounded-lg text-sm premium-input"
+   778→                                      >
+   779→                                        <option value="video">Video</option>
+   780→                                        <option value="link">Link / Live</option>
+   781→                                        <option value="youtube">YouTube</option>
+   782→                                        <option value="document">Document / PDF</option>
+   783→                                      </select>
+   784→                                      <input
+   785→                                        type="url"
+   786→                                        value={editLessonVideoUrl}
+   787→                                        onChange={(e) => setEditLessonVideoUrl(e.target.value)}
+   788→                                        placeholder="Video/Link URL"
+   789→                                        className="w-full px-3 py-2 rounded-lg text-sm premium-input placeholder:text-muted-foreground/60"
+   790→                                      />
+   791→                                    </div>
+   792→                                    <textarea
+   793→                                      value={editLessonDesc}
+   794→                                      onChange={(e) => setEditLessonDesc(e.target.value)}
+   795→                                      placeholder="Optional description"
+   796→                                      rows={2}
+   797→                                      className="w-full px-3 py-2 rounded-lg text-sm premium-input placeholder:text-muted-foreground/60 resize-none"
+   798→                                    />
+   799→                                    <div className="flex items-center justify-between">
+   800→                                      <label className="flex items-center gap-2 cursor-pointer">
+   801→                                        <input
+   802→                                          type="checkbox"
+   803→                                          checked={editLessonIsPreview}
+   804→                                          onChange={(e) => setEditLessonIsPreview(e.target.checked)}
+   805→                                          className="w-4 h-4 rounded"
+   806→                                        />
+   807→                                        <span className="text-xs font-semibold text-foreground">Preview (free)</span>
+   808→                                      </label>
+   809→                                      <div className="flex gap-2">
+   810→                                        <GradientButton variant="ghost" size="sm" onClick={cancelEdit}>Cancel</GradientButton>
+   811→                                        <GradientButton size="sm" onClick={handleUpdateLesson} loading={updatingLesson} disabled={!editLessonTitle.trim()} icon={<Save className="w-3 h-3" />}>
+   812→                                          Save
+   813→                                        </GradientButton>
+   814→                                      </div>
+   815→                                    </div>
+   816→                                  </div>
+   817→                                </div>
+   818→                              </motion.div>
+   819→                            )}
+   820→                          </AnimatePresence>
+   821→
+   822→                          {/* Chapters & Lessons */}
+   823→                          {subject.chapters?.length === 0 ? (
+   824→                            <div className="px-5 py-6 text-center">
+   825→                              <p className="text-sm text-muted-foreground mb-3">No chapters in this subject yet</p>
+   826→                              <div className="flex items-center justify-center gap-2">
+   827→                                <GradientButton size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => startAddChapter(subjKey)}>
+   828→                                  Add Chapter
+   829→                                </GradientButton>
+   830→                                <GradientButton size="sm" variant="ghost" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => startAddLesson(subjKey, '')}>
+   831→                                  Add Lesson
+   832→                                </GradientButton>
+   833→                              </div>
+   834→                            </div>
+   835→                          ) : (
+   836→                            <div className="py-2">
+   837→                              {subject.chapters?.map((chapter: any, ci: number) => {
+   838→                                const chapterLessons = (subject.lessons || [])
+   839→                                  .filter((l: any) => (l.chapterId || l.chapter_id) === chapter.id)
+   840→                                  .sort((a: any, b: any) => (a.sortOrder || a.sort_order || 0) - (b.sortOrder || b.sort_order || 0));
+   841→                                const isChapterExpanded = expandedChapters.has(chapter.id);
+   842→
+   843→                                return (
+   844→                                  <div key={chapter.id || ci} className="ml-3 md:ml-6">
+   845→                                    {/* Chapter Header */}
+   846→                                    <div
+   847→                                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors cursor-pointer group"
+   848→                                      onClick={() => toggleChapter(chapter.id)}
+   849→                                    >
+   850→                                      <motion.div
+   851→                                        animate={{ rotate: isChapterExpanded ? 0 : -90 }}
+   852→                                        transition={{ duration: 0.2 }}
+   853→                                        className="flex-shrink-0"
+   854→                                      >
+   855→                                        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground/60" />
+   856→                                      </motion.div>
+   857→                                      <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-neutral-200 to-neutral-300 dark:from-neutral-700 dark:to-neutral-600 flex items-center justify-center flex-shrink-0">
+   858→                                        <span className="text-xs font-bold text-foreground">{ci + 1}</span>
+   859→                                      </div>
+   860→                                      <div className="flex-1 min-w-0">
+   861→                                        <p className="text-sm font-semibold text-foreground truncate">{chapter.title}</p>
+   862→                                        <p className="text-[11px] text-muted-foreground">{chapterLessons.length} {chapterLessons.length === 1 ? 'lesson' : 'lessons'}</p>
+   863→                                      </div>
+   864→
+   865→                                      {/* Chapter Quick Actions */}
+   866→                                      <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+   867→                                        <button
+   868→                                          onClick={() => startAddLesson(subjKey, chapter.id)}
+   869→                                          className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors"
+   870→                                          title="Add lesson"
+   871→                                        >
+   872→                                          <Plus className="w-3 h-3" />
+   873→                                        </button>
+   874→                                        <button
+   875→                                          onClick={() => startEditChapter(chapter, subjKey)}
+   876→                                          className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors"
+   877→                                          title="Edit chapter"
+   878→                                        >
+   879→                                          <Edit3 className="w-3 h-3" />
+   880→                                        </button>
+   881→                                        <button
+   882→                                          onClick={() => handleDeleteChapter(chapter.id)}
+   883→                                          className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+   884→                                          title="Delete chapter"
+   885→                                        >
+   886→                                          <Trash2 className="w-3 h-3" />
+   887→                                        </button>
+   888→                                      </div>
+   889→                                    </div>
+   890→
+   891→                                    {/* Lessons */}
+   892→                                    <AnimatePresence>
+   893→                                      {isChapterExpanded && (
+   894→                                        <motion.div
+   895→                                          initial={{ height: 0, opacity: 0 }}
+   896→                                          animate={{ height: 'auto', opacity: 1 }}
+   897→                                          exit={{ height: 0, opacity: 0 }}
+   898→                                          transition={{ duration: 0.2 }}
+   899→                                          className="overflow-hidden"
+   900→                                        >
+   901→                                          {chapterLessons.length > 0 ? (
+   902→                                            <div className="ml-6 md:ml-10 border-l-2 border-black/[0.04] dark:border-white/[0.04]">
+   903→                                              {chapterLessons.map((lesson: any, li: number) => {
+   904→                                                const LIcon = lessonTypeIcon[lesson.lessonType || lesson.lesson_type] || Video;
+   905→                                                const lType = lesson.lessonType || lesson.lesson_type || 'video';
+   906→                                                const isEditingThisLesson = editMode === 'lesson' && editId === lesson.id;
+   907→                                                return (
+   908→                                                  <div
+   909→                                                    key={lesson.id || li}
+   910→                                                    className="relative"
+   911→                                                  >
+   912→                                                    {isEditingThisLesson ? (
+   913→                                                      /* Inline Edit Lesson Form inside the lesson list */
+   914→                                                      <div className="pl-4 pr-3 py-3 -ml-[1px] border-l-2 border-amber-400/50">
+   915→                                                        <div className="p-3 rounded-lg bg-white/60 dark:bg-neutral-800/40 border border-amber-200/50 dark:border-amber-800/30 space-y-2">
+   916→                                                          <input
+   917→                                                            type="text"
+   918→                                                            value={editLessonTitle}
+   919→                                                            onChange={(e) => setEditLessonTitle(e.target.value)}
+   920→                                                            placeholder="Lesson title *"
+   921→                                                            className="w-full px-3 py-1.5 rounded-lg text-sm premium-input placeholder:text-muted-foreground/60"
+   922→                                                            autoFocus
+   923→                                                          />
+   924→                                                          <div className="grid grid-cols-2 gap-2">
+   925→                                                            <select
+   926→                                                              value={editLessonType}
+   927→                                                              onChange={(e) => setEditLessonType(e.target.value as any)}
+   928→                                                              className="w-full px-2 py-1.5 rounded-lg text-sm premium-input"
+   929→                                                            >
+   930→                                                              <option value="video">Video</option>
+   931→                                                              <option value="link">Link</option>
+   932→                                                              <option value="youtube">YouTube</option>
+   933→                                                              <option value="document">Document</option>
+   934→                                                            </select>
+   935→                                                            <input
+   936→                                                              type="url"
+   937→                                                              value={editLessonVideoUrl}
+   938→                                                              onChange={(e) => setEditLessonVideoUrl(e.target.value)}
+   939→                                                              placeholder="URL"
+   940→                                                              className="w-full px-2 py-1.5 rounded-lg text-sm premium-input placeholder:text-muted-foreground/60"
+   941→                                                            />
+   942→                                                          </div>
+   943→                                                          <div className="flex items-center justify-between">
+   944→                                                            <label className="flex items-center gap-1.5 cursor-pointer">
+   945→                                                              <input
+   946→                                                                type="checkbox"
+   947→                                                                checked={editLessonIsPreview}
+   948→                                                                onChange={(e) => setEditLessonIsPreview(e.target.checked)}
+   949→                                                                className="w-3.5 h-3.5 rounded"
+   950→                                                              />
+   951→                                                              <span className="text-[11px] font-semibold text-foreground">Preview</span>
+   952→                                                            </label>
+   953→                                                            <div className="flex gap-1.5">
+   954→                                                              <button onClick={cancelEdit} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1">Cancel</button>
+   955→                                                              <GradientButton size="sm" onClick={handleUpdateLesson} loading={updatingLesson} disabled={!editLessonTitle.trim()} icon={<Save className="w-3 h-3" />}>
+   956→                                                                Save
+   957→                                                              </GradientButton>
+   958→                                                            </div>
+   959→                                                          </div>
+   960→                                                        </div>
+   961→                                                      </div>
+   962→                                                    ) : (
+   963→                                                      /* Normal Lesson Row */
+   964→                                                      <div className="flex items-center gap-2.5 pl-4 pr-3 py-2 hover:bg-black/[0.01] dark:hover:bg-white/[0.01] transition-colors group/lesson -ml-[1px] border-l-2 border-transparent hover:border-black/10 dark:hover:border-white/10">
+   965→                                                        <div className={cn('w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0', lessonTypeColor[lType])}>
+   966→                                                          <LIcon className="w-3 h-3" />
+   967→                                                        </div>
+   968→                                                        <div className="flex-1 min-w-0">
+   969→                                                          <p className="text-sm text-foreground truncate">{lesson.title}</p>
+   970→                                                          <div className="flex items-center gap-2 mt-0.5">
+   971→                                                            <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', lessonTypeColor[lType])}>
+   972→                                                              {lessonTypeLabel[lType]}
+   973→                                                            </span>
+   974→                                                            {lesson.isPreview && (
+   975→                                                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-0.5">
+   976→                                                                <Eye className="w-2.5 h-2.5" /> Preview
+   977→                                                              </span>
+   978→                                                            )}
+   979→                                                            {(lesson.duration > 0) && (
+   980→                                                              <span className="text-[10px] text-muted-foreground">{formatDurationShort(lesson.duration)}</span>
+   981→                                                            )}
+   982→                                                          </div>
+   983→                                                        </div>
+   984→
+   985→                                                        {/* Lesson Quick Actions */}
+   986→                                                        <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover/lesson:opacity-100 transition-opacity">
+   987→                                                          <button
+   988→                                                            onClick={() => startEditLesson(lesson, subjKey)}
+   989→                                                            className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors"
+   990→                                                            title="Edit"
+   991→                                                          >
+   992→                                                            <Edit3 className="w-2.5 h-2.5" />
+   993→                                                          </button>
+   994→                                                          <button
+   995→                                                            onClick={() => handleDeleteLesson(lesson.id)}
+   996→                                                            className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground/60 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+   997→                                                            title="Delete"
+   998→                                                          >
+   999→                                                            <Trash2 className="w-2.5 h-2.5" />
+  1000→                                                          </button>
+  1001→                                                        </div>
+  1002→                                                      </div>
+  1003→                                                    )}
+  1004→                                                  </div>
+  1005→                                                );
+  1006→                                              })}
+  1007→                                            </div>
+  1008→                                          ) : (
+  1009→                                            <div className="ml-6 md:ml-10 pl-4 py-2">
+  1010→                                              <p className="text-xs text-muted-foreground/60 italic">No lessons yet</p>
+  1011→                                            </div>
+  1012→                                          )}
+  1013→                                        </motion.div>
+  1014→                                      )}
+  1015→                                    </AnimatePresence>
+  1016→                                  </div>
+  1017→                                );
+  1018→                              })}
+  1019→                            </div>
+  1020→                          )}
+  1021→
+  1022→                          {/* Add Lesson Button at subject level */}
+  1023→                          {subject.chapters?.length > 0 && (
+  1024→                            <div className="px-5 py-2">
+  1025→                              <button
+  1026→                                onClick={() => startAddLesson(subjKey, '')}
+  1027→                                className="text-xs font-semibold text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors"
+  1028→                              >
+  1029→                                <Plus className="w-3 h-3" /> Add Lesson
+  1030→                              </button>
+  1031→                            </div>
+  1032→                          )}
+  1033→                        </div>
+  1034→                      </motion.div>
+  1035→                    )}
+  1036→                  </AnimatePresence>
+  1037→                </GlassCard>
+  1038→              </motion.div>
+  1039→            );
+  1040→          })}
+  1041→        </div>
+  1042→      )}
+  1043→
+  1044→      {/* Student Reviews / Comments Section */}
+  1045→      <motion.div
+  1046→        initial={{ opacity: 0, y: 12 }}
+  1047→        animate={{ opacity: 1, y: 0 }}
+  1048→        transition={{ delay: 0.3, duration: 0.4 }}
+  1049→      >
+
+[showing lines 550-1049 of 1118; use offset=1050 with limit to continue reading]
