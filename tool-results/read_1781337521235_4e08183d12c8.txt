@@ -1,0 +1,1546 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import {
+     6→  Search,
+     7→  Plus,
+     8→  MoreHorizontal,
+     9→  Pencil,
+    10→  Trash2,
+    11→  RefreshCw,
+    12→  Star,
+    13→  BookOpen,
+    14→  AlertTriangle,
+    15→  ChevronLeft,
+    16→  ChevronRight,
+    17→  ImagePlus,
+    18→  Link,
+    19→  Clock,
+    20→  Users,
+    21→  GraduationCap,
+    22→  X,
+    23→  ListChecks,
+    24→  ArrowLeft,
+    25→} from 'lucide-react';
+    26→import { Button } from '@/components/ui/button';
+    27→import { Checkbox } from '@/components/ui/checkbox';
+    28→import { Input } from '@/components/ui/input';
+    29→import { Badge } from '@/components/ui/badge';
+    30→import { Label } from '@/components/ui/label';
+    31→import { Switch } from '@/components/ui/switch';
+    32→import { Skeleton } from '@/components/ui/skeleton';
+    33→import { Textarea } from '@/components/ui/textarea';
+    34→import {
+    35→  Dialog,
+    36→  DialogContent,
+    37→  DialogHeader,
+    38→  DialogTitle,
+    39→  DialogFooter,
+    40→  DialogDescription,
+    41→} from '@/components/ui/dialog';
+    42→import {
+    43→  DropdownMenu,
+    44→  DropdownMenuContent,
+    45→  DropdownMenuItem,
+    46→  DropdownMenuSeparator,
+    47→  DropdownMenuTrigger,
+    48→} from '@/components/ui/dropdown-menu';
+    49→import {
+    50→  Select,
+    51→  SelectContent,
+    52→  SelectItem,
+    53→  SelectTrigger,
+    54→  SelectValue,
+    55→} from '@/components/ui/select';
+    56→import {
+    57→  AlertDialog,
+    58→  AlertDialogAction,
+    59→  AlertDialogCancel,
+    60→  AlertDialogContent,
+    61→  AlertDialogDescription,
+    62→  AlertDialogFooter,
+    63→  AlertDialogHeader,
+    64→  AlertDialogTitle,
+    65→} from '@/components/ui/alert-dialog';
+    66→import { useToast } from '@/hooks/use-toast';
+    67→import { apiGet, apiPost, apiPut, apiDelete, apiUpload } from '@/lib/api-client';
+    68→import type { Course } from '@/lib/types';
+    69→import CourseCurriculum from '@/components/admin/course-curriculum';
+    70→
+    71→// ---------------------------------------------------------------------------
+    72→// Helpers
+    73→// ---------------------------------------------------------------------------
+    74→
+    75→function mapCourse(doc: Record<string, unknown>): Course {
+    76→  return {
+    77→    id: String(doc.id ?? ''),
+    78→    title: String(doc.title ?? ''),
+    79→    slug: String(doc.slug ?? ''),
+    80→    description: doc.description ? String(doc.description) : undefined,
+    81→    thumbnailUrl: doc.thumbnailUrl ? String(doc.thumbnailUrl) : undefined,
+    82→    previewVideoUrl: doc.previewVideoUrl ? String(doc.previewVideoUrl) : undefined,
+    83→    categoryId: doc.categoryId ? String(doc.categoryId) : undefined,
+    84→    instructorId: doc.instructorId ? String(doc.instructorId) : undefined,
+    85→    technologyId: doc.technologyId ? Number(doc.technologyId) : undefined,
+    86→    level: (doc.level as Course['level']) ?? 'beginner',
+    87→    language: (doc.language as Course['language']) ?? 'bangla',
+    88→    duration: Number(doc.duration ?? 0),
+    89→    totalVideos: Number(doc.totalVideos ?? 0),
+    90→    rating: Number(doc.rating ?? 0),
+    91→    totalReviews: Number(doc.totalReviews ?? 0),
+    92→    totalStudents: Number(doc.totalStudents ?? 0),
+    93→    price: Number(doc.price ?? 0),
+    94→    isFeatured: Boolean(doc.isFeatured),
+    95→    isPublished: Boolean(doc.isPublished),
+    96→    tags: doc.tags ? String(doc.tags) : undefined,
+    97→    createdAt: String(doc.createdAt ?? ''),
+    98→    updatedAt: String(doc.updatedAt ?? ''),
+    99→  };
+   100→}
+   101→
+   102→const PAGE_SIZE = 20;
+   103→
+   104→const levelBadgeStyles: Record<string, string> = {
+   105→  beginner: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20',
+   106→  intermediate: 'bg-dakkho-blue/15 text-dakkho-blue border border-dakkho-blue/20',
+   107→  advanced: 'bg-dakkho-purple/15 text-dakkho-purple border border-dakkho-purple/20',
+   108→  expert: 'bg-dakkho-orange/15 text-dakkho-orange border border-dakkho-orange/20',
+   109→};
+   110→
+   111→function formatDuration(minutes: number): string {
+   112→  if (minutes < 60) return `${minutes}m`;
+   113→  const h = Math.floor(minutes / 60);
+   114→  const m = minutes % 60;
+   115→  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+   116→}
+   117→
+   118→function slugify(text: string): string {
+   119→  return text
+   120→    .toLowerCase()
+   121→    .replace(/[^a-z0-9\u0980-\u09FF]+/g, '-')
+   122→    .replace(/(^-|-$)/g, '');
+   123→}
+   124→
+   125→// ---------------------------------------------------------------------------
+   126→// Component
+   127→// ---------------------------------------------------------------------------
+   128→
+   129→export default function CoursesTable() {
+   130→  const [courses, setCourses] = useState<Course[]>([]);
+   131→  const [total, setTotal] = useState(0);
+   132→  const [page, setPage] = useState(1);
+   133→  const [search, setSearch] = useState('');
+   134→  const [levelFilter, setLevelFilter] = useState('all');
+   135→  const [publishedFilter, setPublishedFilter] = useState('all');
+   136→  const [loading, setLoading] = useState(true);
+   137→  const [error, setError] = useState<string | null>(null);
+   138→  const { toast } = useToast();
+   139→
+   140→  // Dialog states
+   141→  const [formOpen, setFormOpen] = useState(false);
+   142→  const [editCourse, setEditCourse] = useState<Course | null>(null);
+   143→  const [deleteOpen, setDeleteOpen] = useState(false);
+   144→  const [deleteTarget, setDeleteTarget] = useState<Course | null>(null);
+   145→  const [saving, setSaving] = useState(false);
+   146→
+   147→  // Curriculum view state
+   148→  const [curriculumCourseId, setCurriculumCourseId] = useState<string | null>(null);
+   149→  const [curriculumCourseTitle, setCurriculumCourseTitle] = useState('');
+   150→  const [savedCourseId, setSavedCourseId] = useState<string | null>(null);
+   151→
+   152→  // Form state
+   153→  const [form, setForm] = useState({
+   154→    title: '',
+   155→    slug: '',
+   156→    description: '',
+   157→    categoryIds: [] as string[],
+   158→    instructorIds: [] as string[],
+   159→    subjectIds: [] as string[],
+   160→    technologyId: '',
+   161→    semester: '',
+   162→    level: 'beginner' as Course['level'],
+   163→    language: 'bangla' as Course['language'],
+   164→    duration: 0,
+   165→    price: 0,
+   166→    isFeatured: false,
+   167→    isPublished: false,
+   168→    tags: '',
+   169→    thumbnailUrl: '',
+   170→    thumbnailFile: null as File | null,
+   171→    learningPoints: [] as string[],
+   172→  });
+   173→  const [newLearningPoint, setNewLearningPoint] = useState('');
+   174→
+   175→  // Dropdown data
+   176→  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+   177→  const [instructors, setInstructors] = useState<{ id: string; name: string }[]>([]);
+   178→  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
+   179→  const [technologies, setTechnologies] = useState<{ id: string; name: string }[]>([]);
+   180→  const [newSubjectName, setNewSubjectName] = useState('');
+   181→
+   182→  // -------------------------------------------------------------------------
+   183→  // Data fetching
+   184→  // -------------------------------------------------------------------------
+   185→
+   186→  const fetchCourses = useCallback(async () => {
+   187→    setLoading(true);
+   188→    setError(null);
+   189→    try {
+   190→      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+   191→      if (search) params.set('search', search);
+   192→      if (levelFilter !== 'all') params.set('level', levelFilter);
+   193→      if (publishedFilter === 'true') params.set('published', 'true');
+   194→      if (publishedFilter === 'false') params.set('published', 'false');
+   195→
+   196→      const data = (await apiGet(`/courses?${params}`)) as Record<string, unknown>;
+   197→      const docs = (data.courses as Record<string, unknown>[]) || (data.documents as Record<string, unknown>[]) || [];
+   198→      setCourses(docs.map(mapCourse));
+   199→      setTotal((data.total as number) || 0);
+   200→    } catch (err) {
+   201→      const message = err instanceof Error ? err.message : 'Failed to fetch courses';
+   202→      setError(message);
+   203→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   204→    } finally {
+   205→      setLoading(false);
+   206→    }
+   207→  }, [page, search, levelFilter, publishedFilter, toast]);
+   208→
+   209→  const fetchDropdownData = useCallback(async () => {
+   210→    try {
+   211→      const [catData, instData, subData, techData] = await Promise.all([
+   212→        apiGet('/categories?limit=200') as Promise<Record<string, unknown>>,
+   213→        apiGet('/instructors?limit=200') as Promise<Record<string, unknown>>,
+   214→        apiGet('/subjects?limit=200') as Promise<Record<string, unknown>>,
+   215→        apiGet('/technologies?limit=200') as Promise<Record<string, unknown>>,
+   216→      ]);
+   217→      const catDocs = (catData.categories as Record<string, unknown>[]) || (catData.documents as Record<string, unknown>[]) || [];
+   218→      const instDocs = (instData.instructors as Record<string, unknown>[]) || (instData.documents as Record<string, unknown>[]) || [];
+   219→      const subDocs = (subData.subjects as Record<string, unknown>[]) || (subData.documents as Record<string, unknown>[]) || [];
+   220→      const techDocs = (techData.technologies as Record<string, unknown>[]) || (techData.documents as Record<string, unknown>[]) || [];
+   221→      setCategories(
+   222→        catDocs.map((d) => ({ id: String(d.id), name: String(d.name ?? 'Unknown') })),
+   223→      );
+   224→      setInstructors(
+   225→        instDocs.map((d) => ({ id: String(d.id), name: String(d.name ?? 'Unknown') })),
+   226→      );
+   227→      setSubjects(
+   228→        subDocs.map((d) => ({ id: String(d.id), name: String(d.name ?? 'Unknown') })),
+   229→      );
+   230→      setTechnologies(
+   231→        techDocs.map((d) => ({ id: String(d.id), name: String(d.name ?? 'Unknown') })),
+   232→      );
+   233→    } catch {
+   234→      // silent — dropdowns can be empty
+   235→    }
+   236→  }, []);
+   237→
+   238→  useEffect(() => {
+   239→    fetchCourses();
+   240→  }, [fetchCourses]);
+   241→
+   242→  useEffect(() => {
+   243→    fetchDropdownData();
+   244→  }, [fetchDropdownData]);
+   245→
+   246→  // -------------------------------------------------------------------------
+   247→  // CRUD handlers
+   248→  // -------------------------------------------------------------------------
+   249→
+   250→  const openCreateDialog = () => {
+   251→    setEditCourse(null);
+   252→    setSavedCourseId(null);
+   253→    setForm({
+   254→      title: '',
+   255→      slug: '',
+   256→      description: '',
+   257→      categoryIds: [] as string[],
+   258→      instructorIds: [] as string[],
+   259→      subjectIds: [] as string[],
+   260→      technologyId: '',
+   261→      semester: '',
+   262→      level: 'beginner',
+   263→      language: 'bangla',
+   264→      duration: 0,
+   265→      price: 0,
+   266→      isFeatured: false,
+   267→      isPublished: false,
+   268→      tags: '',
+   269→      thumbnailUrl: '',
+   270→      thumbnailFile: null,
+   271→      learningPoints: [],
+   272→    });
+   273→    setNewLearningPoint('');
+   274→    setFormOpen(true);
+   275→  };
+   276→
+   277→  const openEditDialog = async (course: Course) => {
+   278→    setEditCourse(course);
+   279→    setSavedCourseId(null);
+   280→    // Try to fetch full course detail (which includes learningPoints)
+   281→    let fetchedLearningPoints: string[] = [];
+   282→    let fetchedSemester = '';
+   283→    try {
+   284→      const detail = (await apiGet(`/courses?id=${course.id}`)) as Record<string, unknown>;
+   285→      const courseData = (detail.course as Record<string, unknown>) || detail;
+   286→      if (courseData.learningPoints) {
+   287→        const lp = courseData.learningPoints;
+   288→        fetchedLearningPoints = Array.isArray(lp) ? lp.map(String) : (typeof lp === 'string' ? JSON.parse(lp) : []);
+   289→      } else if (courseData.learning_points) {
+   290→        const lp = courseData.learning_points;
+   291→        fetchedLearningPoints = Array.isArray(lp) ? lp.map(String) : (typeof lp === 'string' ? JSON.parse(lp) : []);
+   292→      }
+   293→      if (courseData.semester != null) {
+   294→        fetchedSemester = String(courseData.semester);
+   295→      }
+   296→    } catch {
+   297→      // Fall back to course data we already have
+   298→    }
+   299→    setForm({
+   300→      title: course.title,
+   301→      slug: course.slug,
+   302→      description: course.description ?? '',
+   303→      categoryIds: course.categoryId ? [course.categoryId] : ([] as string[]),
+   304→      instructorIds: course.instructorId ? [course.instructorId] : ([] as string[]),
+   305→      subjectIds: [] as string[],
+   306→      technologyId: course.technologyId ? String(course.technologyId) : '',
+   307→      semester: fetchedSemester,
+   308→      level: course.level,
+   309→      language: course.language,
+   310→      duration: course.duration,
+   311→      price: course.price,
+   312→      isFeatured: course.isFeatured,
+   313→      isPublished: course.isPublished,
+   314→      tags: course.tags ?? '',
+   315→      thumbnailUrl: course.thumbnailUrl ?? '',
+   316→      thumbnailFile: null,
+   317→      learningPoints: fetchedLearningPoints,
+   318→    });
+   319→    setNewLearningPoint('');
+   320→    setFormOpen(true);
+   321→  };
+   322→
+   323→  const handleSave = async () => {
+   324→    setSaving(true);
+   325→    try {
+   326→      // Handle thumbnail upload
+   327→      let thumbnailUrl = form.thumbnailUrl;
+   328→      if (form.thumbnailFile) {
+   329→        try {
+   330→          const fd = new FormData();
+   331→          fd.append('file', form.thumbnailFile);
+   332→          fd.append('bucket', 'thumbnails');
+   333→          const uploadResult = (await apiUpload('/upload', fd)) as Record<string, unknown>;
+   334→          thumbnailUrl = String(uploadResult.url || uploadResult.key || '');
+   335→        } catch {
+   336→          toast({ title: 'Warning', description: 'Thumbnail upload failed, using URL instead' });
+   337→        }
+   338→      }
+   339→
+   340→      const slug = form.slug || slugify(form.title);
+   341→      // Map camelCase form fields to snake_case for D1 columns
+   342→      const payload: Record<string, unknown> = {
+   343→        title: form.title,
+   344→        slug,
+   345→        description: form.description || undefined,
+   346→        thumbnail_url: thumbnailUrl || undefined,
+   347→        category_id: form.categoryIds[0] || undefined,
+   348→        instructor_id: form.instructorIds[0] || undefined,
+   349→        category_ids: form.categoryIds.length > 0 ? JSON.stringify(form.categoryIds) : undefined,
+   350→        instructor_ids: form.instructorIds.length > 0 ? JSON.stringify(form.instructorIds) : undefined,
+   351→        subject_ids: form.subjectIds.length > 0 ? JSON.stringify(form.subjectIds) : undefined,
+   352→        technology_id: form.technologyId ? Number(form.technologyId) : undefined,
+   353→        semester: form.semester ? Number(form.semester) : undefined,
+   354→        level: form.level,
+   355→        language: form.language,
+   356→        // duration is auto-calculated from videos — not sent manually
+   357→        price: form.price,
+   358→        is_featured: form.isFeatured,
+   359→        is_published: form.isPublished,
+   360→        tags: form.tags || undefined,
+   361→        learning_points: form.learningPoints.length > 0 ? JSON.stringify(form.learningPoints) : undefined,
+   362→      };
+   363→
+   364→      if (editCourse) {
+   365→        await apiPut('/courses', { courseId: editCourse.id, ...payload });
+   366→        toast({ title: 'Success', description: 'Course updated successfully' });
+   367→        setSavedCourseId(editCourse.id);
+   368→      } else {
+   369→        const result = await apiPost('/courses', {
+   370→          ...payload,
+   371→          total_videos: 0,
+   372→          rating: 0,
+   373→          total_reviews: 0,
+   374→          total_students: 0,
+   375→        }) as Record<string, unknown>;
+   376→        const created = (result.course as Record<string, unknown>) || result;
+   377→        const createdId = String(created.id || '');
+   378→        toast({ title: 'Success', description: 'Course created successfully' });
+   379→        setSavedCourseId(createdId);
+   380→      }
+   381→
+   382→      // Don't close dialog immediately — show "Manage Curriculum" link
+   383→      fetchCourses();
+   384→    } catch (err) {
+   385→      const message = err instanceof Error ? err.message : 'Failed to save course';
+   386→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   387→    } finally {
+   388→      setSaving(false);
+   389→    }
+   390→  };
+   391→
+   392→  const confirmDelete = async () => {
+   393→    if (!deleteTarget) return;
+   394→    try {
+   395→      await apiDelete(`/courses?id=${deleteTarget.id}`);
+   396→      toast({ title: 'Deleted', description: 'Course has been deleted' });
+   397→      setDeleteOpen(false);
+   398→      setDeleteTarget(null);
+   399→      fetchCourses();
+   400→    } catch (err) {
+   401→      const message = err instanceof Error ? err.message : 'Failed to delete course';
+   402→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   403→    }
+   404→  };
+   405→
+   406→  const togglePublished = async (course: Course) => {
+   407→    try {
+   408→      await apiPut('/courses', { courseId: course.id, is_published: !course.isPublished });
+   409→      toast({
+   410→        title: 'Success',
+   411→        description: `Course ${!course.isPublished ? 'published' : 'unpublished'}`,
+   412→      });
+   413→      fetchCourses();
+   414→    } catch (err) {
+   415→      const message = err instanceof Error ? err.message : 'Failed to update course';
+   416→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   417→    }
+   418→  };
+   419→
+   420→  const totalPages = Math.ceil(total / PAGE_SIZE);
+   421→
+   422→  // -------------------------------------------------------------------------
+   423→  // Render helpers
+   424→  // -------------------------------------------------------------------------
+   425→
+   426→  const renderLevelBadge = (level: string) => (
+   427→    <span className={`status-badge ${levelBadgeStyles[level] || levelBadgeStyles.beginner}`}>
+   428→      {level}
+   429→    </span>
+   430→  );
+   431→
+   432→  // ---- Instructor name lookup ----
+   433→  const getInstructorName = (instructorId: string) => {
+   434→    const instructor = instructors.find((inst) => inst.id === instructorId);
+   435→    return instructor?.name || instructorId.slice(0, 8) + '...';
+   436→  };
+   437→
+   438→  // -------------------------------------------------------------------------
+   439→  // JSX
+   440→  // -------------------------------------------------------------------------
+   441→
+   442→  // If curriculum view is active, show the curriculum component
+   443→  if (curriculumCourseId) {
+   444→    return (
+   445→      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+   446→        <div className="flex items-center gap-3">
+   447→          <Button
+   448→            variant="outline"
+   449→            size="sm"
+   450→            onClick={() => {
+   451→              setCurriculumCourseId(null);
+   452→              setCurriculumCourseTitle('');
+   453→            }}
+   454→            className="border-white/[0.08] bg-white/[0.04] gap-2"
+   455→          >
+   456→            <ArrowLeft className="h-4 w-4" /> Back to Courses
+   457→          </Button>
+   458→          <div className="flex items-center gap-2 min-w-0">
+   459→            <GraduationCap className="h-5 w-5 text-dakkho-purple flex-shrink-0" />
+   460→            <h1 className="page-title truncate">Curriculum: {curriculumCourseTitle}</h1>
+   461→          </div>
+   462→        </div>
+   463→        <CourseCurriculum courseId={curriculumCourseId} />
+   464→      </motion.div>
+   465→    );
+   466→  }
+   467→
+   468→  return (
+   469→    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+   470→      {/* ---- Page Header ---- */}
+   471→      <div className="page-header">
+   472→        <div className="flex items-center gap-3">
+   473→          <h1 className="page-title">Courses</h1>
+   474→          <Badge
+   475→            variant="secondary"
+   476→            className="bg-dakkho-purple/15 text-dakkho-purple border border-dakkho-purple/20 text-xs"
+   477→          >
+   478→            {total}
+   479→          </Badge>
+   480→        </div>
+   481→        <div className="flex items-center gap-2 flex-wrap">
+   482→          <Button onClick={openCreateDialog} className="gradient-purple text-white gap-2">
+   483→            <Plus className="h-4 w-4" />
+   484→            Add Course
+   485→          </Button>
+   486→        </div>
+   487→      </div>
+   488→
+   489→      {/* ---- Filters Bar ---- */}
+   490→      <div className="glass-card rounded-xl p-4">
+   491→        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+   492→          {/* Search */}
+   493→          <div className="relative flex-1 min-w-0">
+   494→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+   495→            <Input
+   496→              placeholder="Search courses by title..."
+   497→              value={search}
+   498→              onChange={(e) => {
+   499→                setSearch(e.target.value);
+   500→                setPage(1);
+   501→              }}
+   502→              className="pl-9 bg-white/[0.04] border-white/[0.08] h-10"
+   503→            />
+   504→          </div>
+   505→
+   506→          {/* Level filter */}
+   507→          <Select
+   508→            value={levelFilter}
+   509→            onValueChange={(v) => {
+   510→              setLevelFilter(v);
+   511→              setPage(1);
+   512→            }}
+   513→          >
+   514→            <SelectTrigger className="w-[160px] bg-white/[0.04] border-white/[0.08] h-10">
+   515→              <SelectValue placeholder="All Levels" />
+   516→            </SelectTrigger>
+   517→            <SelectContent>
+   518→              <SelectItem value="all">All Levels</SelectItem>
+   519→              <SelectItem value="beginner">Beginner</SelectItem>
+   520→              <SelectItem value="intermediate">Intermediate</SelectItem>
+   521→              <SelectItem value="advanced">Advanced</SelectItem>
+   522→              <SelectItem value="expert">Expert</SelectItem>
+   523→            </SelectContent>
+   524→          </Select>
+   525→
+   526→          {/* Published filter */}
+   527→          <Select
+   528→            value={publishedFilter}
+   529→            onValueChange={(v) => {
+   530→              setPublishedFilter(v);
+   531→              setPage(1);
+   532→            }}
+   533→          >
+   534→            <SelectTrigger className="w-[160px] bg-white/[0.04] border-white/[0.08] h-10">
+   535→              <SelectValue placeholder="All Status" />
+   536→            </SelectTrigger>
+   537→            <SelectContent>
+   538→              <SelectItem value="all">All Status</SelectItem>
+   539→              <SelectItem value="true">Published</SelectItem>
+   540→              <SelectItem value="false">Draft</SelectItem>
+   541→            </SelectContent>
+   542→          </Select>
+   543→
+   544→          {/* Refresh */}
+   545→          <Button
+   546→            variant="outline"
+   547→            size="icon"
+   548→            onClick={fetchCourses}
+   549→            className="border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.08] h-10 w-10"
+   550→          >
+   551→            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+   552→          </Button>
+   553→        </div>
+   554→      </div>
+   555→
+   556→      {/* ---- Data Table ---- */}
+   557→      <div className="glass-card rounded-xl overflow-hidden">
+   558→        <div className="overflow-x-auto">
+   559→          <table className="data-table">
+   560→            <thead>
+   561→              <tr>
+   562→                <th>Course</th>
+   563→                <th className="hidden lg:table-cell">Instructor</th>
+   564→                <th>Level</th>
+   565→                <th className="hidden md:table-cell">Language</th>
+   566→                <th className="hidden xl:table-cell">Duration</th>
+   567→                <th className="hidden lg:table-cell">Students</th>
+   568→                <th className="hidden xl:table-cell">Rating</th>
+   569→                <th>Published</th>
+   570→                <th className="text-right">Actions</th>
+   571→              </tr>
+   572→            </thead>
+   573→            <tbody>
+   574→              {/* ---- Loading skeleton ---- */}
+   575→              {loading &&
+   576→                Array.from({ length: 5 }).map((_, i) => (
+   577→                  <tr key={`skel-${i}`}>
+   578→                    <td>
+   579→                      <div className="flex items-center gap-3">
+   580→                        <Skeleton className="h-10 w-14 rounded-md" />
+   581→                        <Skeleton className="h-4 w-36" />
+   582→                      </div>
+   583→                    </td>
+   584→                    <td className="hidden lg:table-cell">
+   585→                      <Skeleton className="h-4 w-24" />
+   586→                    </td>
+   587→                    <td>
+   588→                      <Skeleton className="h-6 w-24 rounded-full" />
+   589→                    </td>
+   590→                    <td className="hidden md:table-cell">
+   591→                      <Skeleton className="h-4 w-16" />
+   592→                    </td>
+   593→                    <td className="hidden xl:table-cell">
+   594→                      <Skeleton className="h-4 w-14" />
+   595→                    </td>
+   596→                    <td className="hidden lg:table-cell">
+   597→                      <Skeleton className="h-4 w-10" />
+   598→                    </td>
+   599→                    <td className="hidden xl:table-cell">
+   600→                      <Skeleton className="h-4 w-14" />
+   601→                    </td>
+   602→                    <td>
+   603→                      <Skeleton className="h-5 w-10 rounded-full" />
+   604→                    </td>
+   605→                    <td className="text-right">
+   606→                      <Skeleton className="h-8 w-8 rounded-md ml-auto" />
+   607→                    </td>
+   608→                  </tr>
+   609→                ))}
+   610→
+   611→              {/* ---- Error state ---- */}
+   612→              {!loading && error && (
+   613→                <tr>
+   614→                  <td colSpan={9} className="text-center py-12">
+   615→                    <div className="flex flex-col items-center gap-3">
+   616→                      <AlertTriangle className="h-10 w-10 text-dakkho-warning" />
+   617→                      <p className="text-muted-foreground text-sm">{error}</p>
+   618→                      <Button variant="outline" size="sm" onClick={fetchCourses} className="gap-2">
+   619→                        <RefreshCw className="h-3.5 w-3.5" /> Retry
+   620→                      </Button>
+   621→                    </div>
+   622→                  </td>
+   623→                </tr>
+   624→              )}
+   625→
+   626→              {/* ---- Empty state ---- */}
+   627→              {!loading && !error && courses.length === 0 && (
+   628→                <tr>
+   629→                  <td colSpan={9} className="text-center py-12">
+   630→                    <div className="flex flex-col items-center gap-3">
+   631→                      <BookOpen className="h-10 w-10 text-muted-foreground/50" />
+   632→                      <p className="text-muted-foreground text-sm">No courses found</p>
+   633→                      <p className="text-muted-foreground/60 text-xs">
+   634→                        Create your first course or adjust filters
+   635→                      </p>
+   636→                      <Button
+   637→                        variant="outline"
+   638→                        size="sm"
+   639→                        onClick={openCreateDialog}
+   640→                        className="gap-2 mt-1"
+   641→                      >
+   642→                        <Plus className="h-3.5 w-3.5" /> Add Course
+   643→                      </Button>
+   644→                    </div>
+   645→                  </td>
+   646→                </tr>
+   647→              )}
+   648→
+   649→              {/* ---- Data rows ---- */}
+   650→              {!loading &&
+   651→                !error &&
+   652→                courses.map((course) => (
+   653→                  <tr key={course.id}>
+   654→                    {/* Thumbnail + Title */}
+   655→                    <td>
+   656→                      <div className="flex items-center gap-3">
+   657→                        <div className="h-10 w-14 rounded-md overflow-hidden flex-shrink-0 bg-white/[0.04] border border-white/[0.06]">
+   658→                          {course.thumbnailUrl ? (
+   659→                            <img
+   660→                              src={course.thumbnailUrl}
+   661→                              alt={course.title}
+   662→                              className="h-full w-full object-cover"
+   663→                            />
+   664→                          ) : (
+   665→                            <div className="h-full w-full flex items-center justify-center">
+   666→                              <BookOpen className="h-4 w-4 text-muted-foreground/40" />
+   667→                            </div>
+   668→                          )}
+   669→                        </div>
+   670→                        <div className="min-w-0">
+   671→                          <div className="flex items-center gap-1.5">
+   672→                            {course.isFeatured && (
+   673→                              <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400 flex-shrink-0" />
+   674→                            )}
+   675→                            <span className="font-medium text-foreground truncate max-w-[180px]">
+   676→                              {course.title || 'Untitled'}
+   677→                            </span>
+   678→                          </div>
+   679→                          {course.price > 0 && (
+   680→                            <span className="text-xs text-dakkho-success">৳{course.price}</span>
+   681→                          )}
+   682→                        </div>
+   683→                      </div>
+   684→                    </td>
+   685→
+   686→                    {/* Instructor */}
+   687→                    <td className="hidden lg:table-cell text-muted-foreground text-sm">
+   688→                      {course.instructorId ? (
+   689→                        <span className="truncate max-w-[120px] block">{getInstructorName(course.instructorId)}</span>
+   690→                      ) : (
+   691→                        <span className="text-muted-foreground/50">—</span>
+   692→                      )}
+   693→                    </td>
+   694→
+   695→                    {/* Level */}
+   696→                    <td>{renderLevelBadge(course.level)}</td>
+   697→
+   698→                    {/* Language */}
+   699→                    <td className="hidden md:table-cell text-muted-foreground text-sm capitalize">
+   700→                      {course.language}
+   701→                    </td>
+   702→
+   703→                    {/* Duration */}
+   704→                    <td className="hidden xl:table-cell text-muted-foreground text-sm">
+   705→                      <span className="flex items-center gap-1">
+   706→                        <Clock className="h-3 w-3" />
+   707→                        {course.duration > 0 ? formatDuration(course.duration) : '—'}
+   708→                      </span>
+   709→                    </td>
+   710→
+   711→                    {/* Students */}
+   712→                    <td className="hidden lg:table-cell text-muted-foreground text-sm">
+   713→                      <span className="flex items-center gap-1">
+   714→                        <Users className="h-3 w-3" />
+   715→                        {course.totalStudents}
+   716→                      </span>
+   717→                    </td>
+   718→
+   719→                    {/* Rating */}
+   720→                    <td className="hidden xl:table-cell text-sm">
+   721→                      {course.rating > 0 ? (
+   722→                        <span className="flex items-center gap-1">
+   723→                          <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
+   724→                          <span className="text-amber-400">{course.rating.toFixed(1)}</span>
+   725→                        </span>
+   726→                      ) : (
+   727→                        <span className="text-muted-foreground/50">—</span>
+   728→                      )}
+   729→                    </td>
+   730→
+   731→                    {/* Published toggle */}
+   732→                    <td>
+   733→                      <div
+   734→                        className="cursor-pointer"
+   735→                        onClick={() => togglePublished(course)}
+   736→                        role="button"
+   737→                        tabIndex={0}
+   738→                        onKeyDown={(e) => {
+   739→                          if (e.key === 'Enter' || e.key === ' ') togglePublished(course);
+   740→                        }}
+   741→                      >
+   742→                        <Switch
+   743→                          checked={course.isPublished}
+   744→                          className="data-[state=checked]:bg-dakkho-success data-[state=unchecked]:bg-white/10"
+   745→                        />
+   746→                      </div>
+   747→                    </td>
+   748→
+   749→                    {/* Actions */}
+   750→                    <td className="text-right">
+   751→                      <DropdownMenu>
+   752→                        <DropdownMenuTrigger asChild>
+   753→                          <Button
+   754→                            variant="ghost"
+   755→                            size="icon"
+   756→                            className="h-8 w-8 hover:bg-white/[0.06]"
+   757→                          >
+   758→                            <MoreHorizontal className="h-4 w-4" />
+   759→                          </Button>
+   760→                        </DropdownMenuTrigger>
+   761→                        <DropdownMenuContent
+   762→                          align="end"
+   763→                          className="bg-[#1A1A2E] border-white/[0.08] z-50"
+   764→                        >
+   765→                          <DropdownMenuItem
+   766→                            onClick={() => openEditDialog(course)}
+   767→                            className="gap-2"
+   768→                          >
+   769→                            <Pencil className="h-4 w-4" /> Edit
+   770→                          </DropdownMenuItem>
+   771→                          <DropdownMenuItem
+   772→                            onClick={() => {
+   773→                              setCurriculumCourseId(course.id);
+   774→                              setCurriculumCourseTitle(course.title);
+   775→                            }}
+   776→                            className="gap-2"
+   777→                          >
+   778→                            <GraduationCap className="h-4 w-4" /> Manage Curriculum
+   779→                          </DropdownMenuItem>
+   780→                          <DropdownMenuItem
+   781→                            onClick={() => togglePublished(course)}
+   782→                            className="gap-2"
+   783→                          >
+   784→                            {course.isPublished ? 'Unpublish' : 'Publish'}
+   785→                          </DropdownMenuItem>
+   786→                          <DropdownMenuSeparator className="bg-white/[0.06]" />
+   787→                          <DropdownMenuItem
+   788→                            onClick={() => {
+   789→                              setDeleteTarget(course);
+   790→                              setDeleteOpen(true);
+   791→                            }}
+   792→                            className="gap-2 text-destructive focus:text-destructive"
+   793→                          >
+   794→                            <Trash2 className="h-4 w-4" /> Delete
+   795→                          </DropdownMenuItem>
+   796→                        </DropdownMenuContent>
+   797→                      </DropdownMenu>
+   798→                    </td>
+   799→                  </tr>
+   800→                ))}
+   801→            </tbody>
+   802→          </table>
+   803→        </div>
+   804→
+   805→        {/* ---- Pagination ---- */}
+   806→        {totalPages > 1 && (
+   807→          <div className="flex items-center justify-between px-4 py-3 border-t border-white/[0.06]">
+   808→            <p className="text-sm text-muted-foreground">
+   809→              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
+   810→            </p>
+   811→            <div className="flex items-center gap-1">
+   812→              <Button
+   813→                variant="outline"
+   814→                size="icon"
+   815→                className="h-8 w-8 border-white/[0.08] bg-transparent"
+   816→                onClick={() => setPage(Math.max(1, page - 1))}
+   817→                disabled={page === 1}
+   818→              >
+   819→                <ChevronLeft className="h-4 w-4" />
+   820→              </Button>
+   821→              <span className="text-sm text-muted-foreground px-2">
+   822→                {page} / {totalPages}
+   823→              </span>
+   824→              <Button
+   825→                variant="outline"
+   826→                size="icon"
+   827→                className="h-8 w-8 border-white/[0.08] bg-transparent"
+   828→                onClick={() => setPage(Math.min(totalPages, page + 1))}
+   829→                disabled={page === totalPages}
+   830→              >
+   831→                <ChevronRight className="h-4 w-4" />
+   832→              </Button>
+   833→            </div>
+   834→          </div>
+   835→        )}
+   836→      </div>
+   837→
+   838→      {/* ---- Mobile Card Layout ---- */}
+   839→      <div className="md:hidden space-y-3">
+   840→        {loading &&
+   841→          Array.from({ length: 3 }).map((_, i) => (
+   842→            <div key={i} className="glass-card rounded-xl p-4 space-y-3">
+   843→              <div className="flex items-center gap-3">
+   844→                <Skeleton className="h-12 w-16 rounded-md" />
+   845→                <div className="space-y-2 flex-1">
+   846→                  <Skeleton className="h-4 w-3/4" />
+   847→                  <Skeleton className="h-3 w-1/2" />
+   848→                </div>
+   849→              </div>
+   850→              <div className="flex gap-2">
+   851→                <Skeleton className="h-5 w-20 rounded-full" />
+   852→                <Skeleton className="h-5 w-16 rounded-full" />
+   853→              </div>
+   854→            </div>
+   855→          ))}
+   856→
+   857→        {!loading && !error && courses.length === 0 && (
+   858→          <div className="glass-card rounded-xl p-8 text-center">
+   859→            <BookOpen className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+   860→            <p className="text-muted-foreground text-sm">No courses found</p>
+   861→          </div>
+   862→        )}
+   863→
+   864→        <AnimatePresence>
+   865→          {!loading &&
+   866→            !error &&
+   867→            courses.map((course) => (
+   868→              <motion.div
+   869→                key={course.id}
+   870→                initial={{ opacity: 0, y: 8 }}
+   871→                animate={{ opacity: 1, y: 0 }}
+   872→                exit={{ opacity: 0, y: -8 }}
+   873→                transition={{ duration: 0.15 }}
+   874→                className="glass-card rounded-xl p-4"
+   875→              >
+   876→                <div className="flex items-start justify-between gap-3">
+   877→                  <div className="flex items-center gap-3 min-w-0 flex-1">
+   878→                    <div className="h-12 w-16 rounded-md overflow-hidden flex-shrink-0 bg-white/[0.04] border border-white/[0.06]">
+   879→                      {course.thumbnailUrl ? (
+   880→                        <img
+   881→                          src={course.thumbnailUrl}
+   882→                          alt={course.title}
+   883→                          className="h-full w-full object-cover"
+   884→                        />
+   885→                      ) : (
+   886→                        <div className="h-full w-full flex items-center justify-center">
+   887→                          <BookOpen className="h-4 w-4 text-muted-foreground/40" />
+   888→                        </div>
+   889→                      )}
+   890→                    </div>
+   891→                    <div className="min-w-0">
+   892→                      <div className="flex items-center gap-1">
+   893→                        {course.isFeatured && (
+   894→                          <Star className="h-3 w-3 text-amber-400 fill-amber-400 flex-shrink-0" />
+   895→                        )}
+   896→                        <p className="text-sm font-medium text-foreground truncate">
+   897→                          {course.title || 'Untitled'}
+   898→                        </p>
+   899→                      </div>
+   900→                      <p className="text-xs text-muted-foreground mt-0.5">
+   901→                        {course.language.charAt(0).toUpperCase() + course.language.slice(1)} ·{' '}
+   902→                        {formatDuration(course.duration)} · {course.totalStudents} students
+   903→                      </p>
+   904→                    </div>
+   905→                  </div>
+   906→                  <DropdownMenu>
+   907→                    <DropdownMenuTrigger asChild>
+   908→                      <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
+   909→                        <MoreHorizontal className="h-4 w-4" />
+   910→                      </Button>
+   911→                    </DropdownMenuTrigger>
+   912→                    <DropdownMenuContent
+   913→                      align="end"
+   914→                      className="bg-[#1A1A2E] border-white/[0.08] z-50"
+   915→                    >
+   916→                      <DropdownMenuItem
+   917→                        onClick={() => openEditDialog(course)}
+   918→                        className="gap-2"
+   919→                      >
+   920→                        <Pencil className="h-4 w-4" /> Edit
+   921→                      </DropdownMenuItem>
+   922→                      <DropdownMenuItem
+   923→                        onClick={() => {
+   924→                          setCurriculumCourseId(course.id);
+   925→                          setCurriculumCourseTitle(course.title);
+   926→                        }}
+   927→                        className="gap-2"
+   928→                      >
+   929→                        <GraduationCap className="h-4 w-4" /> Manage Curriculum
+   930→                      </DropdownMenuItem>
+   931→                      <DropdownMenuItem
+   932→                        onClick={() => togglePublished(course)}
+   933→                        className="gap-2"
+   934→                      >
+   935→                        {course.isPublished ? 'Unpublish' : 'Publish'}
+   936→                      </DropdownMenuItem>
+   937→                      <DropdownMenuSeparator className="bg-white/[0.06]" />
+   938→                      <DropdownMenuItem
+   939→                        onClick={() => {
+   940→                          setDeleteTarget(course);
+   941→                          setDeleteOpen(true);
+   942→                        }}
+   943→                        className="gap-2 text-destructive focus:text-destructive"
+   944→                      >
+   945→                        <Trash2 className="h-4 w-4" /> Delete
+   946→                      </DropdownMenuItem>
+   947→                    </DropdownMenuContent>
+   948→                  </DropdownMenu>
+   949→                </div>
+   950→
+   951→                <div className="flex flex-wrap items-center gap-1.5 mt-3">
+   952→                  {renderLevelBadge(course.level)}
+   953→                  <span
+   954→                    className={`status-badge ${course.isPublished ? 'status-badge-active' : 'status-badge-inactive'}`}
+   955→                  >
+   956→                    {course.isPublished ? 'Published' : 'Draft'}
+   957→                  </span>
+   958→                  {course.price > 0 && (
+   959→                    <span className="status-badge bg-dakkho-success/15 text-dakkho-success border border-dakkho-success/20">
+   960→                      ৳{course.price}
+   961→                    </span>
+   962→                  )}
+   963→                </div>
+   964→              </motion.div>
+   965→            ))}
+   966→        </AnimatePresence>
+   967→      </div>
+   968→
+   969→      {/* ---- Add/Edit Course Dialog ---- */}
+   970→      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+   971→        <DialogContent className="bg-[#1A1A2E] border-white/[0.08] max-w-2xl max-h-[90vh] overflow-y-auto">
+   972→          <DialogHeader>
+   973→            <DialogTitle className="text-foreground">
+   974→              {editCourse ? 'Edit Course' : 'Add Course'}
+   975→            </DialogTitle>
+   976→            <DialogDescription className="text-muted-foreground">
+   977→              {editCourse ? 'Update course information' : 'Create a new course'}
+   978→            </DialogDescription>
+   979→          </DialogHeader>
+   980→
+   981→          <div className="space-y-5 mt-2">
+   982→            {/* Title + Slug */}
+   983→            <div className="space-y-4">
+   984→              <div className="space-y-2">
+   985→                <Label htmlFor="title" className="text-muted-foreground">
+   986→                  Title
+   987→                </Label>
+   988→                <Input
+   989→                  id="title"
+   990→                  value={form.title}
+   991→                  onChange={(e) => {
+   992→                    const title = e.target.value;
+   993→                    setForm({
+   994→                      ...form,
+   995→                      title,
+   996→                      slug: form.slug === slugify(form.title) ? slugify(title) : form.slug,
+   997→                    });
+   998→                  }}
+   999→                  className="bg-white/[0.04] border-white/[0.08]"
+  1000→                  placeholder="Enter course title"
+  1001→                />
+  1002→              </div>
+  1003→              <div className="space-y-2">
+  1004→                <Label htmlFor="slug" className="text-muted-foreground">
+  1005→                  Slug{' '}
+  1006→                  <span className="text-muted-foreground/50 text-xs">(auto-generated if empty)</span>
+  1007→                </Label>
+  1008→                <Input
+  1009→                  id="slug"
+  1010→                  value={form.slug}
+  1011→                  onChange={(e) => setForm({ ...form, slug: e.target.value })}
+  1012→                  className="bg-white/[0.04] border-white/[0.08]"
+  1013→                  placeholder="course-slug"
+  1014→                />
+  1015→              </div>
+  1016→            </div>
+  1017→
+  1018→            {/* Description */}
+  1019→            <div className="space-y-2">
+  1020→              <Label htmlFor="description" className="text-muted-foreground">
+  1021→                Description
+  1022→              </Label>
+  1023→              <Textarea
+  1024→                id="description"
+  1025→                value={form.description}
+  1026→                onChange={(e) => setForm({ ...form, description: e.target.value })}
+  1027→                className="bg-white/[0.04] border-white/[0.08] min-h-[100px]"
+  1028→                placeholder="Describe the course..."
+  1029→                rows={4}
+  1030→              />
+  1031→            </div>
+  1032→
+  1033→            {/* Thumbnail */}
+  1034→            <div className="space-y-2">
+  1035→              <Label className="text-muted-foreground">Thumbnail</Label>
+  1036→              <div className="flex gap-3 items-start">
+  1037→                <div className="h-20 w-28 rounded-lg overflow-hidden bg-white/[0.04] border border-white/[0.06] flex-shrink-0">
+  1038→                  {form.thumbnailUrl ? (
+  1039→                    <img
+  1040→                      src={form.thumbnailUrl}
+  1041→                      alt="Thumbnail preview"
+  1042→                      className="h-full w-full object-cover"
+  1043→                    />
+  1044→                  ) : (
+  1045→                    <div className="h-full w-full flex items-center justify-center">
+  1046→                      <ImagePlus className="h-6 w-6 text-muted-foreground/40" />
+  1047→                    </div>
+  1048→                  )}
+  1049→                </div>
+  1050→                <div className="flex-1 space-y-2">
+  1051→                  <div className="flex gap-2">
+  1052→                    <Button
+  1053→                      type="button"
+  1054→                      variant="outline"
+  1055→                      size="sm"
+  1056→                      className="border-white/[0.08] bg-white/[0.04] gap-2"
+  1057→                      onClick={() => {
+  1058→                        const input = document.createElement('input');
+  1059→                        input.type = 'file';
+  1060→                        input.accept = 'image/*';
+  1061→                        input.onchange = (e) => {
+  1062→                          const file = (e.target as HTMLInputElement).files?.[0];
+  1063→                          if (file) setForm({ ...form, thumbnailFile: file });
+  1064→                        };
+  1065→                        input.click();
+  1066→                      }}
+  1067→                    >
+  1068→                      <ImagePlus className="h-3.5 w-3.5" /> Upload
+  1069→                    </Button>
+  1070→                    {form.thumbnailFile && (
+  1071→                      <span className="text-xs text-muted-foreground self-center truncate max-w-[120px]">
+  1072→                        {form.thumbnailFile.name}
+  1073→                      </span>
+  1074→                    )}
+  1075→                  </div>
+  1076→                  <div className="flex items-center gap-2">
+  1077→                    <Link className="h-3.5 w-3.5 text-muted-foreground/50" />
+  1078→                    <Input
+  1079→                      value={form.thumbnailUrl}
+  1080→                      onChange={(e) => setForm({ ...form, thumbnailUrl: e.target.value })}
+  1081→                      className="bg-white/[0.04] border-white/[0.08] h-8 text-xs"
+  1082→                      placeholder="Or paste image URL"
+  1083→                    />
+  1084→                  </div>
+  1085→                </div>
+  1086→              </div>
+  1087→            </div>
+  1088→
+  1089→            {/* What You'll Learn */}
+  1090→            <div className="space-y-2">
+  1091→              <Label className="text-muted-foreground flex items-center gap-1.5">
+  1092→                <ListChecks className="h-3.5 w-3.5" /> What You'll Learn
+  1093→              </Label>
+  1094→              <div className="space-y-2">
+  1095→                {form.learningPoints.map((point, idx) => (
+  1096→                  <div key={idx} className="flex items-center gap-2">
+  1097→                    <Input
+  1098→                      value={point}
+  1099→                      onChange={(e) => {
+  1100→                        const updated = [...form.learningPoints];
+  1101→                        updated[idx] = e.target.value;
+  1102→                        setForm({ ...form, learningPoints: updated });
+  1103→                      }}
+  1104→                      className="bg-white/[0.04] border-white/[0.08] flex-1 h-9 text-sm"
+  1105→                      placeholder={`Learning point ${idx + 1}`}
+  1106→                    />
+  1107→                    <Button
+  1108→                      type="button"
+  1109→                      variant="ghost"
+  1110→                      size="icon"
+  1111→                      className="h-8 w-8 flex-shrink-0 hover:bg-destructive/10 hover:text-destructive"
+  1112→                      onClick={() => {
+  1113→                        setForm({
+  1114→                          ...form,
+  1115→                          learningPoints: form.learningPoints.filter((_, i) => i !== idx),
+  1116→                        });
+  1117→                      }}
+  1118→                    >
+  1119→                      <X className="h-4 w-4" />
+  1120→                    </Button>
+  1121→                  </div>
+  1122→                ))}
+  1123→                <div className="flex gap-2">
+  1124→                  <Input
+  1125→                    value={newLearningPoint}
+  1126→                    onChange={(e) => setNewLearningPoint(e.target.value)}
+  1127→                    className="bg-white/[0.04] border-white/[0.08] flex-1 h-9 text-sm"
+  1128→                    placeholder="Add a learning point..."
+  1129→                    onKeyDown={(e) => {
+  1130→                      if (e.key === 'Enter' && newLearningPoint.trim()) {
+  1131→                        e.preventDefault();
+  1132→                        setForm({ ...form, learningPoints: [...form.learningPoints, newLearningPoint.trim()] });
+  1133→                        setNewLearningPoint('');
+  1134→                      }
+  1135→                    }}
+  1136→                  />
+  1137→                  <Button
+  1138→                    type="button"
+  1139→                    variant="outline"
+  1140→                    size="sm"
+  1141→                    className="border-white/[0.08] bg-white/[0.04] h-9 gap-1"
+  1142→                    onClick={() => {
+  1143→                      if (newLearningPoint.trim()) {
+  1144→                        setForm({ ...form, learningPoints: [...form.learningPoints, newLearningPoint.trim()] });
+  1145→                        setNewLearningPoint('');
+  1146→                      }
+  1147→                    }}
+  1148→                  >
+  1149→                    <Plus className="h-3.5 w-3.5" /> Add
+  1150→                  </Button>
+  1151→                </div>
+  1152→              </div>
+  1153→            </div>
+  1154→
+  1155→            {/* Categories + Instructors + Subjects */}
+  1156→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1157→              <div className="space-y-2">
+  1158→                <Label className="text-muted-foreground">Categories</Label>
+  1159→                <div className="max-h-40 overflow-y-auto rounded-md border border-white/[0.08] bg-white/[0.04] p-2 space-y-1">
+  1160→                  {categories.map((cat) => (
+  1161→                    <div key={cat.id} className="flex items-center gap-2 px-2 py-1 hover:bg-white/[0.04] rounded">
+  1162→                      <Checkbox
+  1163→                        checked={form.categoryIds.includes(cat.id)}
+  1164→                        onCheckedChange={(checked) => {
+  1165→                          if (checked) {
+  1166→                            setForm({ ...form, categoryIds: [...form.categoryIds, cat.id] });
+  1167→                          } else {
+  1168→                            setForm({ ...form, categoryIds: form.categoryIds.filter(id => id !== cat.id) });
+  1169→                          }
+  1170→                        }}
+  1171→                      />
+  1172→                      <span className="text-sm text-foreground">{cat.name}</span>
+  1173→                    </div>
+  1174→                  ))}
+  1175→                  {categories.length === 0 && (
+  1176→                    <p className="text-xs text-muted-foreground/50 px-2 py-1">No categories available</p>
+  1177→                  )}
+  1178→                </div>
+  1179→                {form.categoryIds.length > 0 && (
+  1180→                  <div className="flex flex-wrap gap-1">
+  1181→                    {form.categoryIds.map(id => {
+  1182→                      const cat = categories.find(c => c.id === id);
+  1183→                      return cat ? (
+  1184→                        <Badge key={id} variant="secondary" className="bg-dakkho-blue/15 text-dakkho-blue text-xs">
+  1185→                          {cat.name}
+  1186→                          <button onClick={() => setForm({...form, categoryIds: form.categoryIds.filter(i => i !== id)})} className="ml-1 hover:text-white">×</button>
+  1187→                        </Badge>
+  1188→                      ) : null;
+  1189→                    })}
+  1190→                  </div>
+  1191→                )}
+  1192→              </div>
+  1193→              <div className="space-y-2">
+  1194→                <Label className="text-muted-foreground">Instructors</Label>
+  1195→                <div className="max-h-40 overflow-y-auto rounded-md border border-white/[0.08] bg-white/[0.04] p-2 space-y-1">
+  1196→                  {instructors.map((inst) => (
+  1197→                    <div key={inst.id} className="flex items-center gap-2 px-2 py-1 hover:bg-white/[0.04] rounded">
+  1198→                      <Checkbox
+  1199→                        checked={form.instructorIds.includes(inst.id)}
+  1200→                        onCheckedChange={(checked) => {
+  1201→                          if (checked) {
+  1202→                            setForm({ ...form, instructorIds: [...form.instructorIds, inst.id] });
+  1203→                          } else {
+  1204→                            setForm({ ...form, instructorIds: form.instructorIds.filter(id => id !== inst.id) });
+  1205→                          }
+  1206→                        }}
+  1207→                      />
+  1208→                      <span className="text-sm text-foreground">{inst.name}</span>
+  1209→                    </div>
+  1210→                  ))}
+  1211→                  {instructors.length === 0 && (
+  1212→                    <p className="text-xs text-muted-foreground/50 px-2 py-1">No instructors available</p>
+  1213→                  )}
+  1214→                </div>
+  1215→                {form.instructorIds.length > 0 && (
+  1216→                  <div className="flex flex-wrap gap-1">
+  1217→                    {form.instructorIds.map(id => {
+  1218→                      const inst = instructors.find(i => i.id === id);
+  1219→                      return inst ? (
+  1220→                        <Badge key={id} variant="secondary" className="bg-dakkho-blue/15 text-dakkho-blue text-xs">
+  1221→                          {inst.name}
+  1222→                          <button onClick={() => setForm({...form, instructorIds: form.instructorIds.filter(i => i !== id)})} className="ml-1 hover:text-white">×</button>
+  1223→                        </Badge>
+  1224→                      ) : null;
+  1225→                    })}
+  1226→                  </div>
+  1227→                )}
+  1228→              </div>
+  1229→            </div>
+  1230→
+  1231→            {/* Subjects */}
+  1232→            <div className="space-y-2">
+  1233→              <Label className="text-muted-foreground">Subjects</Label>
+  1234→              <div className="max-h-40 overflow-y-auto rounded-md border border-white/[0.08] bg-white/[0.04] p-2 space-y-1">
+  1235→                {subjects.map((sub) => (
+  1236→                  <div key={sub.id} className="flex items-center gap-2 px-2 py-1 hover:bg-white/[0.04] rounded">
+  1237→                    <Checkbox
+  1238→                      checked={form.subjectIds.includes(sub.id)}
+  1239→                      onCheckedChange={(checked) => {
+  1240→                        if (checked) {
+  1241→                          setForm({ ...form, subjectIds: [...form.subjectIds, sub.id] });
+  1242→                        } else {
+  1243→                          setForm({ ...form, subjectIds: form.subjectIds.filter(id => id !== sub.id) });
+  1244→                        }
+  1245→                      }}
+  1246→                    />
+  1247→                    <span className="text-sm text-foreground">{sub.name}</span>
+  1248→                  </div>
+  1249→                ))}
+  1250→                {subjects.length === 0 && (
+  1251→                  <p className="text-xs text-muted-foreground/50 px-2 py-1">No subjects available</p>
+  1252→                )}
+  1253→              </div>
+  1254→              {/* Inline create subject */}
+  1255→              <div className="flex gap-2">
+  1256→                <Input
+  1257→                  value={newSubjectName}
+  1258→                  onChange={(e) => setNewSubjectName(e.target.value)}
+  1259→                  className="bg-white/[0.04] border-white/[0.08] h-8 text-xs flex-1"
+  1260→                  placeholder="Create new subject..."
+  1261→                  onKeyDown={async (e) => {
+  1262→                    if (e.key === 'Enter' && newSubjectName.trim()) {
+  1263→                      e.preventDefault();
+  1264→                      try {
+  1265→                        const result = await apiPost('/subjects', { name: newSubjectName.trim() }) as Record<string, unknown>;
+  1266→                        const newSub = { id: String(result.document?.id || result.id || ''), name: newSubjectName.trim() };
+  1267→                        setSubjects(prev => [...prev, newSub]);
+  1268→                        setForm(prev => ({ ...prev, subjectIds: [...prev.subjectIds, newSub.id] }));
+  1269→                        setNewSubjectName('');
+  1270→                        toast({ title: 'Subject Created', description: `"${newSub.name}" added` });
+  1271→                      } catch {
+  1272→                        toast({ title: 'Error', description: 'Failed to create subject', variant: 'destructive' });
+  1273→                      }
+  1274→                    }
+  1275→                  }}
+  1276→                />
+  1277→                <Button
+  1278→                  type="button"
+  1279→                  size="sm"
+  1280→                  variant="outline"
+  1281→                  className="border-white/[0.08] bg-white/[0.04] h-8 text-xs"
+  1282→                  onClick={async () => {
+  1283→                    if (!newSubjectName.trim()) return;
+  1284→                    try {
+  1285→                      const result = await apiPost('/subjects', { name: newSubjectName.trim() }) as Record<string, unknown>;
+  1286→                      const newSub = { id: String(result.document?.id || result.id || ''), name: newSubjectName.trim() };
+  1287→                      setSubjects(prev => [...prev, newSub]);
+  1288→                      setForm(prev => ({ ...prev, subjectIds: [...prev.subjectIds, newSub.id] }));
+  1289→                      setNewSubjectName('');
+  1290→                      toast({ title: 'Subject Created', description: `"${newSub.name}" added` });
+  1291→                    } catch {
+  1292→                      toast({ title: 'Error', description: 'Failed to create subject', variant: 'destructive' });
+  1293→                    }
+  1294→                  }}
+  1295→                >
+  1296→                  <Plus className="h-3 w-3" />
+  1297→                </Button>
+  1298→              </div>
+  1299→              {form.subjectIds.length > 0 && (
+  1300→                <div className="flex flex-wrap gap-1">
+  1301→                  {form.subjectIds.map(id => {
+  1302→                    const sub = subjects.find(s => s.id === id);
+  1303→                    return sub ? (
+  1304→                      <Badge key={id} variant="secondary" className="bg-dakkho-purple/15 text-dakkho-purple text-xs">
+  1305→                        {sub.name}
+  1306→                        <button onClick={() => setForm({...form, subjectIds: form.subjectIds.filter(i => i !== id)})} className="ml-1 hover:text-white">×</button>
+  1307→                      </Badge>
+  1308→                    ) : null;
+  1309→                  })}
+  1310→                </div>
+  1311→              )}
+  1312→            </div>
+  1313→
+  1314→            {/* Technology + Semester */}
+  1315→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1316→              <div className="space-y-2">
+  1317→                <Label className="text-muted-foreground">Technology</Label>
+  1318→                <Select
+  1319→                  value={form.technologyId || '_none'}
+  1320→                  onValueChange={(v) => setForm({ ...form, technologyId: v === '_none' ? '' : v })}
+  1321→                >
+  1322→                  <SelectTrigger className="bg-white/[0.04] border-white/[0.08]">
+  1323→                    <SelectValue placeholder="Select technology" />
+  1324→                  </SelectTrigger>
+  1325→                  <SelectContent>
+  1326→                    <SelectItem value="_none">None</SelectItem>
+  1327→                    {technologies.map((tech) => (
+  1328→                      <SelectItem key={tech.id} value={tech.id}>
+  1329→                        {tech.name}
+  1330→                      </SelectItem>
+  1331→                    ))}
+  1332→                  </SelectContent>
+  1333→                </Select>
+  1334→              </div>
+  1335→              <div className="space-y-2">
+  1336→                <Label className="text-muted-foreground">Semester</Label>
+  1337→                <Select
+  1338→                  value={form.semester || '_none'}
+  1339→                  onValueChange={(v) => setForm({ ...form, semester: v === '_none' ? '' : v })}
+  1340→                >
+  1341→                  <SelectTrigger className="bg-white/[0.04] border-white/[0.08]">
+  1342→                    <SelectValue placeholder="Select semester" />
+  1343→                  </SelectTrigger>
+  1344→                  <SelectContent>
+  1345→                    <SelectItem value="_none">None</SelectItem>
+  1346→                    {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
+  1347→                      <SelectItem key={s} value={String(s)}>
+  1348→                        Semester {s}
+  1349→                      </SelectItem>
+  1350→                    ))}
+  1351→                  </SelectContent>
+  1352→                </Select>
+  1353→              </div>
+  1354→            </div>
+  1355→
+  1356→            {/* Level + Language */}
+  1357→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1358→              <div className="space-y-2">
+  1359→                <Label className="text-muted-foreground">Level</Label>
+  1360→                <Select
+  1361→                  value={form.level}
+  1362→                  onValueChange={(v) => setForm({ ...form, level: v as Course['level'] })}
+  1363→                >
+  1364→                  <SelectTrigger className="bg-white/[0.04] border-white/[0.08]">
+  1365→                    <SelectValue />
+  1366→                  </SelectTrigger>
+  1367→                  <SelectContent>
+  1368→                    <SelectItem value="beginner">Beginner</SelectItem>
+  1369→                    <SelectItem value="intermediate">Intermediate</SelectItem>
+  1370→                    <SelectItem value="advanced">Advanced</SelectItem>
+  1371→                    <SelectItem value="expert">Expert</SelectItem>
+  1372→                  </SelectContent>
+  1373→                </Select>
+  1374→              </div>
+  1375→              <div className="space-y-2">
+  1376→                <Label className="text-muted-foreground">Language</Label>
+  1377→                <Select
+  1378→                  value={form.language}
+  1379→                  onValueChange={(v) => setForm({ ...form, language: v as Course['language'] })}
+  1380→                >
+  1381→                  <SelectTrigger className="bg-white/[0.04] border-white/[0.08]">
+  1382→                    <SelectValue />
+  1383→                  </SelectTrigger>
+  1384→                  <SelectContent>
+  1385→                    <SelectItem value="bangla">Bangla</SelectItem>
+  1386→                    <SelectItem value="english">English</SelectItem>
+  1387→                    <SelectItem value="hindi">Hindi</SelectItem>
+  1388→                  </SelectContent>
+  1389→                </Select>
+  1390→              </div>
+  1391→            </div>
+  1392→
+  1393→            {/* Duration (auto from videos) + Price */}
+  1394→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1395→              <div className="space-y-2">
+  1396→                <Label className="text-muted-foreground">
+  1397→                  Avg Duration (min)
+  1398→                  <span className="text-emerald-400/70 text-[10px] ml-1.5">auto from videos</span>
+  1399→                </Label>
+  1400→                <div className="flex items-center h-9 px-3 rounded-md bg-white/[0.02] border border-white/[0.06] text-sm text-muted-foreground">
+  1401→                  {form.duration > 0 ? (
+  1402→                    <span className="flex items-center gap-1.5">
+  1403→                      <Clock className="h-3.5 w-3.5 text-emerald-400" />
+  1404→                      {form.duration} min avg
+  1405→                      <span className="text-muted-foreground/40">({form.duration < 60 ? `${form.duration}m` : `${Math.floor(form.duration / 60)}h ${Math.round(form.duration % 60)}m`})</span>
+  1406→                    </span>
+  1407→                  ) : (
+  1408→                    <span className="text-muted-foreground/40">No videos yet — add videos in curriculum</span>
+  1409→                  )}
+  1410→                </div>
+  1411→              </div>
+  1412→              <div className="space-y-2">
+  1413→                <Label htmlFor="price" className="text-muted-foreground">
+  1414→                  Price (৳)
+  1415→                </Label>
+  1416→                <Input
+  1417→                  id="price"
+  1418→                  type="number"
+  1419→                  min={0}
+  1420→                  value={form.price}
+  1421→                  onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+  1422→                  className="bg-white/[0.04] border-white/[0.08]"
+  1423→                />
+  1424→              </div>
+  1425→            </div>
+  1426→
+  1427→            {/* Tags */}
+  1428→            <div className="space-y-2">
+  1429→              <Label htmlFor="tags" className="text-muted-foreground">
+  1430→                Tags{' '}
+  1431→                <span className="text-muted-foreground/50 text-xs">(comma-separated)</span>
+  1432→              </Label>
+  1433→              <Input
+  1434→                id="tags"
+  1435→                value={form.tags}
+  1436→                onChange={(e) => setForm({ ...form, tags: e.target.value })}
+  1437→                className="bg-white/[0.04] border-white/[0.08]"
+  1438→                placeholder="e.g. web-dev, javascript, react"
+  1439→              />
+  1440→            </div>
+  1441→
+  1442→            {/* Switches */}
+  1443→            <div className="space-y-4 pt-2">
+  1444→              <div className="flex items-center justify-between">
+  1445→                <div>
+  1446→                  <Label className="text-muted-foreground">Featured</Label>
+  1447→                  <p className="text-xs text-muted-foreground/50">Show in featured section</p>
+  1448→                </div>
+  1449→                <Switch
+  1450→                  checked={form.isFeatured}
+  1451→                  onCheckedChange={(v) => setForm({ ...form, isFeatured: v })}
+  1452→                />
+  1453→              </div>
+  1454→              <div className="flex items-center justify-between">
+  1455→                <div>
+  1456→                  <Label className="text-muted-foreground">Published</Label>
+  1457→                  <p className="text-xs text-muted-foreground/50">Make visible to students</p>
+  1458→                </div>
+  1459→                <Switch
+  1460→                  checked={form.isPublished}
+  1461→                  onCheckedChange={(v) => setForm({ ...form, isPublished: v })}
+  1462→                />
+  1463→              </div>
+  1464→            </div>
+  1465→          </div>
+  1466→
+  1467→          <DialogFooter className="mt-6 gap-2 flex-wrap">
+  1468→            {savedCourseId ? (
+  1469→              <>
+  1470→                <Button
+  1471→                  variant="outline"
+  1472→                  onClick={() => {
+  1473→                    setFormOpen(false);
+  1474→                    setSavedCourseId(null);
+  1475→                  }}
+  1476→                  className="border-white/[0.08] bg-transparent"
+  1477→                >
+  1478→                  Close
+  1479→                </Button>
+  1480→                <Button
+  1481→                  onClick={() => {
+  1482→                    setCurriculumCourseId(savedCourseId);
+  1483→                    setCurriculumCourseTitle(form.title);
+  1484→                    setFormOpen(false);
+  1485→                    setSavedCourseId(null);
+  1486→                  }}
+  1487→                  className="gradient-purple text-white gap-2"
+  1488→                >
+  1489→                  <GraduationCap className="h-4 w-4" /> Manage Curriculum
+  1490→                </Button>
+  1491→              </>
+  1492→            ) : (
+  1493→              <>
+  1494→                <Button
+  1495→                  variant="outline"
+  1496→                  onClick={() => setFormOpen(false)}
+  1497→                  className="border-white/[0.08] bg-transparent"
+  1498→                >
+  1499→                  Cancel
+  1500→                </Button>
+  1501→                <Button
+  1502→                  onClick={handleSave}
+  1503→                  disabled={saving || !form.title.trim()}
+  1504→                  className="gradient-purple text-white gap-2"
+  1505→                >
+  1506→                  {saving && <RefreshCw className="h-4 w-4 animate-spin" />}
+  1507→                  {editCourse ? 'Update Course' : 'Create Course'}
+  1508→                </Button>
+  1509→              </>
+  1510→            )}
+  1511→          </DialogFooter>
+  1512→        </DialogContent>
+  1513→      </Dialog>
+  1514→
+  1515→      {/* ---- Delete Confirmation Dialog ---- */}
+  1516→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+  1517→        <AlertDialogContent className="bg-[#1A1A2E] border-white/[0.08]">
+  1518→          <AlertDialogHeader>
+  1519→            <AlertDialogTitle className="text-foreground flex items-center gap-2">
+  1520→              <AlertTriangle className="h-5 w-5 text-dakkho-warning" />
+  1521→              Delete Course
+  1522→            </AlertDialogTitle>
+  1523→            <AlertDialogDescription className="text-muted-foreground">
+  1524→              Are you sure you want to delete{' '}
+  1525→              <span className="font-semibold text-foreground">{deleteTarget?.title}</span>? This
+  1526→              action cannot be undone. All videos, enrollments, and associated data will be
+  1527→              permanently removed.
+  1528→            </AlertDialogDescription>
+  1529→          </AlertDialogHeader>
+  1530→          <AlertDialogFooter>
+  1531→            <AlertDialogCancel className="border-white/[0.08] bg-transparent">
+  1532→              Cancel
+  1533→            </AlertDialogCancel>
+  1534→            <AlertDialogAction
+  1535→              onClick={confirmDelete}
+  1536→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  1537→            >
+  1538→              Delete Course
+  1539→            </AlertDialogAction>
+  1540→          </AlertDialogFooter>
+  1541→        </AlertDialogContent>
+  1542→      </AlertDialog>
+  1543→    </motion.div>
+  1544→  );
+  1545→}
+  1546→

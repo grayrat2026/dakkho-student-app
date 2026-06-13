@@ -1,18 +1,28 @@
+# Work Log — Instructor & Admin Site Fixes
+
 ---
 Task ID: 1
 Agent: Main Agent
-Task: Update GitHub repos with latest source, build, and worker code
+Task: Fix instructor and admin site routing and page availability issues
 
 Work Log:
-- Built admin app from root directory (npx next build)
-- Synced admin build output to repos/dakkho-admin-web/ and force pushed to dakkho-admin-web.git
-- Resolved merge conflicts in instructor-app (constants.ts, Schedule.tsx) and pushed to dakkho-instructor.git
-- Synced student-app source from student-app/ to repos/dakkho-student-app/ and pushed to dakkho-student-app.git
-- Synced worker source from worker/ to dakkho-worker-fresh/ and force pushed to dakkho-worker.git
-- Built student app from student-app/ directory (npx next build)
-- Deployed correct student app build to dakkho-student Cloudflare Pages project
+- Investigated both apps' routing architecture (SPA with catch-all [...slug] routes)
+- Instructor app: Missing trailingSlash in next.config.ts causing 404 on Cloudflare Pages refresh
+- Instructor app: parsePath bug in store.ts (parts[4] should be parts[3] for schedule-live)
+- Instructor app: pushState/replaceState not triggering page updates (only popstate was handled)
+- Admin app: 3 missing pages (subjects, about, support) from generateStaticParams
+- Admin app: Same pushState routing bug as instructor
+- Admin app: Root page.tsx had outdated 12-entry pageComponents map
+- Admin app: Build script was deleting _routes.json (breaking SPA routing on Cloudflare Pages)
+- Admin app: support-panel.tsx had wrong auth token key, raw fetch instead of apiUpload, wrong attachment URL
+- Instructor app: useDeleteVideo used wrong endpoint path (missing /courses/{id}/ prefix)
+- Instructor app: useCreateVideo sent camelCase instead of snake_case to API
+- Instructor app: useSubjectChapters ignored subjectId filter
+- Instructor app: CourseDetail showed duration as "120h" instead of proper format
 
 Stage Summary:
-- All 4 GitHub repos updated: dakkho-admin-web, dakkho-instructor, dakkho-student-app, dakkho-worker
-- Student app correctly deployed to dakkho-student.pages.dev (was previously wrong - had admin build)
-- Build verification: Admin (26 pages), Instructor (builds), Student (14 pages), Worker (deployed)
+- All source code fixes applied and pushed to GitHub
+- Both apps rebuilt and pushed to deployment repos
+- Admin deployment repo: grayrat2026/dakkho-admin-web
+- Instructor deployment repo: grayrat2026/dakkho-instructor-web
+- Cloudflare Pages projects need manual reconfiguration to use new deployment repos

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiPost, assetUrl } from '@/lib/api-client';
 import ErrorBoundary from '@/components/admin/error-boundary';
 import { motion } from 'framer-motion';
@@ -82,21 +82,41 @@ export default function AdminClientPage({ currentPage: initialPage }: { currentP
     return validPages.includes(firstSegment) ? firstSegment : 'dashboard';
   };
 
+  // Track URL changes for SPA routing (pushState + popstate + replaceState)
+  const syncPageFromUrl = useCallback(() => {
+    setCurrentPage(getPageFromPath(window.location.pathname));
+  }, []);
+
   useEffect(() => {
     setCurrentPage(validPages.includes(initialPage) ? initialPage : 'dashboard');
   }, [initialPage]);
 
   useEffect(() => {
-    const handlePopState = () => {
-      setCurrentPage(getPageFromPath(window.location.pathname));
+    // Listen for popstate (back/forward navigation)
+    window.addEventListener('popstate', syncPageFromUrl);
+
+    // Patch pushState and replaceState to detect programmatic navigation
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+    history.pushState = function (...args) {
+      originalPushState.apply(this, args);
+      syncPageFromUrl();
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+    history.replaceState = function (...args) {
+      originalReplaceState.apply(this, args);
+      syncPageFromUrl();
+    };
+
+    return () => {
+      window.removeEventListener('popstate', syncPageFromUrl);
+      history.pushState = originalPushState;
+      history.replaceState = originalReplaceState;
+    };
+  }, [syncPageFromUrl]);
 
   useEffect(() => {
-    setCurrentPage(getPageFromPath(window.location.pathname));
-  }, []);
+    syncPageFromUrl();
+  }, [syncPageFromUrl]);
 
   useEffect(() => {
     checkAuth();

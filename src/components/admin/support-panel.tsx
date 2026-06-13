@@ -7,7 +7,7 @@ import {
   Clock, AlertCircle, ChevronRight, Loader2, Settings, X,
   Mail, Phone, Plus, Trash2, Eye, ArrowUpDown, Paperclip,
 } from 'lucide-react';
-import { apiGet, apiPost, apiPut, apiUpload } from '@/lib/api-client';
+import { apiGet, apiPost, apiPut, apiUpload, getAuthToken } from '@/lib/api-client';
 
 // ─── Types (camelCase — API client auto-transforms snake_case → camelCase) ───
 interface Ticket {
@@ -49,6 +49,7 @@ interface Stats {
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://dakkho-admin-api.dakkho-admin.workers.dev';
+const AUTH_TOKEN_KEY = 'dakkho_admin_token';
 
 const statusColors: Record<string, string> = {
   open: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
@@ -131,11 +132,7 @@ function TicketDetailPanel({ ticket, onBack, onRefresh }: { ticket: Ticket; onBa
         const formData = new FormData();
         formData.append('message', replyText);
         replyFiles.forEach(f => formData.append('files', f));
-        await fetch(`${API_BASE}/admin/support/tickets/${ticket.ticketId}/reply`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}` },
-          body: formData,
-        });
+        await apiUpload(`/support/tickets/${ticket.ticketId}/reply`, formData);
       } else {
         await apiPost(`/support/tickets/${ticket.ticketId}/reply`, { message: replyText });
       }
@@ -316,7 +313,7 @@ function TicketDetailPanel({ ticket, onBack, onRefresh }: { ticket: Ticket; onBa
                     {attachments.length > 0 && (
                       <div className="mt-2 space-y-1">
                         {attachments.map((att, i) => (
-                          <a key={i} href={`${API_BASE}/api/support/attachment-url?key=${encodeURIComponent(att)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300">
+                          <a key={i} href={`${API_BASE}/admin/support/attachment-url?key=${encodeURIComponent(att)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300">
                             <Paperclip className="w-3 h-3" /><span className="truncate">{att.split('/').pop()?.replace(/^\d+-/, '') || `Attachment ${i + 1}`}</span>
                           </a>
                         ))}

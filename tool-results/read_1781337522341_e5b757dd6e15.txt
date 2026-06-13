@@ -1,0 +1,745 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback } from 'react';
+     4→import { motion } from 'framer-motion';
+     5→import {
+     6→  Info, Target, Users, HelpCircle, Phone, Mail, MapPin,
+     7→  Plus, Trash2, Save, GripVertical, Edit3, X, Check,
+     8→  BookOpen, GraduationCap, Globe, Sparkles, Heart, AlertTriangle,
+     9→} from 'lucide-react';
+    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    11→import { Button } from '@/components/ui/button';
+    12→import { Input } from '@/components/ui/input';
+    13→import { Label } from '@/components/ui/label';
+    14→import { Textarea } from '@/components/ui/textarea';
+    15→import { Switch } from '@/components/ui/switch';
+    16→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    17→import { useToast } from '@/hooks/use-toast';
+    18→import { apiGet, apiPost, apiPut, apiDelete, ApiError } from '@/lib/api-client';
+    19→
+    20→// ─── Icon map for team/stats ───
+    21→const ICON_OPTIONS = [
+    22→  { value: 'book-open', label: 'Book Open', Icon: BookOpen },
+    23→  { value: 'graduation-cap', label: 'Graduation Cap', Icon: GraduationCap },
+    24→  { value: 'globe', label: 'Globe', Icon: Globe },
+    25→  { value: 'sparkles', label: 'Sparkles', Icon: Sparkles },
+    26→  { value: 'heart', label: 'Heart', Icon: Heart },
+    27→  { value: 'users', label: 'Users', Icon: Users },
+    28→  { value: 'info', label: 'Info', Icon: Info },
+    29→  { value: 'target', label: 'Target', Icon: Target },
+    30→];
+    31→
+    32→// ─── Animation ───
+    33→const containerVariants = {
+    34→  hidden: { opacity: 0 },
+    35→  visible: { opacity: 1, transition: { staggerChildren: 0.06 } },
+    36→};
+    37→
+    38→const itemVariants = {
+    39→  hidden: { opacity: 0, y: 20 },
+    40→  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+    41→};
+    42→
+    43→// ─── Types ───
+    44→interface AboutContent {
+    45→  aboutText: string;
+    46→  missionText: string;
+    47→  contactEmail: string;
+    48→  contactPhone1: string;
+    49→  contactPhone2: string;
+    50→  contactAddress: string;
+    51→  missionValues: string[];
+    52→}
+    53→
+    54→interface AboutStat {
+    55→  id: number;
+    56→  label: string;
+    57→  value: string;
+    58→  icon: string;
+    59→  sortOrder: number;
+    60→  isActive: number;
+    61→}
+    62→
+    63→interface AboutTeamMember {
+    64→  id: number;
+    65→  name: string;
+    66→  role: string;
+    67→  avatarUrl?: string;
+    68→  icon: string;
+    69→  sortOrder: number;
+    70→  isActive: number;
+    71→}
+    72→
+    73→interface AboutFaq {
+    74→  id: number;
+    75→  question: string;
+    76→  answer: string;
+    77→  sortOrder: number;
+    78→  isActive: number;
+    79→}
+    80→
+    81→// ─── Default Content ───
+    82→const DEFAULT_CONTENT: AboutContent = {
+    83→  aboutText: "DAKKHO is Bangladesh's premier online learning platform built exclusively for polytechnic students. We provide high-quality video courses aligned with the BTEB curriculum, covering all major technologies from Web Development and Electronics to Civil Engineering and Architecture. Our platform connects students with expert instructors from across the country, making quality technical education accessible regardless of location or financial background.",
+    84→  missionText: "To democratize technical education in Bangladesh by providing world-class learning experiences to every polytechnic student. We believe that geographical boundaries or financial constraints should never be barriers to quality education. Through technology, community, and dedicated instructors, we are building the future skilled workforce of Bangladesh.",
+    85→  contactEmail: 'support@dakkho.com.bd',
+    86→  contactPhone1: '+8809638113227',
+    87→  contactPhone2: '+8801632373707',
+    88→  contactAddress: 'Radhaballav Road near DPHE, Rangpur',
+    89→  missionValues: ['Accessible Education', 'Quality Content', 'Student First', 'Innovation'],
+    90→};
+    91→
+    92→export default function AboutPanel() {
+    93→  const [content, setContent] = useState<AboutContent>(DEFAULT_CONTENT);
+    94→  const [stats, setStats] = useState<AboutStat[]>([]);
+    95→  const [team, setTeam] = useState<AboutTeamMember[]>([]);
+    96→  const [faq, setFaq] = useState<AboutFaq[]>([]);
+    97→  const [loading, setLoading] = useState(true);
+    98→  const [saving, setSaving] = useState(false);
+    99→  const [editingId, setEditingId] = useState<string | null>(null);
+   100→  const { toast } = useToast();
+   101→
+   102→  // ─── Fetch all about data ───
+   103→  const fetchData = useCallback(async () => {
+   104→    setLoading(true);
+   105→    try {
+   106→      const data = await apiGet<{
+   107→        content: AboutContent;
+   108→        stats: AboutStat[];
+   109→        team: AboutTeamMember[];
+   110→        faq: AboutFaq[];
+   111→      }>('/about');
+   112→      setContent(data.content || DEFAULT_CONTENT);
+   113→      setStats(data.stats || []);
+   114→      setTeam(data.team || []);
+   115→      setFaq(data.faq || []);
+   116→    } catch {
+   117→      toast({ title: 'Error', description: 'Failed to load about data', variant: 'destructive' });
+   118→    } finally {
+   119→      setLoading(false);
+   120→    }
+   121→  }, [toast]);
+   122→
+   123→  useEffect(() => { fetchData(); }, [fetchData]);
+   124→
+   125→  // ─── Save content (about text, mission, contact) ───
+   126→  const handleSaveContent = async () => {
+   127→    setSaving(true);
+   128→    try {
+   129→      await apiPut('/about/content', content);
+   130→      toast({ title: 'Success', description: 'About content updated' });
+   131→    } catch (error) {
+   132→      const msg = error instanceof ApiError ? error.message : 'Network error';
+   133→      toast({ title: 'Error', description: msg, variant: 'destructive' });
+   134→    } finally {
+   135→      setSaving(false);
+   136→    }
+   137→  };
+   138→
+   139→  // ─── CRUD helpers for stats, team, faq ───
+   140→  const createItem = async (type: 'stats' | 'team' | 'faq', item: Record<string, unknown>) => {
+   141→    try {
+   142→      await apiPost(`/about/${type}`, item);
+   143→      await fetchData();
+   144→      toast({ title: 'Success', description: 'Item created' });
+   145→    } catch (error) {
+   146→      const msg = error instanceof ApiError ? error.message : 'Network error';
+   147→      toast({ title: 'Error', description: msg, variant: 'destructive' });
+   148→    }
+   149→  };
+   150→
+   151→  const updateItem = async (type: 'stats' | 'team' | 'faq', item: Record<string, unknown>) => {
+   152→    try {
+   153→      await apiPut(`/about/${type}`, item);
+   154→      await fetchData();
+   155→      toast({ title: 'Success', description: 'Item updated' });
+   156→    } catch (error) {
+   157→      const msg = error instanceof ApiError ? error.message : 'Network error';
+   158→      toast({ title: 'Error', description: msg, variant: 'destructive' });
+   159→    }
+   160→  };
+   161→
+   162→  const deleteItem = async (type: 'stats' | 'team' | 'faq', id: number) => {
+   163→    try {
+   164→      await apiDelete(`/about/${type}?id=${id}`);
+   165→      await fetchData();
+   166→      toast({ title: 'Success', description: 'Item deleted' });
+   167→    } catch (error) {
+   168→      const msg = error instanceof ApiError ? error.message : 'Network error';
+   169→      toast({ title: 'Error', description: msg, variant: 'destructive' });
+   170→    }
+   171→  };
+   172→
+   173→  if (loading) {
+   174→    return (
+   175→      <div className="space-y-4">
+   176→        {[1, 2, 3].map((i) => <div key={i} className="h-48 rounded-xl bg-white/5 animate-shimmer" />)}
+   177→      </div>
+   178→    );
+   179→  }
+   180→
+   181→  return (
+   182→    <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+   183→      {/* Header */}
+   184→      <motion.div variants={itemVariants} className="page-header">
+   185→        <div>
+   186→          <h1 className="page-title flex items-center gap-3">
+   187→            <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center">
+   188→              <Info className="h-5 w-5 text-white" />
+   189→            </div>
+   190→            About Page Manager
+   191→          </h1>
+   192→          <p className="page-description">Manage the About page content visible to students — text, stats, team, FAQ, contact info</p>
+   193→        </div>
+   194→      </motion.div>
+   195→
+   196→      <Tabs defaultValue="content" className="space-y-4">
+   197→        <TabsList className="bg-white/5 border border-white/10 flex-wrap h-auto gap-1 p-1">
+   198→          <TabsTrigger value="content" className="data-[state=active]:bg-dakkho-blue/20 data-[state=active]:text-dakkho-blue text-xs sm:text-sm">
+   199→            <Mail className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" /> Content & Contact
+   200→          </TabsTrigger>
+   201→          <TabsTrigger value="stats" className="data-[state=active]:bg-dakkho-blue/20 data-[state=active]:text-dakkho-blue text-xs sm:text-sm">
+   202→            <Target className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" /> Stats
+   203→          </TabsTrigger>
+   204→          <TabsTrigger value="team" className="data-[state=active]:bg-dakkho-blue/20 data-[state=active]:text-dakkho-blue text-xs sm:text-sm">
+   205→            <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" /> Team
+   206→          </TabsTrigger>
+   207→          <TabsTrigger value="faq" className="data-[state=active]:bg-dakkho-blue/20 data-[state=active]:text-dakkho-blue text-xs sm:text-sm">
+   208→            <HelpCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" /> FAQ
+   209→          </TabsTrigger>
+   210→        </TabsList>
+   211→
+   212→        {/* ─── Content & Contact Tab ─── */}
+   213→        <TabsContent value="content">
+   214→          <Card className="glass-card border-0 rounded-xl">
+   215→            <CardHeader>
+   216→              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+   217→                <CardTitle className="text-lg">About Text, Mission & Contact</CardTitle>
+   218→                <Button size="sm" onClick={handleSaveContent} disabled={saving} className="gradient-primary text-white w-full sm:w-auto">
+   219→                  <Save className="h-4 w-4 mr-2" /> {saving ? 'Saving...' : 'Save All'}
+   220→                </Button>
+   221→              </div>
+   222→            </CardHeader>
+   223→            <CardContent className="space-y-6">
+   224→              {/* About Text */}
+   225→              <div className="space-y-2">
+   226→                <Label className="text-sm font-medium">About DAKKHO Text</Label>
+   227→                <Textarea
+   228→                  value={content.aboutText}
+   229→                  onChange={(e) => setContent({ ...content, aboutText: e.target.value })}
+   230→                  rows={4}
+   231→                  className="bg-white/[0.04] border-white/[0.08] resize-none"
+   232→                  placeholder="Write about DAKKHO..."
+   233→                />
+   234→              </div>
+   235→
+   236→              {/* Mission Text */}
+   237→              <div className="space-y-2">
+   238→                <Label className="text-sm font-medium">Our Mission</Label>
+   239→                <Textarea
+   240→                  value={content.missionText}
+   241→                  onChange={(e) => setContent({ ...content, missionText: e.target.value })}
+   242→                  rows={3}
+   243→                  className="bg-white/[0.04] border-white/[0.08] resize-none"
+   244→                  placeholder="Write your mission statement..."
+   245→                />
+   246→              </div>
+   247→
+   248→              {/* Mission Values */}
+   249→              <div className="space-y-2">
+   250→                <Label className="text-sm font-medium">Mission Values</Label>
+   251→                <div className="flex flex-wrap gap-2">
+   252→                  {content.missionValues.map((val, i) => (
+   253→                    <span key={i} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-dakkho-blue/10 text-dakkho-blue text-sm font-medium border border-dakkho-blue/20">
+   254→                      {val}
+   255→                      <button onClick={() => {
+   256→                        const newVals = [...content.missionValues];
+   257→                        newVals.splice(i, 1);
+   258→                        setContent({ ...content, missionValues: newVals });
+   259→                      }} className="hover:text-white transition-colors">
+   260→                        <X className="h-3 w-3" />
+   261→                      </button>
+   262→                    </span>
+   263→                  ))}
+   264→                  <AddValueInput onAdd={(val) => setContent({ ...content, missionValues: [...content.missionValues, val] })} />
+   265→                </div>
+   266→              </div>
+   267→
+   268→              {/* Contact Info */}
+   269→              <div className="space-y-4">
+   270→                <Label className="text-sm font-medium text-base">Contact Information</Label>
+   271→                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   272→                  <div className="space-y-2">
+   273→                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" /> Support Email</Label>
+   274→                    <Input
+   275→                      value={content.contactEmail}
+   276→                      onChange={(e) => setContent({ ...content, contactEmail: e.target.value })}
+   277→                      className="bg-white/[0.04] border-white/[0.08]"
+   278→                      placeholder="support@dakkho.com.bd"
+   279→                    />
+   280→                  </div>
+   281→                  <div className="space-y-2">
+   282→                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" /> Phone 1</Label>
+   283→                    <Input
+   284→                      value={content.contactPhone1}
+   285→                      onChange={(e) => setContent({ ...content, contactPhone1: e.target.value })}
+   286→                      className="bg-white/[0.04] border-white/[0.08]"
+   287→                      placeholder="+8809638113227"
+   288→                    />
+   289→                  </div>
+   290→                  <div className="space-y-2">
+   291→                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" /> Phone 2</Label>
+   292→                    <Input
+   293→                      value={content.contactPhone2}
+   294→                      onChange={(e) => setContent({ ...content, contactPhone2: e.target.value })}
+   295→                      className="bg-white/[0.04] border-white/[0.08]"
+   296→                      placeholder="+8801632373707"
+   297→                    />
+   298→                  </div>
+   299→                  <div className="space-y-2">
+   300→                    <Label className="text-xs text-muted-foreground flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" /> Address</Label>
+   301→                    <Input
+   302→                      value={content.contactAddress}
+   303→                      onChange={(e) => setContent({ ...content, contactAddress: e.target.value })}
+   304→                      className="bg-white/[0.04] border-white/[0.08]"
+   305→                      placeholder="Radhaballav Road near DPHE, Rangpur"
+   306→                    />
+   307→                  </div>
+   308→                </div>
+   309→              </div>
+   310→            </CardContent>
+   311→          </Card>
+   312→        </TabsContent>
+   313→
+   314→        {/* ─── Stats Tab ─── */}
+   315→        <TabsContent value="stats">
+   316→          <Card className="glass-card border-0 rounded-xl">
+   317→            <CardHeader>
+   318→              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+   319→                <CardTitle className="text-lg">Platform Stats</CardTitle>
+   320→                <Button size="sm" onClick={() => createItem('stats', { label: 'New Stat', value: '0', icon: 'book-open', sortOrder: stats.length + 1 })} className="gradient-primary text-white w-full sm:w-auto">
+   321→                  <Plus className="h-4 w-4 mr-1" /> Add Stat
+   322→                </Button>
+   323→              </div>
+   324→            </CardHeader>
+   325→            <CardContent>
+   326→              <div className="space-y-3">
+   327→                {stats.map((stat) => (
+   328→                  <StatRow key={stat.id} stat={stat} editingId={editingId} setEditingId={setEditingId}
+   329→                    onUpdate={(item) => updateItem('stats', item)} onDelete={(id) => deleteItem('stats', id)} />
+   330→                ))}
+   331→                {stats.length === 0 && (
+   332→                  <p className="text-sm text-muted-foreground text-center py-8">No stats yet. Click "Add Stat" to create one.</p>
+   333→                )}
+   334→              </div>
+   335→            </CardContent>
+   336→          </Card>
+   337→        </TabsContent>
+   338→
+   339→        {/* ─── Team Tab ─── */}
+   340→        <TabsContent value="team">
+   341→          <Card className="glass-card border-0 rounded-xl">
+   342→            <CardHeader>
+   343→              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+   344→                <CardTitle className="text-lg">Team Members</CardTitle>
+   345→                <Button size="sm" onClick={() => createItem('team', { name: 'New Member', role: 'Role', icon: 'users', sortOrder: team.length + 1 })} className="gradient-primary text-white w-full sm:w-auto">
+   346→                  <Plus className="h-4 w-4 mr-1" /> Add Member
+   347→                </Button>
+   348→              </div>
+   349→            </CardHeader>
+   350→            <CardContent>
+   351→              <div className="space-y-3">
+   352→                {team.map((member) => (
+   353→                  <TeamRow key={member.id} member={member} editingId={editingId} setEditingId={setEditingId}
+   354→                    onUpdate={(item) => updateItem('team', item)} onDelete={(id) => deleteItem('team', id)} />
+   355→                ))}
+   356→                {team.length === 0 && (
+   357→                  <p className="text-sm text-muted-foreground text-center py-8">No team members yet. Click "Add Member" to create one.</p>
+   358→                )}
+   359→              </div>
+   360→            </CardContent>
+   361→          </Card>
+   362→        </TabsContent>
+   363→
+   364→        {/* ─── FAQ Tab ─── */}
+   365→        <TabsContent value="faq">
+   366→          <Card className="glass-card border-0 rounded-xl">
+   367→            <CardHeader>
+   368→              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+   369→                <CardTitle className="text-lg">FAQ Items</CardTitle>
+   370→                <Button size="sm" onClick={() => createItem('faq', { question: 'New Question?', answer: 'Answer here...', sortOrder: faq.length + 1 })} className="gradient-primary text-white w-full sm:w-auto">
+   371→                  <Plus className="h-4 w-4 mr-1" /> Add FAQ
+   372→                </Button>
+   373→              </div>
+   374→            </CardHeader>
+   375→            <CardContent>
+   376→              <div className="space-y-3">
+   377→                {faq.map((item) => (
+   378→                  <FaqRow key={item.id} faq={item} editingId={editingId} setEditingId={setEditingId}
+   379→                    onUpdate={(f) => updateItem('faq', f)} onDelete={(id) => deleteItem('faq', id)} />
+   380→                ))}
+   381→                {faq.length === 0 && (
+   382→                  <p className="text-sm text-muted-foreground text-center py-8">No FAQ items yet. Click "Add FAQ" to create one.</p>
+   383→                )}
+   384→              </div>
+   385→            </CardContent>
+   386→          </Card>
+   387→        </TabsContent>
+   388→      </Tabs>
+   389→    </motion.div>
+   390→  );
+   391→}
+   392→
+   393→// ─── Add Value Input Component ───
+   394→function AddValueInput({ onAdd }: { onAdd: (val: string) => void }) {
+   395→  const [value, setValue] = useState('');
+   396→  const [show, setShow] = useState(false);
+   397→
+   398→  if (!show) {
+   399→    return (
+   400→      <button onClick={() => setShow(true)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/[0.04] text-muted-foreground text-sm border border-dashed border-white/[0.12] hover:border-dakkho-blue/40 hover:text-dakkho-blue transition-colors">
+   401→        <Plus className="h-3 w-3" /> Add
+   402→      </button>
+   403→    );
+   404→  }
+   405→
+   406→  return (
+   407→    <div className="inline-flex items-center gap-1">
+   408→      <Input
+   409→        value={value}
+   410→        onChange={(e) => setValue(e.target.value)}
+   411→        onKeyDown={(e) => {
+   412→          if (e.key === 'Enter' && value.trim()) { onAdd(value.trim()); setValue(''); setShow(false); }
+   413→          if (e.key === 'Escape') { setValue(''); setShow(false); }
+   414→        }}
+   415→        className="h-8 w-28 bg-white/[0.04] border-white/[0.08] text-sm"
+   416→        placeholder="Value..."
+   417→        autoFocus
+   418→      />
+   419→      <Button size="sm" variant="ghost" onClick={() => { if (value.trim()) { onAdd(value.trim()); setValue(''); } setShow(false); }} className="h-8 px-2">
+   420→        <Check className="h-3 w-3" />
+   421→      </Button>
+   422→      <Button size="sm" variant="ghost" onClick={() => { setValue(''); setShow(false); }} className="h-8 px-2">
+   423→        <X className="h-3 w-3" />
+   424→      </Button>
+   425→    </div>
+   426→  );
+   427→}
+   428→
+   429→// ─── Delete Confirm Dialog ───
+   430→function DeleteConfirmDialog({ open, onConfirm, onCancel, itemName }: {
+   431→  open: boolean;
+   432→  onConfirm: () => void;
+   433→  onCancel: () => void;
+   434→  itemName: string;
+   435→}) {
+   436→  if (!open) return null;
+   437→  return (
+   438→    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+   439→      <motion.div
+   440→        initial={{ scale: 0.9, opacity: 0 }}
+   441→        animate={{ scale: 1, opacity: 1 }}
+   442→        exit={{ scale: 0.9, opacity: 0 }}
+   443→        className="bg-[#1a1a2e] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+   444→      >
+   445→        <div className="flex items-center gap-3 mb-4">
+   446→          <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+   447→            <AlertTriangle className="h-5 w-5 text-red-400" />
+   448→          </div>
+   449→          <div>
+   450→            <h3 className="text-white font-semibold text-base">Delete Item?</h3>
+   451→            <p className="text-sm text-muted-foreground mt-0.5">This action cannot be undone.</p>
+   452→          </div>
+   453→        </div>
+   454→        <p className="text-sm text-white/80 mb-6">
+   455→          Are you sure you want to delete <span className="text-white font-medium">&quot;{itemName}&quot;</span>?
+   456→        </p>
+   457→        <div className="flex gap-3 justify-end">
+   458→          <Button size="sm" variant="ghost" onClick={onCancel} className="text-white/70 hover:text-white">
+   459→            Cancel
+   460→          </Button>
+   461→          <Button size="sm" onClick={onConfirm} className="bg-red-500 hover:bg-red-600 text-white">
+   462→            <Trash2 className="h-4 w-4 mr-1.5" /> Delete
+   463→          </Button>
+   464→        </div>
+   465→      </motion.div>
+   466→    </div>
+   467→  );
+   468→}
+   469→
+   470→// ─── Stat Row Component (Mobile-Friendly) ───
+   471→function StatRow({ stat, editingId, setEditingId, onUpdate, onDelete }: {
+   472→  stat: AboutStat;
+   473→  editingId: string | null;
+   474→  setEditingId: (id: string | null) => void;
+   475→  onUpdate: (item: Record<string, unknown>) => void;
+   476→  onDelete: (id: number) => void;
+   477→}) {
+   478→  const isEditing = editingId === `stat-${stat.id}`;
+   479→  const [label, setLabel] = useState(stat.label);
+   480→  const [value, setValue] = useState(stat.value);
+   481→  const [icon, setIcon] = useState(stat.icon);
+   482→  const [sortOrder, setSortOrder] = useState(stat.sortOrder);
+   483→  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+   484→
+   485→  useEffect(() => { setLabel(stat.label); setValue(stat.value); setIcon(stat.icon); setSortOrder(stat.sortOrder); }, [stat]);
+   486→
+   487→  const handleSave = () => {
+   488→    onUpdate({ id: stat.id, label, value, icon, sortOrder, isActive: stat.isActive });
+   489→    setEditingId(null);
+   490→  };
+   491→
+   492→  const handleDelete = () => {
+   493→    setShowDeleteConfirm(false);
+   494→    onDelete(stat.id);
+   495→  };
+   496→
+   497→  return (
+   498→    <>
+   499→      <div className={`p-3 sm:p-4 rounded-lg transition-all ${isEditing ? 'bg-dakkho-blue/5 border border-dakkho-blue/20' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06]'}`}>
+   500→        {isEditing ? (
+   501→          <div className="space-y-3">
+   502→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   503→              <div className="space-y-1.5">
+   504→                <Label className="text-xs text-muted-foreground">Label</Label>
+   505→                <Input value={label} onChange={(e) => setLabel(e.target.value)} className="h-9 bg-white/[0.04] border-white/[0.08] w-full" placeholder="e.g. Instructors" />
+   506→              </div>
+   507→              <div className="space-y-1.5">
+   508→                <Label className="text-xs text-muted-foreground">Value</Label>
+   509→                <Input value={value} onChange={(e) => setValue(e.target.value)} className="h-9 bg-white/[0.04] border-white/[0.08] w-full" placeholder="e.g. 50+" />
+   510→              </div>
+   511→            </div>
+   512→            <div className="grid grid-cols-2 gap-3">
+   513→              <div className="space-y-1.5">
+   514→                <Label className="text-xs text-muted-foreground">Icon</Label>
+   515→                <select value={icon} onChange={(e) => setIcon(e.target.value)} className="h-9 bg-white/[0.04] border border-white/[0.08] rounded-md px-3 text-sm w-full">
+   516→                  {ICON_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+   517→                </select>
+   518→              </div>
+   519→              <div className="space-y-1.5">
+   520→                <Label className="text-xs text-muted-foreground">Sort Order</Label>
+   521→                <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} className="h-9 bg-white/[0.04] border-white/[0.08] w-full" />
+   522→              </div>
+   523→            </div>
+   524→            <div className="flex gap-2 justify-end pt-1">
+   525→              <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} className="h-9 px-3">
+   526→                <X className="h-4 w-4 mr-1.5" /> Cancel
+   527→              </Button>
+   528→              <Button size="sm" onClick={handleSave} className="h-9 px-3 bg-green-600 hover:bg-green-700 text-white">
+   529→                <Check className="h-4 w-4 mr-1.5" /> Save
+   530→              </Button>
+   531→            </div>
+   532→          </div>
+   533→        ) : (
+   534→          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+   535→            <div className="flex items-center gap-3 flex-1 min-w-0">
+   536→              <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 cursor-grab hidden sm:block" />
+   537→              <div className="flex items-center gap-2 flex-wrap">
+   538→                <span className="text-sm font-semibold">{stat.label}</span>
+   539→                <span className="text-sm text-dakkho-blue font-bold">{stat.value}</span>
+   540→                <span className="text-xs text-muted-foreground bg-white/5 px-2 py-0.5 rounded">order: {stat.sortOrder}</span>
+   541→              </div>
+   542→            </div>
+   543→            <div className="flex items-center gap-2 flex-shrink-0">
+   544→              <Switch checked={!!stat.isActive} onCheckedChange={(v) => onUpdate({ id: stat.id, isActive: v })} className={stat.isActive ? '' : 'data-[state=unchecked]:bg-white/10'} />
+   545→              <Button size="sm" variant="ghost" onClick={() => setEditingId(`stat-${stat.id}`)} className="h-8 px-2">
+   546→                <Edit3 className="h-3.5 w-3.5" />
+   547→              </Button>
+   548→              <Button size="sm" variant="ghost" onClick={() => setShowDeleteConfirm(true)} className="h-8 px-2 text-red-400 hover:text-red-300">
+   549→                <Trash2 className="h-3.5 w-3.5" />
+   550→              </Button>
+   551→            </div>
+   552→          </div>
+   553→        )}
+   554→      </div>
+   555→      <DeleteConfirmDialog
+   556→        open={showDeleteConfirm}
+   557→        onConfirm={handleDelete}
+   558→        onCancel={() => setShowDeleteConfirm(false)}
+   559→        itemName={stat.label}
+   560→      />
+   561→    </>
+   562→  );
+   563→}
+   564→
+   565→// ─── Team Row Component (Mobile-Friendly) ───
+   566→function TeamRow({ member, editingId, setEditingId, onUpdate, onDelete }: {
+   567→  member: AboutTeamMember;
+   568→  editingId: string | null;
+   569→  setEditingId: (id: string | null) => void;
+   570→  onUpdate: (item: Record<string, unknown>) => void;
+   571→  onDelete: (id: number) => void;
+   572→}) {
+   573→  const isEditing = editingId === `team-${member.id}`;
+   574→  const [name, setName] = useState(member.name);
+   575→  const [role, setRole] = useState(member.role);
+   576→  const [icon, setIcon] = useState(member.icon);
+   577→  const [sortOrder, setSortOrder] = useState(member.sortOrder);
+   578→  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+   579→
+   580→  useEffect(() => { setName(member.name); setRole(member.role); setIcon(member.icon); setSortOrder(member.sortOrder); }, [member]);
+   581→
+   582→  const handleSave = () => {
+   583→    onUpdate({ id: member.id, name, role, icon, sortOrder, isActive: member.isActive });
+   584→    setEditingId(null);
+   585→  };
+   586→
+   587→  const handleDelete = () => {
+   588→    setShowDeleteConfirm(false);
+   589→    onDelete(member.id);
+   590→  };
+   591→
+   592→  return (
+   593→    <>
+   594→      <div className={`p-3 sm:p-4 rounded-lg transition-all ${isEditing ? 'bg-dakkho-blue/5 border border-dakkho-blue/20' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06]'}`}>
+   595→        {isEditing ? (
+   596→          <div className="space-y-3">
+   597→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   598→              <div className="space-y-1.5">
+   599→                <Label className="text-xs text-muted-foreground">Name</Label>
+   600→                <Input value={name} onChange={(e) => setName(e.target.value)} className="h-9 bg-white/[0.04] border-white/[0.08] w-full" placeholder="Member name" />
+   601→              </div>
+   602→              <div className="space-y-1.5">
+   603→                <Label className="text-xs text-muted-foreground">Role</Label>
+   604→                <Input value={role} onChange={(e) => setRole(e.target.value)} className="h-9 bg-white/[0.04] border-white/[0.08] w-full" placeholder="e.g. Lead Instructor" />
+   605→              </div>
+   606→            </div>
+   607→            <div className="grid grid-cols-2 gap-3">
+   608→              <div className="space-y-1.5">
+   609→                <Label className="text-xs text-muted-foreground">Icon</Label>
+   610→                <select value={icon} onChange={(e) => setIcon(e.target.value)} className="h-9 bg-white/[0.04] border border-white/[0.08] rounded-md px-3 text-sm w-full">
+   611→                  {ICON_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+   612→                </select>
+   613→              </div>
+   614→              <div className="space-y-1.5">
+   615→                <Label className="text-xs text-muted-foreground">Sort Order</Label>
+   616→                <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} className="h-9 bg-white/[0.04] border-white/[0.08] w-full" />
+   617→              </div>
+   618→            </div>
+   619→            <div className="flex gap-2 justify-end pt-1">
+   620→              <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} className="h-9 px-3">
+   621→                <X className="h-4 w-4 mr-1.5" /> Cancel
+   622→              </Button>
+   623→              <Button size="sm" onClick={handleSave} className="h-9 px-3 bg-green-600 hover:bg-green-700 text-white">
+   624→                <Check className="h-4 w-4 mr-1.5" /> Save
+   625→              </Button>
+   626→            </div>
+   627→          </div>
+   628→        ) : (
+   629→          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+   630→            <div className="flex items-center gap-3 flex-1 min-w-0">
+   631→              <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 cursor-grab hidden sm:block" />
+   632→              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center flex-shrink-0">
+   633→                <Users className="w-3.5 h-3.5 text-white" />
+   634→              </div>
+   635→              <div className="min-w-0">
+   636→                <span className="text-sm font-semibold">{member.name}</span>
+   637→                <span className="text-xs text-muted-foreground ml-2">{member.role}</span>
+   638→              </div>
+   639→            </div>
+   640→            <div className="flex items-center gap-2 flex-shrink-0">
+   641→              <Switch checked={!!member.isActive} onCheckedChange={(v) => onUpdate({ id: member.id, isActive: v })} className={member.isActive ? '' : 'data-[state=unchecked]:bg-white/10'} />
+   642→              <Button size="sm" variant="ghost" onClick={() => setEditingId(`team-${member.id}`)} className="h-8 px-2">
+   643→                <Edit3 className="h-3.5 w-3.5" />
+   644→              </Button>
+   645→              <Button size="sm" variant="ghost" onClick={() => setShowDeleteConfirm(true)} className="h-8 px-2 text-red-400 hover:text-red-300">
+   646→                <Trash2 className="h-3.5 w-3.5" />
+   647→              </Button>
+   648→            </div>
+   649→          </div>
+   650→        )}
+   651→      </div>
+   652→      <DeleteConfirmDialog
+   653→        open={showDeleteConfirm}
+   654→        onConfirm={handleDelete}
+   655→        onCancel={() => setShowDeleteConfirm(false)}
+   656→        itemName={member.name}
+   657→      />
+   658→    </>
+   659→  );
+   660→}
+   661→
+   662→// ─── FAQ Row Component (Mobile-Friendly) ───
+   663→function FaqRow({ faq, editingId, setEditingId, onUpdate, onDelete }: {
+   664→  faq: AboutFaq;
+   665→  editingId: string | null;
+   666→  setEditingId: (id: string | null) => void;
+   667→  onUpdate: (item: Record<string, unknown>) => void;
+   668→  onDelete: (id: number) => void;
+   669→}) {
+   670→  const isEditing = editingId === `faq-${faq.id}`;
+   671→  const [question, setQuestion] = useState(faq.question);
+   672→  const [answer, setAnswer] = useState(faq.answer);
+   673→  const [sortOrder, setSortOrder] = useState(faq.sortOrder);
+   674→  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+   675→
+   676→  useEffect(() => { setQuestion(faq.question); setAnswer(faq.answer); setSortOrder(faq.sortOrder); }, [faq]);
+   677→
+   678→  const handleSave = () => {
+   679→    onUpdate({ id: faq.id, question, answer, sortOrder, isActive: faq.isActive });
+   680→    setEditingId(null);
+   681→  };
+   682→
+   683→  const handleDelete = () => {
+   684→    setShowDeleteConfirm(false);
+   685→    onDelete(faq.id);
+   686→  };
+   687→
+   688→  return (
+   689→    <>
+   690→      <div className={`p-3 sm:p-4 rounded-lg transition-all ${isEditing ? 'bg-dakkho-blue/5 border border-dakkho-blue/20' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06]'}`}>
+   691→        {isEditing ? (
+   692→          <div className="space-y-3">
+   693→            <div className="space-y-1.5">
+   694→              <Label className="text-xs text-muted-foreground">Question</Label>
+   695→              <Input value={question} onChange={(e) => setQuestion(e.target.value)} className="h-9 bg-white/[0.04] border-white/[0.08] w-full" placeholder="Enter question" />
+   696→            </div>
+   697→            <div className="space-y-1.5">
+   698→              <Label className="text-xs text-muted-foreground">Answer</Label>
+   699→              <Textarea value={answer} onChange={(e) => setAnswer(e.target.value)} rows={3} className="bg-white/[0.04] border-white/[0.08] resize-none w-full" placeholder="Enter answer" />
+   700→            </div>
+   701→            <div className="grid grid-cols-2 sm:grid-cols-[1fr_auto] gap-3">
+   702→              <div className="space-y-1.5">
+   703→                <Label className="text-xs text-muted-foreground">Sort Order</Label>
+   704→                <Input type="number" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} className="h-9 bg-white/[0.04] border-white/[0.08] w-full" />
+   705→              </div>
+   706→              <div className="flex items-end gap-2 pb-0">
+   707→                <Button size="sm" variant="ghost" onClick={() => setEditingId(null)} className="h-9 px-3">
+   708→                  <X className="h-4 w-4 mr-1.5" /> Cancel
+   709→                </Button>
+   710→                <Button size="sm" onClick={handleSave} className="h-9 px-3 bg-green-600 hover:bg-green-700 text-white">
+   711→                  <Check className="h-4 w-4 mr-1.5" /> Save
+   712→                </Button>
+   713→              </div>
+   714→            </div>
+   715→          </div>
+   716→        ) : (
+   717→          <div className="flex flex-col gap-3">
+   718→            <div className="flex items-start justify-between gap-3">
+   719→              <div className="flex-1 min-w-0">
+   720→                <p className="text-sm font-semibold">{faq.question}</p>
+   721→                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{faq.answer}</p>
+   722→              </div>
+   723→              <div className="flex items-center gap-2 flex-shrink-0">
+   724→                <Switch checked={!!faq.isActive} onCheckedChange={(v) => onUpdate({ id: faq.id, isActive: v })} className={faq.isActive ? '' : 'data-[state=unchecked]:bg-white/10'} />
+   725→                <Button size="sm" variant="ghost" onClick={() => setEditingId(`faq-${faq.id}`)} className="h-8 px-2">
+   726→                  <Edit3 className="h-3.5 w-3.5" />
+   727→                </Button>
+   728→                <Button size="sm" variant="ghost" onClick={() => setShowDeleteConfirm(true)} className="h-8 px-2 text-red-400 hover:text-red-300">
+   729→                  <Trash2 className="h-3.5 w-3.5" />
+   730→                </Button>
+   731→              </div>
+   732→            </div>
+   733→          </div>
+   734→        )}
+   735→      </div>
+   736→      <DeleteConfirmDialog
+   737→        open={showDeleteConfirm}
+   738→        onConfirm={handleDelete}
+   739→        onCancel={() => setShowDeleteConfirm(false)}
+   740→        itemName={faq.question}
+   741→      />
+   742→    </>
+   743→  );
+   744→}
+   745→

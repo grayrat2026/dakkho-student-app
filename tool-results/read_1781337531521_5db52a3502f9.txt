@@ -1,0 +1,655 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useState, useEffect, useCallback, useRef } from 'react';
+     4→     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→     5→import {
+     6→     6→  MessageSquare, Search, Filter, RefreshCw, Send, CheckCircle,
+     7→     7→  Clock, AlertCircle, ChevronRight, Loader2, Settings, X,
+     8→     8→  Mail, Phone, Plus, Trash2, Eye, ArrowUpDown, Paperclip,
+     9→     9→} from 'lucide-react';
+    10→    10→import { apiGet, apiPost, apiPut, apiUpload } from '@/lib/api-client';
+    11→    11→
+    12→    12→// ─── Types (camelCase — API client auto-transforms snake_case → camelCase) ───
+    13→    13→interface Ticket {
+    14→    14→  id: number;
+    15→    15→  ticketId: string;
+    16→    16→  userId: string | null;
+    17→    17→  name: string | null;
+    18→    18→  email: string;
+    19→    19→  subject: string;
+    20→    20→  category: string;
+    21→    21→  priority: string;
+    22→    22→  status: string;
+    23→    23→  description: string | null;
+    24→    24→  resolvedContent: string | null;
+    25→    25→  resolvedAt: string | null;
+    26→    26→  resolvedBy: string | null;
+    27→    27→  createdAt: string;
+    28→    28→  updatedAt: string;
+    29→    29→}
+    30→    30→
+    31→    31→interface Message {
+    32→    32→  id: number;
+    33→    33→  ticketId: string;
+    34→    34→  senderType: string;
+    35→    35→  senderId: string | null;
+    36→    36→  senderName: string | null;
+    37→    37→  message: string;
+    38→    38→  attachments: string;
+    39→    39→  source: string;
+    40→    40→  createdAt: string;
+    41→    41→}
+    42→    42→
+    43→    43→interface Stats {
+    44→    44→  open: number;
+    45→    45→  inProgress: number;
+    46→    46→  resolved: number;
+    47→    47→  closed: number;
+    48→    48→  total: number;
+    49→    49→}
+    50→    50→
+    51→    51→const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://dakkho-admin-api.dakkho-admin.workers.dev';
+    52→    52→
+    53→    53→const statusColors: Record<string, string> = {
+    54→    54→  open: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    55→    55→  in_progress: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    56→    56→  resolved: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    57→    57→  closed: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
+    58→    58→};
+    59→    59→
+    60→    60→const statusLabel: Record<string, string> = {
+    61→    61→  open: 'Open', in_progress: 'In Progress', resolved: 'Resolved', closed: 'Closed',
+    62→    62→};
+    63→    63→
+    64→    64→const priorityColors: Record<string, string> = {
+    65→    65→  low: 'text-emerald-400', normal: 'text-sky-400', high: 'text-orange-400', urgent: 'text-red-400', medium: 'text-sky-400',
+    66→    66→};
+    67→    67→
+    68→    68→/** Safely parse a date that might be "2026-06-09 20:40:11" (SQLite) or ISO */
+    69→    69→function parseDate(d: string | null | undefined): Date | null {
+    70→    70→  if (!d) return null;
+    71→    71→  try {
+    72→    72→    // SQLite datetime format: "YYYY-MM-DD HH:mm:ss" — replace space with T for JS parsing
+    73→    73→    const iso = d.includes(' ') && !d.includes('T') ? d.replace(' ', 'T') : d;
+    74→    74→    const parsed = new Date(iso);
+    75→    75→    return isNaN(parsed.getTime()) ? null : parsed;
+    76→    76→  } catch {
+    77→    77→    return null;
+    78→    78→  }
+    79→    79→}
+    80→    80→
+    81→    81→function formatDate(d: string | null | undefined): string {
+    82→    82→  const date = parseDate(d);
+    83→    83→  if (!date) return '—';
+    84→    84→  return date.toLocaleDateString();
+    85→    85→}
+    86→    86→
+    87→    87→function formatTime(d: string | null | undefined): string {
+    88→    88→  const date = parseDate(d);
+    89→    89→  if (!date) return '';
+    90→    90→  return date.toLocaleTimeString();
+    91→    91→}
+    92→    92→
+    93→    93→function formatDateTime(d: string | null | undefined): string {
+    94→    94→  const date = parseDate(d);
+    95→    95→  if (!date) return '—';
+    96→    96→  return date.toLocaleString();
+    97→    97→}
+    98→    98→
+    99→    99→// ─── Ticket Detail Panel ───
+   100→   100→function TicketDetailPanel({ ticket, onBack, onRefresh }: { ticket: Ticket; onBack: () => void; onRefresh: () => void }) {
+   101→   101→  const [messages, setMessages] = useState<Message[]>([]);
+   102→   102→  const [loading, setLoading] = useState(true);
+   103→   103→  const [replyText, setReplyText] = useState('');
+   104→   104→  const [resolveText, setResolveText] = useState('');
+   105→   105→  const [sending, setSending] = useState(false);
+   106→   106→  const [resolving, setResolving] = useState(false);
+   107→   107→  const [showResolve, setShowResolve] = useState(false);
+   108→   108→  const [statusUpdating, setStatusUpdating] = useState(false);
+   109→   109→  const [replyFiles, setReplyFiles] = useState<File[]>([]);
+   110→   110→  const fileInputRef = useRef<HTMLInputElement>(null);
+   111→   111→
+   112→   112→  const fetchMessages = useCallback(async () => {
+   113→   113→    try {
+   114→   114→      const data = await apiGet(`/support/tickets/${ticket.ticketId}`) as any;
+   115→   115→      setMessages(data.messages || []);
+   116→   116→    } catch (error) {
+   117→   117→      console.error('Failed to fetch messages:', error);
+   118→   118→    } finally {
+   119→   119→      setLoading(false);
+   120→   120→    }
+   121→   121→  }, [ticket.ticketId]);
+   122→   122→
+   123→   123→  useEffect(() => { fetchMessages(); }, [fetchMessages]);
+   124→   124→
+   125→   125→  const handleReply = async () => {
+   126→   126→    if (!replyText.trim() && replyFiles.length === 0) return;
+   127→   127→    setSending(true);
+   128→   128→    try {
+   129→   129→      if (replyFiles.length > 0) {
+   130→   130→        // Use multipart form for file attachments
+   131→   131→        const formData = new FormData();
+   132→   132→        formData.append('message', replyText);
+   133→   133→        replyFiles.forEach(f => formData.append('files', f));
+   134→   134→        await fetch(`${API_BASE}/admin/support/tickets/${ticket.ticketId}/reply`, {
+   135→   135→          method: 'POST',
+   136→   136→          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}` },
+   137→   137→          body: formData,
+   138→   138→        });
+   139→   139→      } else {
+   140→   140→        await apiPost(`/support/tickets/${ticket.ticketId}/reply`, { message: replyText });
+   141→   141→      }
+   142→   142→      setReplyText('');
+   143→   143→      setReplyFiles([]);
+   144→   144→      await fetchMessages();
+   145→   145→      onRefresh();
+   146→   146→    } catch (error) {
+   147→   147→      console.error('Failed to send reply:', error);
+   148→   148→    } finally {
+   149→   149→      setSending(false);
+   150→   150→    }
+   151→   151→  };
+   152→   152→
+   153→   153→  const handleResolve = async () => {
+   154→   154→    if (!resolveText.trim()) return;
+   155→   155→    setResolving(true);
+   156→   156→    try {
+   157→   157→      await apiPut(`/support/tickets/${ticket.ticketId}/resolve`, { resolvedContent: resolveText });
+   158→   158→      setShowResolve(false);
+   159→   159→      setResolveText('');
+   160→   160→      await fetchMessages();
+   161→   161→      onRefresh();
+   162→   162→    } catch (error) {
+   163→   163→      console.error('Failed to resolve ticket:', error);
+   164→   164→    } finally {
+   165→   165→      setResolving(false);
+   166→   166→    }
+   167→   167→  };
+   168→   168→
+   169→   169→  const handleStatusChange = async (newStatus: string) => {
+   170→   170→    setStatusUpdating(true);
+   171→   171→    try {
+   172→   172→      await apiPut(`/support/tickets/${ticket.ticketId}/status`, { status: newStatus });
+   173→   173→      await fetchMessages();
+   174→   174→      onRefresh();
+   175→   175→    } catch (error) {
+   176→   176→      console.error('Failed to update status:', error);
+   177→   177→    } finally {
+   178→   178→      setStatusUpdating(false);
+   179→   179→    }
+   180→   180→  };
+   181→   181→
+   182→   182→  return (
+   183→   183→    <div>
+   184→   184→      {/* Header */}
+   185→   185→      <div className="flex items-center gap-3 mb-4">
+   186→   186→        <button onClick={onBack} className="p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors">
+   187→   187→          <ChevronRight className="w-5 h-5 rotate-180" />
+   188→   188→        </button>
+   189→   189→        <div className="flex-1 min-w-0">
+   190→   190→          <h2 className="text-lg font-bold text-white truncate">{ticket.subject}</h2>
+   191→   191→          <p className="text-xs text-slate-400">{ticket.ticketId} · {ticket.category} · <span className={priorityColors[ticket.priority] || 'text-sky-400'}>{ticket.priority.toUpperCase()}</span></p>
+   192→   192→        </div>
+   193→   193→        <span className={`text-xs px-3 py-1 rounded-full font-bold border ${statusColors[ticket.status] || statusColors.open}`}>
+   194→   194→          {statusLabel[ticket.status] || ticket.status}
+   195→   195→        </span>
+   196→   196→      </div>
+   197→   197→
+   198→   198→      {/* Ticket Info */}
+   199→   199→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+   200→   200→        <div className="bg-white/[0.03] rounded-xl p-3">
+   201→   201→          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">From</p>
+   202→   202→          <p className="text-sm text-white font-medium truncate">{ticket.name || ticket.email}</p>
+   203→   203→          <p className="text-[10px] text-slate-400 truncate">{ticket.email}</p>
+   204→   204→        </div>
+   205→   205→        <div className="bg-white/[0.03] rounded-xl p-3">
+   206→   206→          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Created</p>
+   207→   207→          <p className="text-sm text-white font-medium">{formatDate(ticket.createdAt)}</p>
+   208→   208→          <p className="text-[10px] text-slate-400">{formatTime(ticket.createdAt)}</p>
+   209→   209→        </div>
+   210→   210→        <div className="bg-white/[0.03] rounded-xl p-3">
+   211→   211→          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Category</p>
+   212→   212→          <p className="text-sm text-white font-medium">{ticket.category}</p>
+   213→   213→        </div>
+   214→   214→        <div className="bg-white/[0.03] rounded-xl p-3">
+   215→   215→          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Actions</p>
+   216→   216→          <div className="flex flex-wrap gap-1 mt-1">
+   217→   217→            {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
+   218→   218→              <button onClick={() => setShowResolve(!showResolve)} className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20">
+   219→   219→                Resolve
+   220→   220→              </button>
+   221→   221→            )}
+   222→   222→            {ticket.status !== 'closed' && (
+   223→   223→              <button onClick={() => handleStatusChange('closed')} disabled={statusUpdating} className="text-[10px] px-2 py-0.5 rounded bg-slate-500/10 text-slate-400 hover:bg-slate-500/20">
+   224→   224→                Close
+   225→   225→              </button>
+   226→   226→            )}
+   227→   227→            {ticket.status === 'closed' && (
+   228→   228→              <button onClick={() => handleStatusChange('open')} disabled={statusUpdating} className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 hover:bg-blue-500/20">
+   229→   229→                Reopen
+   230→   230→              </button>
+   231→   231→            )}
+   232→   232→            {ticket.status === 'open' && (
+   233→   233→              <button onClick={() => handleStatusChange('in_progress')} disabled={statusUpdating} className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 hover:bg-amber-500/20">
+   234→   234→                In Progress
+   235→   235→              </button>
+   236→   236→            )}
+   237→   237→          </div>
+   238→   238→        </div>
+   239→   239→      </div>
+   240→   240→
+   241→   241→      {/* Resolution Banner */}
+   242→   242→      {(ticket.status === 'resolved' || ticket.status === 'closed') && ticket.resolvedContent && (
+   243→   243→        <div className="mb-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
+   244→   244→          <div className="flex items-start gap-2">
+   245→   245→            <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+   246→   246→            <div>
+   247→   247→              <h4 className="text-sm font-bold text-emerald-400">Resolved</h4>
+   248→   248→              <p className="text-xs text-slate-300 mt-1">{ticket.resolvedContent}</p>
+   249→   249→              <p className="text-[10px] text-slate-400 mt-1">By: {ticket.resolvedBy || 'Admin'} · {formatDateTime(ticket.resolvedAt)}</p>
+   250→   250→            </div>
+   251→   251→          </div>
+   252→   252→        </div>
+   253→   253→      )}
+   254→   254→
+   255→   255→      {/* Resolve Form */}
+   256→   256→      <AnimatePresence>
+   257→   257→        {showResolve && (
+   258→   258→          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-4 overflow-hidden">
+   259→   259→            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
+   260→   260→              <h4 className="text-sm font-bold text-emerald-400 mb-2">Resolve Ticket</h4>
+   261→   261→              <textarea
+   262→   262→                value={resolveText}
+   263→   263→                onChange={(e) => setResolveText(e.target.value)}
+   264→   264→                rows={3}
+   265→   265→                className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 resize-none"
+   266→   266→                placeholder="Describe how the issue was resolved..."
+   267→   267→              />
+   268→   268→              <div className="flex gap-2 mt-2">
+   269→   269→                <button onClick={handleResolve} disabled={resolving || !resolveText.trim()} className="px-4 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs font-bold hover:bg-emerald-500/30 disabled:opacity-50">
+   270→   270→                  {resolving ? <Loader2 className="w-3 h-3 animate-spin inline" /> : <CheckCircle className="w-3 h-3 inline" />} Resolve
+   271→   271→                </button>
+   272→   272→                <button onClick={() => setShowResolve(false)} className="px-4 py-1.5 rounded-lg bg-white/5 text-slate-400 text-xs font-bold hover:bg-white/10">Cancel</button>
+   273→   273→              </div>
+   274→   274→            </div>
+   275→   275→          </motion.div>
+   276→   276→        )}
+   277→   277→      </AnimatePresence>
+   278→   278→
+   279→   279→      {/* Messages */}
+   280→   280→      <div className="bg-white/[0.03] rounded-xl p-4 mb-4">
+   281→   281→        <div className="flex items-center justify-between mb-3">
+   282→   282→          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Conversation</h3>
+   283→   283→          <button onClick={fetchMessages} className="p-1.5 rounded-lg hover:bg-white/5"><RefreshCw className="w-3.5 h-3.5 text-slate-500" /></button>
+   284→   284→        </div>
+   285→   285→        {loading ? (
+   286→   286→          <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-400" /></div>
+   287→   287→        ) : messages.length === 0 ? (
+   288→   288→          <div className="text-center py-8">
+   289→   289→            <MessageSquare className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+   290→   290→            <p className="text-xs text-slate-500">No messages yet</p>
+   291→   291→          </div>
+   292→   292→        ) : (
+   293→   293→          <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar pr-1">
+   294→   294→            {messages.map((msg) => {
+   295→   295→              const isUser = msg.senderType === 'user';
+   296→   296→              const isSystem = msg.senderType === 'system';
+   297→   297→              let attachments: string[] = [];
+   298→   298→              try { attachments = JSON.parse(msg.attachments || '[]'); } catch {}
+   299→   299→
+   300→   300→              return (
+   301→   301→                <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+   302→   302→                  <div className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 ${
+   303→   303→                    isUser ? 'bg-blue-500/10 text-white rounded-br-sm' :
+   304→   304→                    isSystem ? 'bg-amber-500/10 text-white rounded-bl-sm' :
+   305→   305→                    'bg-white/[0.06] text-white rounded-bl-sm'
+   306→   306→                  }`}>
+   307→   307→                    {!isUser && (
+   308→   308→                      <div className="flex items-center gap-1.5 mb-1">
+   309→   309→                        <span className="text-[10px] font-bold text-blue-400">{msg.senderName || msg.senderType}</span>
+   310→   310→                        {msg.source === 'telegram' && <span className="text-[8px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-full">Telegram</span>}
+   311→   311→                        {msg.source === 'admin' && <span className="text-[8px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full">Admin</span>}
+   312→   312→                        {msg.source === 'email' && <span className="text-[8px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded-full">Email</span>}
+   313→   313→                      </div>
+   314→   314→                    )}
+   315→   315→                    <p className="text-sm whitespace-pre-wrap break-words">{msg.message}</p>
+   316→   316→                    {attachments.length > 0 && (
+   317→   317→                      <div className="mt-2 space-y-1">
+   318→   318→                        {attachments.map((att, i) => (
+   319→   319→                          <a key={i} href={`${API_BASE}/api/support/attachment-url?key=${encodeURIComponent(att)}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300">
+   320→   320→                            <Paperclip className="w-3 h-3" /><span className="truncate">{att.split('/').pop()?.replace(/^\d+-/, '') || `Attachment ${i + 1}`}</span>
+   321→   321→                          </a>
+   322→   322→                        ))}
+   323→   323→                      </div>
+   324→   324→                    )}
+   325→   325→                    <p className="text-[9px] text-slate-500 mt-1 text-right">{formatDateTime(msg.createdAt)}</p>
+   326→   326→                  </div>
+   327→   327→                </div>
+   328→   328→              );
+   329→   329→            })}
+   330→   330→          </div>
+   331→   331→        )}
+   332→   332→      </div>
+   333→   333→
+   334→   334→      {/* Reply Box */}
+   335→   335→      {ticket.status !== 'closed' && (
+   336→   336→        <div className="bg-white/[0.03] rounded-xl p-4">
+   337→   337→          <textarea
+   338→   338→            value={replyText}
+   339→   339→            onChange={(e) => setReplyText(e.target.value)}
+   340→   340→            rows={3}
+   341→   341→            className="w-full px-3 py-2.5 rounded-lg bg-black/30 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none"
+   342→   342→            placeholder="Type your reply..."
+   343→   343→          />
+   344→   344→          {/* File attachments */}
+   345→   345→          <div className="flex items-center gap-2 mt-2">
+   346→   346→            <input
+   347→   347→              ref={fileInputRef}
+   348→   348→              type="file"
+   349→   349→              multiple
+   350→   350→              className="hidden"
+   351→   351→              onChange={(e) => {
+   352→   352→                const files = Array.from(e.target.files || []);
+   353→   353→                setReplyFiles(prev => [...prev, ...files].slice(0, 5));
+   354→   354→                e.target.value = '';
+   355→   355→              }}
+   356→   356→            />
+   357→   357→            <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors" title="Attach files">
+   358→   358→              <Paperclip className="w-4 h-4" />
+   359→   359→            </button>
+   360→   360→            {replyFiles.length > 0 && (
+   361→   361→              <div className="flex flex-wrap gap-1 flex-1">
+   362→   362→                {replyFiles.map((f, i) => (
+   363→   363→                  <span key={i} className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-1 rounded-lg flex items-center gap-1">
+   364→   364→                    <Paperclip className="w-2.5 h-2.5" />
+   365→   365→                    <span className="truncate max-w-[100px]">{f.name}</span>
+   366→   366→                    <button onClick={() => setReplyFiles(prev => prev.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-300">
+   367→   367→                      <X className="w-2.5 h-2.5" />
+   368→   368→                    </button>
+   369→   369→                  </span>
+   370→   370→                ))}
+   371→   371→              </div>
+   372→   372→            )}
+   373→   373→          </div>
+   374→   374→          <div className="flex justify-end mt-2">
+   375→   375→            <button
+   376→   376→              onClick={handleReply}
+   377→   377→              disabled={sending || (!replyText.trim() && replyFiles.length === 0)}
+   378→   378→              className="px-5 py-2 rounded-lg bg-blue-500/20 text-blue-400 text-sm font-bold hover:bg-blue-500/30 disabled:opacity-50 flex items-center gap-2"
+   379→   379→            >
+   380→   380→              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Reply
+   381→   381→            </button>
+   382→   382→          </div>
+   383→   383→        </div>
+   384→   384→      )}
+   385→   385→    </div>
+   386→   386→  );
+   387→   387→}
+   388→   388→
+   389→   389→// ─── Settings Panel ───
+   390→   390→function SettingsPanel({ onBack }: { onBack: () => void }) {
+   391→   391→  const [config, setConfig] = useState({ telegramChatIds: [''], supportEmail: '' });
+   392→   392→  const [loading, setLoading] = useState(true);
+   393→   393→  const [saving, setSaving] = useState(false);
+   394→   394→  const [saved, setSaved] = useState(false);
+   395→   395→
+   396→   396→  useEffect(() => {
+   397→   397→    (async () => {
+   398→   398→      try {
+   399→   399→        const data = await apiGet('/support/config') as any;
+   400→   400→        setConfig({
+   401→   401→          telegramChatIds: data.telegramChatIds?.length ? data.telegramChatIds : [''],
+   402→   402→          supportEmail: data.supportEmail || '',
+   403→   403→        });
+   404→   404→      } catch (error) {
+   405→   405→        console.error('Failed to load config:', error);
+   406→   406→      } finally {
+   407→   407→        setLoading(false);
+   408→   408→      }
+   409→   409→    })();
+   410→   410→  }, []);
+   411→   411→
+   412→   412→  const handleSave = async () => {
+   413→   413→    setSaving(true);
+   414→   414→    setSaved(false);
+   415→   415→    try {
+   416→   416→      const chatIds = config.telegramChatIds.filter(id => id.trim());
+   417→   417→      await apiPut('/support/config', {
+   418→   418→        telegramChatIds: chatIds,
+   419→   419→        supportEmail: config.supportEmail,
+   420→   420→      });
+   421→   421→      setSaved(true);
+   422→   422→      setTimeout(() => setSaved(false), 3000);
+   423→   423→    } catch (error) {
+   424→   424→      console.error('Failed to save config:', error);
+   425→   425→    } finally {
+   426→   426→      setSaving(false);
+   427→   427→    }
+   428→   428→  };
+   429→   429→
+   430→   430→  return (
+   431→   431→    <div>
+   432→   432→      <div className="flex items-center gap-3 mb-6">
+   433→   433→        <button onClick={onBack} className="p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors">
+   434→   434→          <ChevronRight className="w-5 h-5 rotate-180" />
+   435→   435→        </button>
+   436→   436→        <h2 className="text-lg font-bold text-white">Support Settings</h2>
+   437→   437→      </div>
+   438→   438→
+   439→   439→      {loading ? (
+   440→   440→        <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-400" /></div>
+   441→   441→      ) : (
+   442→   442→        <div className="space-y-6">
+   443→   443→          {/* Telegram Chat IDs */}
+   444→   444→          <div className="bg-white/[0.03] rounded-xl p-5">
+   445→   445→            <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+   446→   446→              <MessageSquare className="w-4 h-4 text-blue-400" /> Telegram Chat IDs
+   447→   447→            </h3>
+   448→   448→            <p className="text-xs text-slate-400 mb-3">Add or remove chat IDs that receive support notifications.</p>
+   449→   449→            <div className="space-y-2">
+   450→   450→              {config.telegramChatIds.map((id, i) => (
+   451→   451→                <div key={i} className="flex gap-2">
+   452→   452→                  <input
+   453→   453→                    type="text"
+   454→   454→                    value={id}
+   455→   455→                    onChange={(e) => {
+   456→   456→                      const newIds = [...config.telegramChatIds];
+   457→   457→                      newIds[i] = e.target.value;
+   458→   458→                      setConfig({ ...config, telegramChatIds: newIds });
+   459→   459→                    }}
+   460→   460→                    className="flex-1 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+   461→   461→                    placeholder="Chat ID"
+   462→   462→                  />
+   463→   463→                  {config.telegramChatIds.length > 1 && (
+   464→   464→                    <button onClick={() => {
+   465→   465→                      const newIds = config.telegramChatIds.filter((_, idx) => idx !== i);
+   466→   466→                      setConfig({ ...config, telegramChatIds: newIds });
+   467→   467→                    }} className="p-2 rounded-lg hover:bg-red-500/10 text-red-400">
+   468→   468→                      <Trash2 className="w-4 h-4" />
+   469→   469→                    </button>
+   470→   470→                  )}
+   471→   471→                </div>
+   472→   472→              ))}
+   473→   473→              <button onClick={() => setConfig({ ...config, telegramChatIds: [...config.telegramChatIds, ''] })} className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300">
+   474→   474→                <Plus className="w-3 h-3" /> Add Chat ID
+   475→   475→              </button>
+   476→   476→            </div>
+   477→   477→          </div>
+   478→   478→
+   479→   479→          {/* Support Email */}
+   480→   480→          <div className="bg-white/[0.03] rounded-xl p-5">
+   481→   481→            <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+   482→   482→              <Mail className="w-4 h-4 text-blue-400" /> Support Email
+   483→   483→            </h3>
+   484→   484→            <p className="text-xs text-slate-400 mb-3">Email address used for support ticket confirmations.</p>
+   485→   485→            <input
+   486→   486→              type="email"
+   487→   487→              value={config.supportEmail}
+   488→   488→              onChange={(e) => setConfig({ ...config, supportEmail: e.target.value })}
+   489→   489→              className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+   490→   490→              placeholder="support@dakkho.pro.bd"
+   491→   491→            />
+   492→   492→          </div>
+   493→   493→
+   494→   494→          {/* Save */}
+   495→   495→          <div className="flex items-center gap-3">
+   496→   496→            <button onClick={handleSave} disabled={saving} className="px-6 py-2.5 rounded-lg bg-blue-500/20 text-blue-400 font-bold hover:bg-blue-500/30 disabled:opacity-50 flex items-center gap-2">
+   497→   497→              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />} Save Settings
+   498→   498→            </button>
+   499→   499→            {saved && <span className="text-xs text-emerald-400 font-medium">Saved!</span>}
+   500→   500→          </div>
+   501→   501→        </div>
+   502→   502→      )}
+   503→   503→    </div>
+   504→   504→  );
+   505→   505→}
+   506→   506→
+   507→   507→// ─── Main Support Panel ───
+   508→   508→export default function SupportPanel() {
+   509→   509→  const [tickets, setTickets] = useState<Ticket[]>([]);
+   510→   510→  const [stats, setStats] = useState<Stats>({ open: 0, inProgress: 0, resolved: 0, closed: 0, total: 0 });
+   511→   511→  const [loading, setLoading] = useState(true);
+   512→   512→  const [statusFilter, setStatusFilter] = useState('all');
+   513→   513→  const [search, setSearch] = useState('');
+   514→   514→  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+   515→   515→  const [showSettings, setShowSettings] = useState(false);
+   516→   516→  const [page, setPage] = useState(1);
+   517→   517→  const [total, setTotal] = useState(0);
+   518→   518→
+   519→   519→  const fetchTickets = useCallback(async () => {
+   520→   520→    try {
+   521→   521→      const [ticketsData, statsData] = await Promise.all([
+   522→   522→        apiGet(`/support/tickets?status=${statusFilter}&search=${encodeURIComponent(search)}&page=${page}&limit=20`) as any,
+   523→   523→        apiGet('/support/stats') as any,
+   524→   524→      ]);
+   525→   525→      setTickets(ticketsData.tickets || []);
+   526→   526→      setTotal(ticketsData.total || 0);
+   527→   527→      setStats(statsData);
+   528→   528→    } catch (error) {
+   529→   529→      console.error('Failed to fetch tickets:', error);
+   530→   530→    } finally {
+   531→   531→      setLoading(false);
+   532→   532→    }
+   533→   533→  }, [statusFilter, search, page]);
+   534→   534→
+   535→   535→  useEffect(() => { fetchTickets(); }, [fetchTickets]);
+   536→   536→
+   537→   537→  // Settings view
+   538→   538→  if (showSettings) {
+   539→   539→    return <SettingsPanel onBack={() => setShowSettings(false)} />;
+   540→   540→  }
+   541→   541→
+   542→   542→  // Ticket detail view
+   543→   543→  if (selectedTicket) {
+   544→   544→    return <TicketDetailPanel ticket={selectedTicket} onBack={() => setSelectedTicket(null)} onRefresh={fetchTickets} />;
+   545→   545→  }
+   546→   546→
+   547→   547→  return (
+   548→   548→    <div>
+   549→   549→      {/* Header */}
+   550→   550→      <div className="flex items-center justify-between mb-6">
+   551→   551→        <div>
+   552→   552→          <h1 className="text-2xl font-bold text-white">Support Tickets</h1>
+   553→   553→          <p className="text-sm text-slate-400 mt-0.5">Manage student support requests</p>
+   554→   554→        </div>
+   555→   555→        <button onClick={() => setShowSettings(true)} className="p-2.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors">
+   556→   556→          <Settings className="w-5 h-5" />
+   557→   557→        </button>
+   558→   558→      </div>
+   559→   559→
+   560→   560→      {/* Stats Cards */}
+   561→   561→      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+   562→   562→        {[
+   563→   563→          { label: 'Open', count: stats.open, color: 'border-blue-500/30 bg-blue-500/5', text: 'text-blue-400' },
+   564→   564→          { label: 'In Progress', count: stats.inProgress, color: 'border-amber-500/30 bg-amber-500/5', text: 'text-amber-400' },
+   565→   565→          { label: 'Resolved', count: stats.resolved, color: 'border-emerald-500/30 bg-emerald-500/5', text: 'text-emerald-400' },
+   566→   566→          { label: 'Closed', count: stats.closed, color: 'border-slate-500/30 bg-slate-500/5', text: 'text-slate-400' },
+   567→   567→          { label: 'Total', count: stats.total, color: 'border-purple-500/30 bg-purple-500/5', text: 'text-purple-400' },
+   568→   568→        ].map((stat) => (
+   569→   569→          <div key={stat.label} className={`rounded-xl border p-3 ${stat.color}`}>
+   570→   570→            <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">{stat.label}</p>
+   571→   571→            <p className={`text-xl font-bold ${stat.text}`}>{stat.count}</p>
+   572→   572→          </div>
+   573→   573→        ))}
+   574→   574→      </div>
+   575→   575→
+   576→   576→      {/* Filters */}
+   577→   577→      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+   578→   578→        <div className="flex-1 relative">
+   579→   579→          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+   580→   580→          <input
+   581→   581→            type="text"
+   582→   582→            value={search}
+   583→   583→            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+   584→   584→            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06] text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+   585→   585→            placeholder="Search tickets..."
+   586→   586→          />
+   587→   587→        </div>
+   588→   588→        <div className="flex gap-1.5 flex-wrap">
+   589→   589→          {['all', 'open', 'in_progress', 'resolved', 'closed'].map((status) => (
+   590→   590→            <button
+   591→   591→              key={status}
+   592→   592→              onClick={() => { setStatusFilter(status); setPage(1); }}
+   593→   593→              className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+   594→   594→                statusFilter === status ? 'bg-blue-500/20 text-blue-400' : 'bg-white/[0.03] text-slate-400 hover:bg-white/[0.06]'
+   595→   595→              }`}
+   596→   596→            >
+   597→   597→              {status === 'all' ? 'All' : statusLabel[status] || status}
+   598→   598→            </button>
+   599→   599→          ))}
+   600→   600→        </div>
+   601→   601→      </div>
+   602→   602→
+   603→   603→      {/* Tickets List */}
+   604→   604→      <div className="bg-white/[0.02] rounded-xl border border-white/[0.04] overflow-hidden">
+   605→   605→        {loading ? (
+   606→   606→          <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-blue-400" /></div>
+   607→   607→        ) : tickets.length === 0 ? (
+   608→   608→          <div className="text-center py-12">
+   609→   609→            <MessageSquare className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+   610→   610→            <p className="text-sm text-slate-400">No tickets found</p>
+   611→   611→          </div>
+   612→   612→        ) : (
+   613→   613→          <div className="divide-y divide-white/[0.04]">
+   614→   614→            {tickets.map((ticket) => (
+   615→   615→              <div
+   616→   616→                key={ticket.id}
+   617→   617→                className="flex items-center gap-4 p-4 hover:bg-white/[0.02] cursor-pointer transition-colors"
+   618→   618→                onClick={() => setSelectedTicket(ticket)}
+   619→   619→              >
+   620→   620→                <div className="flex-1 min-w-0">
+   621→   621→                  <div className="flex items-center gap-2 mb-1">
+   622→   622→                    <span className="text-xs font-bold text-blue-400 font-mono">{ticket.ticketId}</span>
+   623→   623→                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${statusColors[ticket.status] || statusColors.open}`}>
+   624→   624→                      {statusLabel[ticket.status] || ticket.status}
+   625→   625→                    </span>
+   626→   626→                    <span className={`text-[10px] font-bold ${priorityColors[ticket.priority] || 'text-sky-400'}`}>{ticket.priority.toUpperCase()}</span>
+   627→   627→                  </div>
+   628→   628→                  <p className="text-sm text-white font-medium truncate">{ticket.subject}</p>
+   629→   629→                  <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-500">
+   630→   630→                    <span>{ticket.name || ticket.email}</span>
+   631→   631→                    <span>{ticket.category}</span>
+   632→   632→                    <span>{formatDate(ticket.createdAt)}</span>
+   633→   633→                  </div>
+   634→   634→                </div>
+   635→   635→                <ChevronRight className="w-4 h-4 text-slate-600 flex-shrink-0" />
+   636→   636→              </div>
+   637→   637→            ))}
+   638→   638→          </div>
+   639→   639→        )}
+   640→   640→      </div>
+   641→   641→
+   642→   642→      {/* Pagination */}
+   643→   643→      {total > 20 && (
+   644→   644→        <div className="flex items-center justify-between mt-4">
+   645→   645→          <p className="text-xs text-slate-400">Showing {(page - 1) * 20 + 1}-{Math.min(page * 20, total)} of {total}</p>
+   646→   646→          <div className="flex gap-2">
+   647→   647→            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 rounded-lg bg-white/[0.04] text-xs text-slate-400 disabled:opacity-50 hover:bg-white/[0.08]">Previous</button>
+   648→   648→            <button onClick={() => setPage(p => p + 1)} disabled={page * 20 >= total} className="px-3 py-1.5 rounded-lg bg-white/[0.04] text-xs text-slate-400 disabled:opacity-50 hover:bg-white/[0.08]">Next</button>
+   649→   649→          </div>
+   650→   650→        </div>
+   651→   651→      )}
+   652→   652→    </div>
+   653→   653→  );
+   654→   654→}
+   655→   655→

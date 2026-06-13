@@ -1,0 +1,933 @@
+     1→=== [1/26] Testing /dashboard ===
+     2→✓ DAKKHO Admin Panel
+     3→  https://dakkho-admin.pages.dev/dashboard
+     4→Final URL: https://dakkho-admin.pages.dev/dashboard
+     5→Title: DAKKHO Admin Panel
+     6→Snapshot: - complementary
+     7→  - image "DAKKHO"
+     8→  - heading "DAKKHO" [level=1, ref=e2]
+     9→  - paragraph
+    10→  - navigation
+    11→    - button "Dashboard" [ref=e11]
+    12→    - button "Analytics" [ref=e12]
+    13→    - button "Courses" [ref=e13]
+    14→    - button "Videos" [ref=e14]
+    15→    - button "Instructors" [ref=e15]
+    16→    - button "Categories" [ref=e16]
+    17→    - button "About Page" [ref=e17]
+    18→    - button "Users" [ref=e18]
+    19→    - button "Institutes" [ref=e19]
+    20→    - button "Technologies" [ref=e20]
+    21→    - button "Subjects" [ref=e21]
+    22→    - button "Inst. Requests" [ref=e22]
+    23→    - button "Coupons" [ref=e23]
+    24→    - button "Discounts" [ref=e24]
+    25→    - button "Payments" [ref=e25]
+    26→    - button "Packages" [ref=e26]
+    27→    - button "Enrollments" [ref=e27]
+    28→    - button "Events" [ref=e28]
+    29→    - button "Live Classes" [ref=e29]
+    30→    - button "Support" [ref=e30]
+    31→    - button "Push Notify" [ref=e31]
+    32→    - button "Notifications" [ref=e32]
+    33→    - button "Achievements" [ref=e33]
+    34→    - button "App Config" [ref=e34]
+    35→    - button "Email" [ref=e35]
+    36→✓ Screenshot saved to /tmp/admin_1_dashboard.png
+    37→---
+    38→=== [2/26] Testing /users ===
+    39→✓ 
+    40→  https://dakkho-admin.pages.dev/users
+    41→Final URL: https://dakkho-admin.pages.dev/users
+    42→Title: 
+    43→Snapshot: (empty page)
+    44→✓ Screenshot saved to /tmp/admin_2_users.png
+    45→---
+    46→=== [3/26] Testing /courses ===
+    47→✓ DAKKHO Admin Panel
+    48→  https://dakkho-admin.pages.dev/courses
+    49→Final URL: https://dakkho-admin.pages.dev/courses
+    50→Title: DAKKHO Admin Panel
+    51→Snapshot: - complementary
+    52→  - image "DAKKHO"
+    53→  - heading "DAKKHO" [level=1, ref=e2]
+    54→  - paragraph
+    55→  - navigation
+    56→    - button "Dashboard" [ref=e11]
+    57→    - button "Analytics" [ref=e12]
+    58→    - button "Courses" [ref=e13]
+    59→    - button "Videos" [ref=e14]
+    60→    - button "Instructors" [ref=e15]
+    61→    - button "Categories" [ref=e16]
+    62→    - button "About Page" [ref=e17]
+    63→    - button "Users" [ref=e18]
+    64→    - button "Institutes" [ref=e19]
+    65→    - button "Technologies" [ref=e20]
+    66→    - button "Subjects" [ref=e21]
+    67→    - button "Inst. Requests" [ref=e22]
+    68→    - button "Coupons" [ref=e23]
+    69→    - button "Discounts" [ref=e24]
+    70→    - button "Payments" [ref=e25]
+    71→    - button "Packages" [ref=e26]
+    72→    - button "Enrollments" [ref=e27]
+    73→    - button "Events" [ref=e28]
+    74→    - button "Live Classes" [ref=e29]
+    75→    - button "Support" [ref=e30]
+    76→    - button "Push Notify" [ref=e31]
+    77→    - button "Notifications" [ref=e32]
+    78→    - button "Achievements" [ref=e33]
+    79→    - button "App Config" [ref=e34]
+    80→    - button "Email" [ref=e35]
+    81→✓ Screenshot saved to /tmp/admin_3_courses.png
+    82→---
+    83→=== [4/26] Testing /videos ===
+    84→✓ DAKKHO Admin Panel
+    85→  https://dakkho-admin.pages.dev/videos
+    86→Final URL: https://dakkho-admin.pages.dev/videos
+    87→Title: DAKKHO Admin Panel
+    88→Snapshot: - complementary
+    89→  - image "DAKKHO"
+    90→  - heading "DAKKHO" [level=1, ref=e2]
+    91→  - paragraph
+    92→  - navigation
+    93→    - button "Dashboard" [ref=e11]
+    94→    - button "Analytics" [ref=e12]
+    95→    - button "Courses" [ref=e13]
+    96→    - button "Videos" [ref=e14]
+    97→    - button "Instructors" [ref=e15]
+    98→    - button "Categories" [ref=e16]
+    99→    - button "About Page" [ref=e17]
+   100→    - button "Users" [ref=e18]
+   101→    - button "Institutes" [ref=e19]
+   102→    - button "Technologies" [ref=e20]
+   103→    - button "Subjects" [ref=e21]
+   104→    - button "Inst. Requests" [ref=e22]
+   105→    - button "Coupons" [ref=e23]
+   106→    - button "Discounts" [ref=e24]
+   107→    - button "Payments" [ref=e25]
+   108→    - button "Packages" [ref=e26]
+   109→    - button "Enrollments" [ref=e27]
+   110→    - button "Events" [ref=e28]
+   111→    - button "Live Classes" [ref=e29]
+   112→    - button "Support" [ref=e30]
+   113→    - button "Push Notify" [ref=e31]
+   114→    - button "Notifications" [ref=e32]
+   115→    - button "Achievements" [ref=e33]
+   116→    - button "App Config" [ref=e34]
+   117→    - button "Email" [ref=e35]
+   118→✓ Screenshot saved to /tmp/admin_4_videos.png
+   119→---
+   120→=== [5/26] Testing /instructors ===
+   121→✓ DAKKHO Admin Panel
+   122→  https://dakkho-admin.pages.dev/instructors
+   123→Final URL: https://dakkho-admin.pages.dev/instructors
+   124→Title: DAKKHO Admin Panel
+   125→Snapshot: - complementary
+   126→  - image "DAKKHO"
+   127→  - heading "DAKKHO" [level=1, ref=e2]
+   128→  - paragraph
+   129→  - navigation
+   130→    - button "Dashboard" [ref=e11]
+   131→    - button "Analytics" [ref=e12]
+   132→    - button "Courses" [ref=e13]
+   133→    - button "Videos" [ref=e14]
+   134→    - button "Instructors" [ref=e15]
+   135→    - button "Categories" [ref=e16]
+   136→    - button "About Page" [ref=e17]
+   137→    - button "Users" [ref=e18]
+   138→    - button "Institutes" [ref=e19]
+   139→    - button "Technologies" [ref=e20]
+   140→    - button "Subjects" [ref=e21]
+   141→    - button "Inst. Requests" [ref=e22]
+   142→    - button "Coupons" [ref=e23]
+   143→    - button "Discounts" [ref=e24]
+   144→    - button "Payments" [ref=e25]
+   145→    - button "Packages" [ref=e26]
+   146→    - button "Enrollments" [ref=e27]
+   147→    - button "Events" [ref=e28]
+   148→    - button "Live Classes" [ref=e29]
+   149→    - button "Support" [ref=e30]
+   150→    - button "Push Notify" [ref=e31]
+   151→    - button "Notifications" [ref=e32]
+   152→    - button "Achievements" [ref=e33]
+   153→    - button "App Config" [ref=e34]
+   154→    - button "Email" [ref=e35]
+   155→✓ Screenshot saved to /tmp/admin_5_instructors.png
+   156→---
+   157→=== [6/26] Testing /categories ===
+   158→✓ DAKKHO Admin Panel
+   159→  https://dakkho-admin.pages.dev/categories
+   160→Final URL: https://dakkho-admin.pages.dev/categories
+   161→Title: DAKKHO Admin Panel
+   162→Snapshot: - complementary
+   163→  - image "DAKKHO"
+   164→  - heading "DAKKHO" [level=1, ref=e2]
+   165→  - paragraph
+   166→  - navigation
+   167→    - button "Dashboard" [ref=e11]
+   168→    - button "Analytics" [ref=e12]
+   169→    - button "Courses" [ref=e13]
+   170→    - button "Videos" [ref=e14]
+   171→    - button "Instructors" [ref=e15]
+   172→    - button "Categories" [ref=e16]
+   173→    - button "About Page" [ref=e17]
+   174→    - button "Users" [ref=e18]
+   175→    - button "Institutes" [ref=e19]
+   176→    - button "Technologies" [ref=e20]
+   177→    - button "Subjects" [ref=e21]
+   178→    - button "Inst. Requests" [ref=e22]
+   179→    - button "Coupons" [ref=e23]
+   180→    - button "Discounts" [ref=e24]
+   181→    - button "Payments" [ref=e25]
+   182→    - button "Packages" [ref=e26]
+   183→    - button "Enrollments" [ref=e27]
+   184→    - button "Events" [ref=e28]
+   185→    - button "Live Classes" [ref=e29]
+   186→    - button "Support" [ref=e30]
+   187→    - button "Push Notify" [ref=e31]
+   188→    - button "Notifications" [ref=e32]
+   189→    - button "Achievements" [ref=e33]
+   190→    - button "App Config" [ref=e34]
+   191→    - button "Email" [ref=e35]
+   192→✓ Screenshot saved to /tmp/admin_6_categories.png
+   193→---
+   194→=== [7/26] Testing /subjects ===
+   195→✓ DAKKHO Admin Panel
+   196→  https://dakkho-admin.pages.dev/subjects
+   197→Final URL: https://dakkho-admin.pages.dev/subjects
+   198→Title: DAKKHO Admin Panel
+   199→Snapshot: - complementary
+   200→  - image "DAKKHO"
+   201→  - heading "DAKKHO" [level=1, ref=e2]
+   202→  - paragraph
+   203→  - navigation
+   204→    - button "Dashboard" [ref=e11]
+   205→    - button "Analytics" [ref=e12]
+   206→    - button "Courses" [ref=e13]
+   207→    - button "Videos" [ref=e14]
+   208→    - button "Instructors" [ref=e15]
+   209→    - button "Categories" [ref=e16]
+   210→    - button "About Page" [ref=e17]
+   211→    - button "Users" [ref=e18]
+   212→    - button "Institutes" [ref=e19]
+   213→    - button "Technologies" [ref=e20]
+   214→    - button "Subjects" [ref=e21]
+   215→    - button "Inst. Requests" [ref=e22]
+   216→    - button "Coupons" [ref=e23]
+   217→    - button "Discounts" [ref=e24]
+   218→    - button "Payments" [ref=e25]
+   219→    - button "Packages" [ref=e26]
+   220→    - button "Enrollments" [ref=e27]
+   221→    - button "Events" [ref=e28]
+   222→    - button "Live Classes" [ref=e29]
+   223→    - button "Support" [ref=e30]
+   224→    - button "Push Notify" [ref=e31]
+   225→    - button "Notifications" [ref=e32]
+   226→    - button "Achievements" [ref=e33]
+   227→    - button "App Config" [ref=e34]
+   228→    - button "Email" [ref=e35]
+   229→✓ Screenshot saved to /tmp/admin_7_subjects.png
+   230→---
+   231→=== [8/26] Testing /about ===
+   232→✓ DAKKHO Admin Panel
+   233→  https://dakkho-admin.pages.dev/about
+   234→Final URL: https://dakkho-admin.pages.dev/about
+   235→Title: DAKKHO Admin Panel
+   236→Snapshot: - complementary
+   237→  - image "DAKKHO"
+   238→  - heading "DAKKHO" [level=1, ref=e2]
+   239→  - paragraph
+   240→  - navigation
+   241→    - button "Dashboard" [ref=e11]
+   242→    - button "Analytics" [ref=e12]
+   243→    - button "Courses" [ref=e13]
+   244→    - button "Videos" [ref=e14]
+   245→    - button "Instructors" [ref=e15]
+   246→    - button "Categories" [ref=e16]
+   247→    - button "About Page" [ref=e17]
+   248→    - button "Users" [ref=e18]
+   249→    - button "Institutes" [ref=e19]
+   250→    - button "Technologies" [ref=e20]
+   251→    - button "Subjects" [ref=e21]
+   252→    - button "Inst. Requests" [ref=e22]
+   253→    - button "Coupons" [ref=e23]
+   254→    - button "Discounts" [ref=e24]
+   255→    - button "Payments" [ref=e25]
+   256→    - button "Packages" [ref=e26]
+   257→    - button "Enrollments" [ref=e27]
+   258→    - button "Events" [ref=e28]
+   259→    - button "Live Classes" [ref=e29]
+   260→    - button "Support" [ref=e30]
+   261→    - button "Push Notify" [ref=e31]
+   262→    - button "Notifications" [ref=e32]
+   263→    - button "Achievements" [ref=e33]
+   264→    - button "App Config" [ref=e34]
+   265→    - button "Email" [ref=e35]
+   266→✓ Screenshot saved to /tmp/admin_8_about.png
+   267→---
+   268→=== [9/26] Testing /institutes ===
+   269→✓ DAKKHO Admin Panel
+   270→  https://dakkho-admin.pages.dev/institutes
+   271→Final URL: https://dakkho-admin.pages.dev/institutes
+   272→Title: DAKKHO Admin Panel
+   273→Snapshot: - complementary
+   274→  - image "DAKKHO"
+   275→  - heading "DAKKHO" [level=1, ref=e2]
+   276→  - paragraph
+   277→  - navigation
+   278→    - button "Dashboard" [ref=e11]
+   279→    - button "Analytics" [ref=e12]
+   280→    - button "Courses" [ref=e13]
+   281→    - button "Videos" [ref=e14]
+   282→    - button "Instructors" [ref=e15]
+   283→    - button "Categories" [ref=e16]
+   284→    - button "About Page" [ref=e17]
+   285→    - button "Users" [ref=e18]
+   286→    - button "Institutes" [ref=e19]
+   287→    - button "Technologies" [ref=e20]
+   288→    - button "Subjects" [ref=e21]
+   289→    - button "Inst. Requests" [ref=e22]
+   290→    - button "Coupons" [ref=e23]
+   291→    - button "Discounts" [ref=e24]
+   292→    - button "Payments" [ref=e25]
+   293→    - button "Packages" [ref=e26]
+   294→    - button "Enrollments" [ref=e27]
+   295→    - button "Events" [ref=e28]
+   296→    - button "Live Classes" [ref=e29]
+   297→    - button "Support" [ref=e30]
+   298→    - button "Push Notify" [ref=e31]
+   299→    - button "Notifications" [ref=e32]
+   300→    - button "Achievements" [ref=e33]
+   301→    - button "App Config" [ref=e34]
+   302→    - button "Email" [ref=e35]
+   303→✓ Screenshot saved to /tmp/admin_9_institutes.png
+   304→---
+   305→=== [10/26] Testing /technologies ===
+   306→✓ DAKKHO Admin Panel
+   307→  https://dakkho-admin.pages.dev/technologies
+   308→Final URL: https://dakkho-admin.pages.dev/technologies
+   309→Title: DAKKHO Admin Panel
+   310→Snapshot: - complementary
+   311→  - image "DAKKHO"
+   312→  - heading "DAKKHO" [level=1, ref=e2]
+   313→  - paragraph
+   314→  - navigation
+   315→    - button "Dashboard" [ref=e11]
+   316→    - button "Analytics" [ref=e12]
+   317→    - button "Courses" [ref=e13]
+   318→    - button "Videos" [ref=e14]
+   319→    - button "Instructors" [ref=e15]
+   320→    - button "Categories" [ref=e16]
+   321→    - button "About Page" [ref=e17]
+   322→    - button "Users" [ref=e18]
+   323→    - button "Institutes" [ref=e19]
+   324→    - button "Technologies" [ref=e20]
+   325→    - button "Subjects" [ref=e21]
+   326→    - button "Inst. Requests" [ref=e22]
+   327→    - button "Coupons" [ref=e23]
+   328→    - button "Discounts" [ref=e24]
+   329→    - button "Payments" [ref=e25]
+   330→    - button "Packages" [ref=e26]
+   331→    - button "Enrollments" [ref=e27]
+   332→    - button "Events" [ref=e28]
+   333→    - button "Live Classes" [ref=e29]
+   334→    - button "Support" [ref=e30]
+   335→    - button "Push Notify" [ref=e31]
+   336→    - button "Notifications" [ref=e32]
+   337→    - button "Achievements" [ref=e33]
+   338→    - button "App Config" [ref=e34]
+   339→    - button "Email" [ref=e35]
+   340→✓ Screenshot saved to /tmp/admin_10_technologies.png
+   341→---
+   342→=== [11/26] Testing /institute-requests ===
+   343→✓ DAKKHO Admin Panel
+   344→  https://dakkho-admin.pages.dev/institute-requests
+   345→Final URL: https://dakkho-admin.pages.dev/institute-requests
+   346→Title: DAKKHO Admin Panel
+   347→Snapshot: - complementary
+   348→  - image "DAKKHO"
+   349→  - heading "DAKKHO" [level=1, ref=e2]
+   350→  - paragraph
+   351→  - navigation
+   352→    - button "Dashboard" [ref=e11]
+   353→    - button "Analytics" [ref=e12]
+   354→    - button "Courses" [ref=e13]
+   355→    - button "Videos" [ref=e14]
+   356→    - button "Instructors" [ref=e15]
+   357→    - button "Categories" [ref=e16]
+   358→    - button "About Page" [ref=e17]
+   359→    - button "Users" [ref=e18]
+   360→    - button "Institutes" [ref=e19]
+   361→    - button "Technologies" [ref=e20]
+   362→    - button "Subjects" [ref=e21]
+   363→    - button "Inst. Requests" [ref=e22]
+   364→    - button "Coupons" [ref=e23]
+   365→    - button "Discounts" [ref=e24]
+   366→    - button "Payments" [ref=e25]
+   367→    - button "Packages" [ref=e26]
+   368→    - button "Enrollments" [ref=e27]
+   369→    - button "Events" [ref=e28]
+   370→    - button "Live Classes" [ref=e29]
+   371→    - button "Support" [ref=e30]
+   372→    - button "Push Notify" [ref=e31]
+   373→    - button "Notifications" [ref=e32]
+   374→    - button "Achievements" [ref=e33]
+   375→    - button "App Config" [ref=e34]
+   376→    - button "Email" [ref=e35]
+   377→✓ Screenshot saved to /tmp/admin_11_institute-requests.png
+   378→---
+   379→=== [12/26] Testing /coupons ===
+   380→✓ DAKKHO Admin Panel
+   381→  https://dakkho-admin.pages.dev/coupons
+   382→Final URL: https://dakkho-admin.pages.dev/coupons
+   383→Title: DAKKHO Admin Panel
+   384→Snapshot: - complementary
+   385→  - image "DAKKHO"
+   386→  - heading "DAKKHO" [level=1, ref=e2]
+   387→  - paragraph
+   388→  - navigation
+   389→    - button "Dashboard" [ref=e11]
+   390→    - button "Analytics" [ref=e12]
+   391→    - button "Courses" [ref=e13]
+   392→    - button "Videos" [ref=e14]
+   393→    - button "Instructors" [ref=e15]
+   394→    - button "Categories" [ref=e16]
+   395→    - button "About Page" [ref=e17]
+   396→    - button "Users" [ref=e18]
+   397→    - button "Institutes" [ref=e19]
+   398→    - button "Technologies" [ref=e20]
+   399→    - button "Subjects" [ref=e21]
+   400→    - button "Inst. Requests" [ref=e22]
+   401→    - button "Coupons" [ref=e23]
+   402→    - button "Discounts" [ref=e24]
+   403→    - button "Payments" [ref=e25]
+   404→    - button "Packages" [ref=e26]
+   405→    - button "Enrollments" [ref=e27]
+   406→    - button "Events" [ref=e28]
+   407→    - button "Live Classes" [ref=e29]
+   408→    - button "Support" [ref=e30]
+   409→    - button "Push Notify" [ref=e31]
+   410→    - button "Notifications" [ref=e32]
+   411→    - button "Achievements" [ref=e33]
+   412→    - button "App Config" [ref=e34]
+   413→    - button "Email" [ref=e35]
+   414→✓ Screenshot saved to /tmp/admin_12_coupons.png
+   415→---
+   416→=== [13/26] Testing /discounts ===
+   417→✓ DAKKHO Admin Panel
+   418→  https://dakkho-admin.pages.dev/discounts
+   419→Final URL: https://dakkho-admin.pages.dev/discounts
+   420→Title: DAKKHO Admin Panel
+   421→Snapshot: - complementary
+   422→  - image "DAKKHO"
+   423→  - heading "DAKKHO" [level=1, ref=e2]
+   424→  - paragraph
+   425→  - navigation
+   426→    - button "Dashboard" [ref=e11]
+   427→    - button "Analytics" [ref=e12]
+   428→    - button "Courses" [ref=e13]
+   429→    - button "Videos" [ref=e14]
+   430→    - button "Instructors" [ref=e15]
+   431→    - button "Categories" [ref=e16]
+   432→    - button "About Page" [ref=e17]
+   433→    - button "Users" [ref=e18]
+   434→    - button "Institutes" [ref=e19]
+   435→    - button "Technologies" [ref=e20]
+   436→    - button "Subjects" [ref=e21]
+   437→    - button "Inst. Requests" [ref=e22]
+   438→    - button "Coupons" [ref=e23]
+   439→    - button "Discounts" [ref=e24]
+   440→    - button "Payments" [ref=e25]
+   441→    - button "Packages" [ref=e26]
+   442→    - button "Enrollments" [ref=e27]
+   443→    - button "Events" [ref=e28]
+   444→    - button "Live Classes" [ref=e29]
+   445→    - button "Support" [ref=e30]
+   446→    - button "Push Notify" [ref=e31]
+   447→    - button "Notifications" [ref=e32]
+   448→    - button "Achievements" [ref=e33]
+   449→    - button "App Config" [ref=e34]
+   450→    - button "Email" [ref=e35]
+   451→✓ Screenshot saved to /tmp/admin_13_discounts.png
+   452→---
+   453→=== [14/26] Testing /payments ===
+   454→✓ DAKKHO Admin Panel
+   455→  https://dakkho-admin.pages.dev/payments
+   456→Final URL: https://dakkho-admin.pages.dev/payments
+   457→Title: DAKKHO Admin Panel
+   458→Snapshot: - complementary
+   459→  - image "DAKKHO"
+   460→  - heading "DAKKHO" [level=1, ref=e2]
+   461→  - paragraph
+   462→  - navigation
+   463→    - button "Dashboard" [ref=e11]
+   464→    - button "Analytics" [ref=e12]
+   465→    - button "Courses" [ref=e13]
+   466→    - button "Videos" [ref=e14]
+   467→    - button "Instructors" [ref=e15]
+   468→    - button "Categories" [ref=e16]
+   469→    - button "About Page" [ref=e17]
+   470→    - button "Users" [ref=e18]
+   471→    - button "Institutes" [ref=e19]
+   472→    - button "Technologies" [ref=e20]
+   473→    - button "Subjects" [ref=e21]
+   474→    - button "Inst. Requests" [ref=e22]
+   475→    - button "Coupons" [ref=e23]
+   476→    - button "Discounts" [ref=e24]
+   477→    - button "Payments" [ref=e25]
+   478→    - button "Packages" [ref=e26]
+   479→    - button "Enrollments" [ref=e27]
+   480→    - button "Events" [ref=e28]
+   481→    - button "Live Classes" [ref=e29]
+   482→    - button "Support" [ref=e30]
+   483→    - button "Push Notify" [ref=e31]
+   484→    - button "Notifications" [ref=e32]
+   485→    - button "Achievements" [ref=e33]
+   486→    - button "App Config" [ref=e34]
+   487→    - button "Email" [ref=e35]
+   488→✓ Screenshot saved to /tmp/admin_14_payments.png
+   489→---
+   490→=== [15/26] Testing /packages ===
+   491→✓ DAKKHO Admin Panel
+   492→  https://dakkho-admin.pages.dev/packages
+   493→Final URL: https://dakkho-admin.pages.dev/packages
+   494→Title: DAKKHO Admin Panel
+   495→Snapshot: - complementary
+   496→  - image "DAKKHO"
+   497→  - heading "DAKKHO" [level=1, ref=e2]
+   498→  - paragraph
+   499→  - navigation
+   500→    - button "Dashboard" [ref=e11]
+   501→    - button "Analytics" [ref=e12]
+   502→    - button "Courses" [ref=e13]
+   503→    - button "Videos" [ref=e14]
+   504→    - button "Instructors" [ref=e15]
+   505→    - button "Categories" [ref=e16]
+   506→    - button "About Page" [ref=e17]
+   507→    - button "Users" [ref=e18]
+   508→    - button "Institutes" [ref=e19]
+   509→    - button "Technologies" [ref=e20]
+   510→    - button "Subjects" [ref=e21]
+   511→    - button "Inst. Requests" [ref=e22]
+   512→    - button "Coupons" [ref=e23]
+   513→    - button "Discounts" [ref=e24]
+   514→    - button "Payments" [ref=e25]
+   515→    - button "Packages" [ref=e26]
+   516→    - button "Enrollments" [ref=e27]
+   517→    - button "Events" [ref=e28]
+   518→    - button "Live Classes" [ref=e29]
+   519→    - button "Support" [ref=e30]
+   520→    - button "Push Notify" [ref=e31]
+   521→    - button "Notifications" [ref=e32]
+   522→    - button "Achievements" [ref=e33]
+   523→    - button "App Config" [ref=e34]
+   524→    - button "Email" [ref=e35]
+   525→✓ Screenshot saved to /tmp/admin_15_packages.png
+   526→---
+   527→=== [16/26] Testing /enrollments ===
+   528→✓ DAKKHO Admin Panel
+   529→  https://dakkho-admin.pages.dev/enrollments
+   530→Final URL: https://dakkho-admin.pages.dev/enrollments
+   531→Title: DAKKHO Admin Panel
+   532→Snapshot: - complementary
+   533→  - image "DAKKHO"
+   534→  - heading "DAKKHO" [level=1, ref=e2]
+   535→  - paragraph
+   536→  - navigation
+   537→    - button "Dashboard" [ref=e11]
+   538→    - button "Analytics" [ref=e12]
+   539→    - button "Courses" [ref=e13]
+   540→    - button "Videos" [ref=e14]
+   541→    - button "Instructors" [ref=e15]
+   542→    - button "Categories" [ref=e16]
+   543→    - button "About Page" [ref=e17]
+   544→    - button "Users" [ref=e18]
+   545→    - button "Institutes" [ref=e19]
+   546→    - button "Technologies" [ref=e20]
+   547→    - button "Subjects" [ref=e21]
+   548→    - button "Inst. Requests" [ref=e22]
+   549→    - button "Coupons" [ref=e23]
+   550→    - button "Discounts" [ref=e24]
+   551→    - button "Payments" [ref=e25]
+   552→    - button "Packages" [ref=e26]
+   553→    - button "Enrollments" [ref=e27]
+   554→    - button "Events" [ref=e28]
+   555→    - button "Live Classes" [ref=e29]
+   556→    - button "Support" [ref=e30]
+   557→    - button "Push Notify" [ref=e31]
+   558→    - button "Notifications" [ref=e32]
+   559→    - button "Achievements" [ref=e33]
+   560→    - button "App Config" [ref=e34]
+   561→    - button "Email" [ref=e35]
+   562→✓ Screenshot saved to /tmp/admin_16_enrollments.png
+   563→---
+   564→=== [17/26] Testing /events ===
+   565→✓ DAKKHO Admin Panel
+   566→  https://dakkho-admin.pages.dev/events
+   567→Final URL: https://dakkho-admin.pages.dev/events
+   568→Title: DAKKHO Admin Panel
+   569→Snapshot: - complementary
+   570→  - image "DAKKHO"
+   571→  - heading "DAKKHO" [level=1, ref=e2]
+   572→  - paragraph
+   573→  - navigation
+   574→    - button "Dashboard" [ref=e11]
+   575→    - button "Analytics" [ref=e12]
+   576→    - button "Courses" [ref=e13]
+   577→    - button "Videos" [ref=e14]
+   578→    - button "Instructors" [ref=e15]
+   579→    - button "Categories" [ref=e16]
+   580→    - button "About Page" [ref=e17]
+   581→    - button "Users" [ref=e18]
+   582→    - button "Institutes" [ref=e19]
+   583→    - button "Technologies" [ref=e20]
+   584→    - button "Subjects" [ref=e21]
+   585→    - button "Inst. Requests" [ref=e22]
+   586→    - button "Coupons" [ref=e23]
+   587→    - button "Discounts" [ref=e24]
+   588→    - button "Payments" [ref=e25]
+   589→    - button "Packages" [ref=e26]
+   590→    - button "Enrollments" [ref=e27]
+   591→    - button "Events" [ref=e28]
+   592→    - button "Live Classes" [ref=e29]
+   593→    - button "Support" [ref=e30]
+   594→    - button "Push Notify" [ref=e31]
+   595→    - button "Notifications" [ref=e32]
+   596→    - button "Achievements" [ref=e33]
+   597→    - button "App Config" [ref=e34]
+   598→    - button "Email" [ref=e35]
+   599→✓ Screenshot saved to /tmp/admin_17_events.png
+   600→---
+   601→=== [18/26] Testing /live-classes ===
+   602→✓ DAKKHO Admin Panel
+   603→  https://dakkho-admin.pages.dev/live-classes
+   604→Final URL: https://dakkho-admin.pages.dev/live-classes
+   605→Title: DAKKHO Admin Panel
+   606→Snapshot: - complementary
+   607→  - image "DAKKHO"
+   608→  - heading "DAKKHO" [level=1, ref=e2]
+   609→  - paragraph
+   610→  - navigation
+   611→    - button "Dashboard" [ref=e11]
+   612→    - button "Analytics" [ref=e12]
+   613→    - button "Courses" [ref=e13]
+   614→    - button "Videos" [ref=e14]
+   615→    - button "Instructors" [ref=e15]
+   616→    - button "Categories" [ref=e16]
+   617→    - button "About Page" [ref=e17]
+   618→    - button "Users" [ref=e18]
+   619→    - button "Institutes" [ref=e19]
+   620→    - button "Technologies" [ref=e20]
+   621→    - button "Subjects" [ref=e21]
+   622→    - button "Inst. Requests" [ref=e22]
+   623→    - button "Coupons" [ref=e23]
+   624→    - button "Discounts" [ref=e24]
+   625→    - button "Payments" [ref=e25]
+   626→    - button "Packages" [ref=e26]
+   627→    - button "Enrollments" [ref=e27]
+   628→    - button "Events" [ref=e28]
+   629→    - button "Live Classes" [ref=e29]
+   630→    - button "Support" [ref=e30]
+   631→    - button "Push Notify" [ref=e31]
+   632→    - button "Notifications" [ref=e32]
+   633→    - button "Achievements" [ref=e33]
+   634→    - button "App Config" [ref=e34]
+   635→    - button "Email" [ref=e35]
+   636→✓ Screenshot saved to /tmp/admin_18_live-classes.png
+   637→---
+   638→=== [19/26] Testing /support ===
+   639→✓ DAKKHO Admin Panel
+   640→  https://dakkho-admin.pages.dev/support
+   641→Final URL: https://dakkho-admin.pages.dev/support
+   642→Title: DAKKHO Admin Panel
+   643→Snapshot: - complementary
+   644→  - image "DAKKHO"
+   645→  - heading "DAKKHO" [level=1, ref=e2]
+   646→  - paragraph
+   647→  - navigation
+   648→    - button "Dashboard" [ref=e11]
+   649→    - button "Analytics" [ref=e12]
+   650→    - button "Courses" [ref=e13]
+   651→    - button "Videos" [ref=e14]
+   652→    - button "Instructors" [ref=e15]
+   653→    - button "Categories" [ref=e16]
+   654→    - button "About Page" [ref=e17]
+   655→    - button "Users" [ref=e18]
+   656→    - button "Institutes" [ref=e19]
+   657→    - button "Technologies" [ref=e20]
+   658→    - button "Subjects" [ref=e21]
+   659→    - button "Inst. Requests" [ref=e22]
+   660→    - button "Coupons" [ref=e23]
+   661→    - button "Discounts" [ref=e24]
+   662→    - button "Payments" [ref=e25]
+   663→    - button "Packages" [ref=e26]
+   664→    - button "Enrollments" [ref=e27]
+   665→    - button "Events" [ref=e28]
+   666→    - button "Live Classes" [ref=e29]
+   667→    - button "Support" [ref=e30]
+   668→    - button "Push Notify" [ref=e31]
+   669→    - button "Notifications" [ref=e32]
+   670→    - button "Achievements" [ref=e33]
+   671→    - button "App Config" [ref=e34]
+   672→    - button "Email" [ref=e35]
+   673→✓ Screenshot saved to /tmp/admin_19_support.png
+   674→---
+   675→=== [20/26] Testing /achievements ===
+   676→✓ DAKKHO Admin Panel
+   677→  https://dakkho-admin.pages.dev/achievements
+   678→Final URL: https://dakkho-admin.pages.dev/achievements
+   679→Title: DAKKHO Admin Panel
+   680→Snapshot: - complementary
+   681→  - image "DAKKHO"
+   682→  - heading "DAKKHO" [level=1, ref=e2]
+   683→  - paragraph
+   684→  - navigation
+   685→    - button "Dashboard" [ref=e11]
+   686→    - button "Analytics" [ref=e12]
+   687→    - button "Courses" [ref=e13]
+   688→    - button "Videos" [ref=e14]
+   689→    - button "Instructors" [ref=e15]
+   690→    - button "Categories" [ref=e16]
+   691→    - button "About Page" [ref=e17]
+   692→    - button "Users" [ref=e18]
+   693→    - button "Institutes" [ref=e19]
+   694→    - button "Technologies" [ref=e20]
+   695→    - button "Subjects" [ref=e21]
+   696→    - button "Inst. Requests" [ref=e22]
+   697→    - button "Coupons" [ref=e23]
+   698→    - button "Discounts" [ref=e24]
+   699→    - button "Payments" [ref=e25]
+   700→    - button "Packages" [ref=e26]
+   701→    - button "Enrollments" [ref=e27]
+   702→    - button "Events" [ref=e28]
+   703→    - button "Live Classes" [ref=e29]
+   704→    - button "Support" [ref=e30]
+   705→    - button "Push Notify" [ref=e31]
+   706→    - button "Notifications" [ref=e32]
+   707→    - button "Achievements" [ref=e33]
+   708→    - button "App Config" [ref=e34]
+   709→    - button "Email" [ref=e35]
+   710→✓ Screenshot saved to /tmp/admin_20_achievements.png
+   711→---
+   712→=== [21/26] Testing /push ===
+   713→✓ DAKKHO Admin Panel
+   714→  https://dakkho-admin.pages.dev/push
+   715→Final URL: https://dakkho-admin.pages.dev/push
+   716→Title: DAKKHO Admin Panel
+   717→Snapshot: - complementary
+   718→  - image "DAKKHO"
+   719→  - heading "DAKKHO" [level=1, ref=e2]
+   720→  - paragraph
+   721→  - navigation
+   722→    - button "Dashboard" [ref=e11]
+   723→    - button "Analytics" [ref=e12]
+   724→    - button "Courses" [ref=e13]
+   725→    - button "Videos" [ref=e14]
+   726→    - button "Instructors" [ref=e15]
+   727→    - button "Categories" [ref=e16]
+   728→    - button "About Page" [ref=e17]
+   729→    - button "Users" [ref=e18]
+   730→    - button "Institutes" [ref=e19]
+   731→    - button "Technologies" [ref=e20]
+   732→    - button "Subjects" [ref=e21]
+   733→    - button "Inst. Requests" [ref=e22]
+   734→    - button "Coupons" [ref=e23]
+   735→    - button "Discounts" [ref=e24]
+   736→    - button "Payments" [ref=e25]
+   737→    - button "Packages" [ref=e26]
+   738→    - button "Enrollments" [ref=e27]
+   739→    - button "Events" [ref=e28]
+   740→    - button "Live Classes" [ref=e29]
+   741→    - button "Support" [ref=e30]
+   742→    - button "Push Notify" [ref=e31]
+   743→    - button "Notifications" [ref=e32]
+   744→    - button "Achievements" [ref=e33]
+   745→    - button "App Config" [ref=e34]
+   746→    - button "Email" [ref=e35]
+   747→✓ Screenshot saved to /tmp/admin_21_push.png
+   748→---
+   749→=== [22/26] Testing /notifications ===
+   750→✓ DAKKHO Admin Panel
+   751→  https://dakkho-admin.pages.dev/notifications
+   752→Final URL: https://dakkho-admin.pages.dev/notifications
+   753→Title: DAKKHO Admin Panel
+   754→Snapshot: - complementary
+   755→  - image "DAKKHO"
+   756→  - heading "DAKKHO" [level=1, ref=e2]
+   757→  - paragraph
+   758→  - navigation
+   759→    - button "Dashboard" [ref=e11]
+   760→    - button "Analytics" [ref=e12]
+   761→    - button "Courses" [ref=e13]
+   762→    - button "Videos" [ref=e14]
+   763→    - button "Instructors" [ref=e15]
+   764→    - button "Categories" [ref=e16]
+   765→    - button "About Page" [ref=e17]
+   766→    - button "Users" [ref=e18]
+   767→    - button "Institutes" [ref=e19]
+   768→    - button "Technologies" [ref=e20]
+   769→    - button "Subjects" [ref=e21]
+   770→    - button "Inst. Requests" [ref=e22]
+   771→    - button "Coupons" [ref=e23]
+   772→    - button "Discounts" [ref=e24]
+   773→    - button "Payments" [ref=e25]
+   774→    - button "Packages" [ref=e26]
+   775→    - button "Enrollments" [ref=e27]
+   776→    - button "Events" [ref=e28]
+   777→    - button "Live Classes" [ref=e29]
+   778→    - button "Support" [ref=e30]
+   779→    - button "Push Notify" [ref=e31]
+   780→    - button "Notifications" [ref=e32]
+   781→    - button "Achievements" [ref=e33]
+   782→    - button "App Config" [ref=e34]
+   783→    - button "Email" [ref=e35]
+   784→✓ Screenshot saved to /tmp/admin_22_notifications.png
+   785→---
+   786→=== [23/26] Testing /config ===
+   787→✓ DAKKHO Admin Panel
+   788→  https://dakkho-admin.pages.dev/config
+   789→Final URL: https://dakkho-admin.pages.dev/config
+   790→Title: DAKKHO Admin Panel
+   791→Snapshot: - complementary
+   792→  - image "DAKKHO"
+   793→  - heading "DAKKHO" [level=1, ref=e2]
+   794→  - paragraph
+   795→  - navigation
+   796→    - button "Dashboard" [ref=e11]
+   797→    - button "Analytics" [ref=e12]
+   798→    - button "Courses" [ref=e13]
+   799→    - button "Videos" [ref=e14]
+   800→    - button "Instructors" [ref=e15]
+   801→    - button "Categories" [ref=e16]
+   802→    - button "About Page" [ref=e17]
+   803→    - button "Users" [ref=e18]
+   804→    - button "Institutes" [ref=e19]
+   805→    - button "Technologies" [ref=e20]
+   806→    - button "Subjects" [ref=e21]
+   807→    - button "Inst. Requests" [ref=e22]
+   808→    - button "Coupons" [ref=e23]
+   809→    - button "Discounts" [ref=e24]
+   810→    - button "Payments" [ref=e25]
+   811→    - button "Packages" [ref=e26]
+   812→    - button "Enrollments" [ref=e27]
+   813→    - button "Events" [ref=e28]
+   814→    - button "Live Classes" [ref=e29]
+   815→    - button "Support" [ref=e30]
+   816→    - button "Push Notify" [ref=e31]
+   817→    - button "Notifications" [ref=e32]
+   818→    - button "Achievements" [ref=e33]
+   819→    - button "App Config" [ref=e34]
+   820→    - button "Email" [ref=e35]
+   821→✓ Screenshot saved to /tmp/admin_23_config.png
+   822→---
+   823→=== [24/26] Testing /email ===
+   824→✓ DAKKHO Admin Panel
+   825→  https://dakkho-admin.pages.dev/email
+   826→Final URL: https://dakkho-admin.pages.dev/email
+   827→Title: DAKKHO Admin Panel
+   828→Snapshot: - complementary
+   829→  - image "DAKKHO"
+   830→  - heading "DAKKHO" [level=1, ref=e2]
+   831→  - paragraph
+   832→  - navigation
+   833→    - button "Dashboard" [ref=e11]
+   834→    - button "Analytics" [ref=e12]
+   835→    - button "Courses" [ref=e13]
+   836→    - button "Videos" [ref=e14]
+   837→    - button "Instructors" [ref=e15]
+   838→    - button "Categories" [ref=e16]
+   839→    - button "About Page" [ref=e17]
+   840→    - button "Users" [ref=e18]
+   841→    - button "Institutes" [ref=e19]
+   842→    - button "Technologies" [ref=e20]
+   843→    - button "Subjects" [ref=e21]
+   844→    - button "Inst. Requests" [ref=e22]
+   845→    - button "Coupons" [ref=e23]
+   846→    - button "Discounts" [ref=e24]
+   847→    - button "Payments" [ref=e25]
+   848→    - button "Packages" [ref=e26]
+   849→    - button "Enrollments" [ref=e27]
+   850→    - button "Events" [ref=e28]
+   851→    - button "Live Classes" [ref=e29]
+   852→    - button "Support" [ref=e30]
+   853→    - button "Push Notify" [ref=e31]
+   854→    - button "Notifications" [ref=e32]
+   855→    - button "Achievements" [ref=e33]
+   856→    - button "App Config" [ref=e34]
+   857→    - button "Email" [ref=e35]
+   858→✓ Screenshot saved to /tmp/admin_24_email.png
+   859→---
+   860→=== [25/26] Testing /analytics ===
+   861→✓ DAKKHO Admin Panel
+   862→  https://dakkho-admin.pages.dev/analytics
+   863→Final URL: https://dakkho-admin.pages.dev/analytics
+   864→Title: DAKKHO Admin Panel
+   865→Snapshot: - complementary
+   866→  - image "DAKKHO"
+   867→  - heading "DAKKHO" [level=1, ref=e2]
+   868→  - paragraph
+   869→  - navigation
+   870→    - button "Dashboard" [ref=e11]
+   871→    - button "Analytics" [ref=e12]
+   872→    - button "Courses" [ref=e13]
+   873→    - button "Videos" [ref=e14]
+   874→    - button "Instructors" [ref=e15]
+   875→    - button "Categories" [ref=e16]
+   876→    - button "About Page" [ref=e17]
+   877→    - button "Users" [ref=e18]
+   878→    - button "Institutes" [ref=e19]
+   879→    - button "Technologies" [ref=e20]
+   880→    - button "Subjects" [ref=e21]
+   881→    - button "Inst. Requests" [ref=e22]
+   882→    - button "Coupons" [ref=e23]
+   883→    - button "Discounts" [ref=e24]
+   884→    - button "Payments" [ref=e25]
+   885→    - button "Packages" [ref=e26]
+   886→    - button "Enrollments" [ref=e27]
+   887→    - button "Events" [ref=e28]
+   888→    - button "Live Classes" [ref=e29]
+   889→    - button "Support" [ref=e30]
+   890→    - button "Push Notify" [ref=e31]
+   891→    - button "Notifications" [ref=e32]
+   892→    - button "Achievements" [ref=e33]
+   893→    - button "App Config" [ref=e34]
+   894→    - button "Email" [ref=e35]
+   895→✓ Screenshot saved to /tmp/admin_25_analytics.png
+   896→---
+   897→=== [26/26] Testing /settings ===
+   898→✓ DAKKHO Admin Panel
+   899→  https://dakkho-admin.pages.dev/settings
+   900→Final URL: https://dakkho-admin.pages.dev/settings
+   901→Title: DAKKHO Admin Panel
+   902→Snapshot: - complementary
+   903→  - image "DAKKHO"
+   904→  - heading "DAKKHO" [level=1, ref=e2]
+   905→  - paragraph
+   906→  - navigation
+   907→    - button "Dashboard" [ref=e11]
+   908→    - button "Analytics" [ref=e12]
+   909→    - button "Courses" [ref=e13]
+   910→    - button "Videos" [ref=e14]
+   911→    - button "Instructors" [ref=e15]
+   912→    - button "Categories" [ref=e16]
+   913→    - button "About Page" [ref=e17]
+   914→    - button "Users" [ref=e18]
+   915→    - button "Institutes" [ref=e19]
+   916→    - button "Technologies" [ref=e20]
+   917→    - button "Subjects" [ref=e21]
+   918→    - button "Inst. Requests" [ref=e22]
+   919→    - button "Coupons" [ref=e23]
+   920→    - button "Discounts" [ref=e24]
+   921→    - button "Payments" [ref=e25]
+   922→    - button "Packages" [ref=e26]
+   923→    - button "Enrollments" [ref=e27]
+   924→    - button "Events" [ref=e28]
+   925→    - button "Live Classes" [ref=e29]
+   926→    - button "Support" [ref=e30]
+   927→    - button "Push Notify" [ref=e31]
+   928→    - button "Notifications" [ref=e32]
+   929→    - button "Achievements" [ref=e33]
+   930→    - button "App Config" [ref=e34]
+   931→    - button "Email" [ref=e35]
+   932→✓ Screenshot saved to /tmp/admin_26_settings.png
+   933→---
