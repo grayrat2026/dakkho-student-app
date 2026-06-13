@@ -9,6 +9,7 @@ import {
   MessageSquare, AlertCircle,
 } from 'lucide-react';
 import { useNavigationStore, useAuthStore } from '@/lib/store';
+import { api } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -34,6 +35,7 @@ export function DeleteAccountPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [acknowledged, setAcknowledged] = useState({
     dataLost: false,
     coursesLost: false,
@@ -52,24 +54,22 @@ export function DeleteAccountPage() {
   const handleDelete = async () => {
     if (!confirmMatch || !password.trim()) return;
     setIsDeleting(true);
+    setDeleteError('');
 
     try {
-      // Submit deletion with survey to server
-      await fetch('/api/user/delete-account', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user?.id,
-          reason: selectedReason,
-          feedback: feedback,
-          passwordVerified: true,
-        }),
+      // Call the Worker API to delete the account (verifies password server-side)
+      await api.post('/student/delete-account', {
+        password,
+        reason: selectedReason,
+        feedback,
       });
-    } catch {}
-
-    await new Promise((r) => setTimeout(r, 1500));
-    setIsDeleting(false);
-    setStep('deleted');
+      setIsDeleting(false);
+      setStep('deleted');
+    } catch (err: any) {
+      setIsDeleting(false);
+      const errorMsg = err?.message || err?.error || 'Failed to delete account. Please check your password and try again.';
+      setDeleteError(errorMsg);
+    }
   };
 
   if (step === 'deleted') {
@@ -411,12 +411,12 @@ export function DeleteAccountPage() {
                   </p>
                 </div>
 
-                <div className="relative mb-6">
+                <div className="relative mb-4">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => { setPassword(e.target.value); setDeleteError(''); }}
                     placeholder="Enter your current password"
                     className="w-full pl-10 pr-12 py-3 rounded-xl bg-muted/30 border border-white/30 dark:border-white/10 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-red-500/50"
                   />
@@ -429,6 +429,14 @@ export function DeleteAccountPage() {
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </motion.button>
                 </div>
+
+                {deleteError && (
+                  <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30">
+                    <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />{deleteError}
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <motion.button

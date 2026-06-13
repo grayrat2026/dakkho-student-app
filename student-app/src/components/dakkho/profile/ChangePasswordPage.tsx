@@ -7,6 +7,7 @@ import {
   KeyRound, ChevronLeft, X, Info,
 } from 'lucide-react';
 import { useNavigationStore } from '@/lib/store';
+import { api } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 import { AnimatedPage } from '../shared/AnimatedPage';
 import { GradientButton } from '../shared/GradientButton';
@@ -64,15 +65,24 @@ export function ChangePasswordPage() {
   const handleChange = async () => {
     if (!validate()) return;
     setIsChanging(true);
-    await new Promise((r) => setTimeout(r, 1500));
-    setIsChanging(false);
-    setIsChanged(true);
-    setTimeout(() => {
-      setIsChanged(false);
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-    }, 3000);
+    try {
+      await api.post('/student/change-password', {
+        currentPassword,
+        newPassword,
+      });
+      setIsChanging(false);
+      setIsChanged(true);
+      setTimeout(() => {
+        setIsChanged(false);
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }, 3000);
+    } catch (err: any) {
+      setIsChanging(false);
+      const errorMsg = err?.message || err?.error || 'Failed to change password';
+      setErrors({ ...errors, form: errorMsg });
+    }
   };
 
   if (isChanged) {
@@ -229,6 +239,15 @@ export function ChangePasswordPage() {
                 </motion.p>
               )}
             </div>
+
+            {/* Form-level error */}
+            {errors.form && (
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />{errors.form}
+                </p>
+              </div>
+            )}
 
             {/* Requirements */}
             <GlassCard className="p-4 bg-white/30 dark:bg-slate-800/30">

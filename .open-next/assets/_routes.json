@@ -1,5 +1,0 @@
-{
-  "version": 1,
-  "include": ["/*"],
-  "exclude": ["/_next/*", "/dakkho-logo.png", "/logo.svg", "/robots.txt", "/favicon.ico"]
-}

@@ -64,7 +64,6 @@ export function PaymentResultPage() {
       case 'completed':
       case 'success':
       case 'paid':
-      case 'completed':
         return 'completed';
       case 'pending':
       case 'processing':

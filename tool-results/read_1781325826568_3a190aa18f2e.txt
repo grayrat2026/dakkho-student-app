@@ -1,0 +1,700 @@
+     1→'use client';
+     2→
+     3→import { useState, useRef, type FormEvent, type ChangeEvent } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import {
+     6→  User, Mail, Phone, Camera, Briefcase, GraduationCap,
+     7→  BookOpen, FileText, Upload, X, Check, ChevronLeft, ChevronRight,
+     8→  ShieldCheck, FileCheck, Info
+     9→} from 'lucide-react';
+    10→import { GlassCard } from '@/components/shared/GlassCard';
+    11→import { GradientButton } from '@/components/shared/GradientButton';
+    12→import { useNavigationStore } from '@/lib/store';
+    13→import { TECHNOLOGY_OPTIONS, EXPERIENCE_OPTIONS } from '@/lib/constants';
+    14→import { cn, generateId } from '@/lib/utils';
+    15→
+    16→interface FormData {
+    17→  fullName: string;
+    18→  email: string;
+    19→  phone: string;
+    20→  profilePhoto: File | null;
+    21→  profilePhotoPreview: string;
+    22→  department: string;
+    23→  specialization: string;
+    24→  teachingExperience: string;
+    25→  highestQualification: string;
+    26→  shortBio: string;
+    27→  nidNumber: string;
+    28→  nidPhoto: File | null;
+    29→  nidPhotoPreview: string;
+    30→  academicCertPhoto: File | null;
+    31→  academicCertPhotoPreview: string;
+    32→  termsAccepted: boolean;
+    33→}
+    34→
+    35→const STEPS = [
+    36→  { label: 'Personal', icon: User },
+    37→  { label: 'Professional', icon: Briefcase },
+    38→  { label: 'Verification', icon: ShieldCheck },
+    39→  { label: 'Review', icon: FileCheck },
+    40→];
+    41→
+    42→const slideVariants = {
+    43→  enter: (direction: number) => ({
+    44→    x: direction > 0 ? 300 : -300,
+    45→    opacity: 0,
+    46→  }),
+    47→  center: {
+    48→    x: 0,
+    49→    opacity: 1,
+    50→  },
+    51→  exit: (direction: number) => ({
+    52→    x: direction > 0 ? -300 : 300,
+    53→    opacity: 0,
+    54→  }),
+    55→};
+    56→
+    57→export function ApplyInstructor() {
+    58→  const navigate = useNavigationStore((s) => s.navigate);
+    59→  const [currentStep, setCurrentStep] = useState(0);
+    60→  const [direction, setDirection] = useState(0);
+    61→  const [submitted, setSubmitted] = useState(false);
+    62→  const [isDragging, setIsDragging] = useState<string | null>(null);
+    63→
+    64→  const [form, setForm] = useState<FormData>({
+    65→    fullName: '',
+    66→    email: '',
+    67→    phone: '',
+    68→    profilePhoto: null,
+    69→    profilePhotoPreview: '',
+    70→    department: '',
+    71→    specialization: '',
+    72→    teachingExperience: '',
+    73→    highestQualification: '',
+    74→    shortBio: '',
+    75→    nidNumber: '',
+    76→    nidPhoto: null,
+    77→    nidPhotoPreview: '',
+    78→    academicCertPhoto: null,
+    79→    academicCertPhotoPreview: '',
+    80→    termsAccepted: false,
+    81→  });
+    82→
+    83→  const updateField = (field: keyof FormData, value: string | boolean | File | null) => {
+    84→    setForm((prev) => ({ ...prev, [field]: value }));
+    85→  };
+    86→
+    87→  const handleFileUpload = (
+    88→    field: 'profilePhoto' | 'nidPhoto' | 'academicCertPhoto',
+    89→    previewField: 'profilePhotoPreview' | 'nidPhotoPreview' | 'academicCertPhotoPreview',
+    90→    file: File | null
+    91→  ) => {
+    92→    if (file) {
+    93→      const reader = new FileReader();
+    94→      reader.onload = (e) => {
+    95→        setForm((prev) => ({
+    96→          ...prev,
+    97→          [field]: file,
+    98→          [previewField]: e.target?.result as string,
+    99→        }));
+   100→      };
+   101→      reader.readAsDataURL(file);
+   102→    } else {
+   103→      setForm((prev) => ({
+   104→        ...prev,
+   105→        [field]: null,
+   106→        [previewField]: '',
+   107→      }));
+   108→    }
+   109→  };
+   110→
+   111→  const handleDragOver = (e: React.DragEvent, zoneId: string) => {
+   112→    e.preventDefault();
+   113→    setIsDragging(zoneId);
+   114→  };
+   115→
+   116→  const handleDragLeave = () => {
+   117→    setIsDragging(null);
+   118→  };
+   119→
+   120→  const handleDrop = (
+   121→    e: React.DragEvent,
+   122→    field: 'profilePhoto' | 'nidPhoto' | 'academicCertPhoto',
+   123→    previewField: 'profilePhotoPreview' | 'nidPhotoPreview' | 'academicCertPhotoPreview',
+   124→    zoneId: string
+   125→  ) => {
+   126→    e.preventDefault();
+   127→    setIsDragging(null);
+   128→    const file = e.dataTransfer.files[0];
+   129→    if (file && file.type.startsWith('image/')) {
+   130→      handleFileUpload(field, previewField, file);
+   131→    }
+   132→  };
+   133→
+   134→  const fileInputRef = useRef<HTMLInputElement>(null);
+   135→  const nidInputRef = useRef<HTMLInputElement>(null);
+   136→  const certInputRef = useRef<HTMLInputElement>(null);
+   137→
+   138→  const goNext = () => {
+   139→    if (currentStep < 3) {
+   140→      setDirection(1);
+   141→      setCurrentStep((s) => s + 1);
+   142→    }
+   143→  };
+   144→
+   145→  const goPrev = () => {
+   146→    if (currentStep > 0) {
+   147→      setDirection(-1);
+   148→      setCurrentStep((s) => s - 1);
+   149→    }
+   150→  };
+   151→
+   152→  const goToStep = (step: number) => {
+   153→    setDirection(step > currentStep ? 1 : -1);
+   154→    setCurrentStep(step);
+   155→  };
+   156→
+   157→  const handleSubmit = () => {
+   158→    if (!form.termsAccepted) return;
+   159→    // Instructors are invited by admin - no application endpoint exists.
+   160→    // Show a message directing the user to contact admin.
+   161→    setSubmitted(true);
+   162→  };
+   163→
+   164→  const inputClass = cn(
+   165→    'w-full px-4 py-3 rounded-xl text-sm',
+   166→    'premium-input',
+   167→    'placeholder:text-muted-foreground/60',
+   168→    'text-foreground'
+   169→  );
+   170→
+   171→  const selectClass = cn(
+   172→    'w-full px-4 py-3 rounded-xl text-sm appearance-none',
+   173→    'premium-input',
+   174→    'text-foreground'
+   175→  );
+   176→
+   177→  const uploadZone = (
+   178→    field: 'profilePhoto' | 'nidPhoto' | 'academicCertPhoto',
+   179→    previewField: 'profilePhotoPreview' | 'nidPhotoPreview' | 'academicCertPhotoPreview',
+   180→    zoneId: string,
+   181→    label: string,
+   182→    inputRef: React.RefObject<HTMLInputElement | null>,
+   183→    optional = false
+   184→  ) => (
+   185→    <div
+   186→      className={cn(
+   187→        'relative rounded-xl border-2 border-dashed p-6 text-center transition-all duration-300 cursor-pointer',
+   188→        isDragging === zoneId
+   189→          ? 'border-neutral-400 bg-black/[0.02] dark:bg-white/[0.02] shimmer'
+   190→          : 'border-white/30 dark:border-white/[0.04] bg-white/30 dark:bg-white/[0.03] backdrop-blur-sm hover:border-neutral-300',
+   191→        form[previewField] && 'border-neutral-400/50'
+   192→      )}
+   193→      onDragOver={(e) => handleDragOver(e, zoneId)}
+   194→      onDragLeave={handleDragLeave}
+   195→      onDrop={(e) => handleDrop(e, field, previewField, zoneId)}
+   196→      onClick={() => inputRef.current?.click()}
+   197→    >
+   198→      <input
+   199→        ref={inputRef}
+   200→        type="file"
+   201→        accept="image/*"
+   202→        className="hidden"
+   203→        onChange={(e: ChangeEvent<HTMLInputElement>) => {
+   204→          const file = e.target.files?.[0] || null;
+   205→          handleFileUpload(field, previewField, file);
+   206→        }}
+   207→      />
+   208→      {form[previewField] ? (
+   209→        <div className="flex items-center gap-3">
+   210→          <img
+   211→            src={form[previewField]}
+   212→            alt="Preview"
+   213→            className="w-16 h-16 rounded-lg object-cover border border-white/30"
+   214→          />
+   215→          <div className="flex-1 text-left">
+   216→            <p className="text-sm font-medium text-foreground">Image uploaded</p>
+   217→            <p className="text-xs text-muted-foreground">Click to change</p>
+   218→          </div>
+   219→          <button
+   220→            type="button"
+   221→            onClick={(e) => {
+   222→              e.stopPropagation();
+   223→              handleFileUpload(field, previewField, null);
+   224→            }}
+   225→            className="p-1.5 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-500 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+   226→          >
+   227→            <X className="w-3.5 h-3.5" />
+   228→          </button>
+   229→        </div>
+   230→      ) : (
+   231→        <div>
+   232→          <Upload className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
+   233→          <p className="text-sm font-medium text-muted-foreground">{label}</p>
+   234→          {optional && <p className="text-xs text-muted-foreground/60 mt-1">(optional)</p>}
+   235→        </div>
+   236→      )}
+   237→    </div>
+   238→  );
+   239→
+   240→  // Success screen - shows message about admin invitation
+   241→  if (submitted) {
+   242→    return (
+   243→      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-neutral-50 via-white to-neutral-100 dark:from-slate-950 dark:via-slate-900 dark:to-neutral-950">
+   244→        <motion.div
+   245→          initial={{ opacity: 0, scale: 0.9 }}
+   246→          animate={{ opacity: 1, scale: 1 }}
+   247→          transition={{ duration: 0.5 }}
+   248→          className="w-full max-w-md"
+   249→        >
+   250→          <GlassCard className="p-8 text-center">
+   251→            {/* Animated info icon */}
+   252→            <motion.div
+   253→              initial={{ scale: 0 }}
+   254→              animate={{ scale: 1 }}
+   255→              transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.2 }}
+   256→              className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-amber-500 via-amber-400 to-amber-500 flex items-center justify-center shadow-[0_4px_15px_rgba(245,158,11,0.3)]"
+   257→            >
+   258→              <motion.div
+   259→                initial={{ scale: 0, rotate: -90 }}
+   260→                animate={{ scale: 1, rotate: 0 }}
+   261→                transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.5 }}
+   262→              >
+   263→                <Info className="w-10 h-10 text-white" strokeWidth={2.5} />
+   264→              </motion.div>
+   265→            </motion.div>
+   266→
+   267→            <h2 className="text-2xl font-extrabold text-foreground mb-2">Invitation Required</h2>
+   268→            <p className="text-muted-foreground text-sm mb-6">
+   269→              Instructor accounts on Dakkho are created by invitation from the admin team. 
+   270→              If you&apos;ve been invited, you should have received login credentials from the administrator.
+   271→            </p>
+   272→
+   273→            <div className="bg-black/[0.02] dark:bg-white/[0.02] rounded-xl p-4 mb-6 text-left space-y-3">
+   274→              <div className="flex items-start gap-3">
+   275→                <Check className="w-5 h-5 text-emerald-500 mt-0.5 flex-shrink-0" />
+   276→                <div>
+   277→                  <p className="text-sm font-semibold text-foreground">Already invited?</p>
+   278→                  <p className="text-xs text-muted-foreground mt-0.5">Sign in using the credentials provided by admin.</p>
+   279→                </div>
+   280→              </div>
+   281→              <div className="flex items-start gap-3">
+   282→                <Mail className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+   283→                <div>
+   284→                  <p className="text-sm font-semibold text-foreground">Not yet invited?</p>
+   285→                  <p className="text-xs text-muted-foreground mt-0.5">Contact the Dakkho admin team to request instructor access.</p>
+   286→                </div>
+   287→              </div>
+   288→              <div className="flex items-start gap-3">
+   289→                <ShieldCheck className="w-5 h-5 text-foreground/50 mt-0.5 flex-shrink-0" />
+   290→                <div>
+   291→                  <p className="text-sm font-semibold text-foreground">Need to change your password?</p>
+   292→                  <p className="text-xs text-muted-foreground mt-0.5">After signing in, go to Settings to change your password.</p>
+   293→                </div>
+   294→              </div>
+   295→            </div>
+   296→
+   297→            <div className="space-y-3">
+   298→              <GradientButton
+   299→                variant="primary"
+   300→                size="lg"
+   301→                className="w-full"
+   302→                onClick={() => navigate('login')}
+   303→                icon={<Check className="w-4 h-4" />}
+   304→              >
+   305→                Go to Sign In
+   306→              </GradientButton>
+   307→            </div>
+   308→          </GlassCard>
+   309→        </motion.div>
+   310→      </div>
+   311→    );
+   312→  }
+   313→
+   314→  return (
+   315→    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-neutral-50 via-white to-neutral-100 dark:from-slate-950 dark:via-slate-900 dark:to-neutral-950">
+   316→      {/* Background decorative elements */}
+   317→      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+   318→        <motion.div
+   319→          className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-neutral-200/30 dark:bg-neutral-800/10 blur-3xl"
+   320→          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+   321→          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+   322→        />
+   323→        <motion.div
+   324→          className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-neutral-300/30 dark:bg-neutral-700/10 blur-3xl"
+   325→          animate={{ scale: [1.2, 1, 1.2], opacity: [0.3, 0.5, 0.3] }}
+   326→          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+   327→        />
+   328→      </div>
+   329→
+   330→      <motion.div
+   331→        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+   332→        animate={{ opacity: 1, y: 0, scale: 1 }}
+   333→        transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+   334→        className="w-full max-w-lg relative z-10"
+   335→      >
+   336→        <GlassCard className="p-6 md:p-8">
+   337→          {/* Back to login */}
+   338→          <button
+   339→            type="button"
+   340→            onClick={() => navigate('login')}
+   341→            className="text-sm text-muted-foreground hover:text-foreground transition-colors mb-4 flex items-center gap-1"
+   342→          >
+   343→            <ChevronLeft className="w-4 h-4" />
+   344→            Back to Sign In
+   345→          </button>
+   346→
+   347→          {/* Title */}
+   348→          <div className="text-center mb-6">
+   349→            <h1 className="text-2xl font-extrabold bg-gradient-to-r from-neutral-900 to-black dark:from-neutral-100 dark:to-white bg-clip-text text-transparent">
+   350→              Instructor Application
+   351→            </h1>
+   352→            <p className="text-muted-foreground mt-1 text-sm">Join Dakkho as an instructor</p>
+   353→            {/* Info banner */}
+   354→            <div className="mt-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/20 rounded-xl p-3 text-left">
+   355→              <div className="flex items-start gap-2">
+   356→                <Info className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+   357→                <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+   358→                  Instructor accounts require admin approval. If you&apos;ve been invited, you can sign in directly with the credentials provided.
+   359→                </p>
+   360→              </div>
+   361→            </div>
+   362→          </div>
+   363→
+   364→          {/* Step indicator */}
+   365→          <div className="mb-8">
+   366→            <div className="flex items-center justify-between relative">
+   367→              {/* Progress line background */}
+   368→              <div className="absolute top-4 left-0 right-0 h-0.5 bg-white/20 dark:bg-white/10" />
+   369→              {/* Animated progress line */}
+   370→              <motion.div
+   371→                className="absolute top-4 left-0 h-0.5 bg-gradient-to-r from-neutral-900 via-neutral-800 to-black dark:from-white dark:via-neutral-200 dark:to-white"
+   372→                initial={false}
+   373→                animate={{ width: `${(currentStep / (STEPS.length - 1)) * 100}%` }}
+   374→                transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+   375→              />
+   376→
+   377→              {STEPS.map((step, i) => (
+   378→                <div key={i} className="relative z-10 flex flex-col items-center">
+   379→                  <motion.div
+   380→                    className={cn(
+   381→                      'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300',
+   382→                      i < currentStep
+   383→                        ? 'bg-gradient-to-br from-neutral-900 via-neutral-800 to-black dark:from-white dark:via-neutral-200 dark:to-white text-white dark:text-black shadow-[0_4px_15px_rgba(0,0,0,0.1)]'
+   384→                        : i === currentStep
+   385→                        ? 'bg-gradient-to-br from-neutral-900 via-neutral-800 to-black dark:from-white dark:via-neutral-200 dark:to-white text-white dark:text-black shadow-[0_4px_15px_rgba(0,0,0,0.1)] ring-4 ring-black/5'
+   386→                        : 'bg-white/30 dark:bg-white/[0.03] backdrop-blur-sm text-muted-foreground border border-white/30 dark:border-white/[0.04]'
+   387→                    )}
+   388→                    animate={{ scale: i === currentStep ? 1.1 : 1 }}
+   389→                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+   390→                  >
+   391→                    {i < currentStep ? <Check className="w-4 h-4" /> : <step.icon className="w-3.5 h-3.5" />}
+   392→                  </motion.div>
+   393→                  <span className={cn(
+   394→                    'text-[10px] mt-1.5 font-medium',
+   395→                    i <= currentStep ? 'text-foreground/70' : 'text-muted-foreground/50'
+   396→                  )}>
+   397→                    {step.label}
+   398→                  </span>
+   399→                </div>
+   400→              ))}
+   401→            </div>
+   402→          </div>
+   403→
+   404→          {/* Step content */}
+   405→          <div className="relative overflow-hidden min-h-[340px]">
+   406→            <AnimatePresence initial={false} custom={direction} mode="wait">
+   407→              <motion.div
+   408→                key={currentStep}
+   409→                custom={direction}
+   410→                variants={slideVariants}
+   411→                initial="enter"
+   412→                animate="center"
+   413→                exit="exit"
+   414→                transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+   415→              >
+   416→                {/* Step 1: Personal Info */}
+   417→                {currentStep === 0 && (
+   418→                  <div className="space-y-4">
+   419→                    <div>
+   420→                      <label className="text-sm font-medium text-foreground mb-1.5 block">Full Name *</label>
+   421→                      <div className="relative">
+   422→                        <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   423→                        <input
+   424→                          type="text"
+   425→                          value={form.fullName}
+   426→                          onChange={(e) => updateField('fullName', e.target.value)}
+   427→                          placeholder="Your full name"
+   428→                          className={cn(inputClass, 'pl-11')}
+   429→                        />
+   430→                      </div>
+   431→                    </div>
+   432→
+   433→                    <div>
+   434→                      <label className="text-sm font-medium text-foreground mb-1.5 block">Email *</label>
+   435→                      <div className="relative">
+   436→                        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   437→                        <input
+   438→                          type="email"
+   439→                          value={form.email}
+   440→                          onChange={(e) => updateField('email', e.target.value)}
+   441→                          placeholder="Email address"
+   442→                          className={cn(inputClass, 'pl-11')}
+   443→                        />
+   444→                      </div>
+   445→                    </div>
+   446→
+   447→                    <div>
+   448→                      <label className="text-sm font-medium text-foreground mb-1.5 block">Phone Number *</label>
+   449→                      <div className="relative">
+   450→                        <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   451→                        <input
+   452→                          type="tel"
+   453→                          value={form.phone}
+   454→                          onChange={(e) => updateField('phone', e.target.value)}
+   455→                          placeholder="01XXXXXXXXX"
+   456→                          className={cn(inputClass, 'pl-11')}
+   457→                        />
+   458→                      </div>
+   459→                    </div>
+   460→
+   461→                    <div>
+   462→                      <label className="text-sm font-medium text-foreground mb-1.5 block">Profile Photo</label>
+   463→                      {uploadZone('profilePhoto', 'profilePhotoPreview', 'profile', 'Click or drag to upload photo', fileInputRef)}
+   464→                    </div>
+   465→                  </div>
+   466→                )}
+   467→
+   468→                {/* Step 2: Professional Info */}
+   469→                {currentStep === 1 && (
+   470→                  <div className="space-y-4">
+   471→                    <div>
+   472→                      <label className="text-sm font-medium text-foreground mb-1.5 block">Department *</label>
+   473→                      <div className="relative">
+   474→                        <BookOpen className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none z-10" />
+   475→                        <select
+   476→                          value={form.department}
+   477→                          onChange={(e) => updateField('department', e.target.value)}
+   478→                          className={cn(selectClass, 'pl-11')}
+   479→                        >
+   480→                          <option value="">Select department</option>
+   481→                          {TECHNOLOGY_OPTIONS.map((opt) => (
+   482→                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+   483→                          ))}
+   484→                        </select>
+   485→                      </div>
+   486→                    </div>
+   487→
+   488→                    <div>
+   489→                      <label className="text-sm font-medium text-foreground mb-1.5 block">Specialization *</label>
+   490→                      <input
+   491→                        type="text"
+   492→                        value={form.specialization}
+   493→                        onChange={(e) => updateField('specialization', e.target.value)}
+   494→                        placeholder="e.g. Web Development, Machine Learning"
+   495→                        className={inputClass}
+   496→                      />
+   497→                    </div>
+   498→
+   499→                    <div>
+   500→                      <label className="text-sm font-medium text-foreground mb-1.5 block">Teaching Experience *</label>
+   501→                      <div className="relative">
+   502→                        <GraduationCap className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none z-10" />
+   503→                        <select
+   504→                          value={form.teachingExperience}
+   505→                          onChange={(e) => updateField('teachingExperience', e.target.value)}
+   506→                          className={cn(selectClass, 'pl-11')}
+   507→                        >
+   508→                          <option value="">Select experience</option>
+   509→                          {EXPERIENCE_OPTIONS.map((opt) => (
+   510→                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+   511→                          ))}
+   512→                        </select>
+   513→                      </div>
+   514→                    </div>
+   515→
+   516→                    <div>
+   517→                      <label className="text-sm font-medium text-foreground mb-1.5 block">Highest Qualification *</label>
+   518→                      <input
+   519→                        type="text"
+   520→                        value={form.highestQualification}
+   521→                        onChange={(e) => updateField('highestQualification', e.target.value)}
+   522→                        placeholder="e.g. BSc in CSE"
+   523→                        className={inputClass}
+   524→                      />
+   525→                    </div>
+   526→
+   527→                    <div>
+   528→                      <label className="text-sm font-medium text-foreground mb-1.5 block">Short Bio</label>
+   529→                      <div className="relative">
+   530→                        <textarea
+   531→                          value={form.shortBio}
+   532→                          onChange={(e) => updateField('shortBio', e.target.value.slice(0, 500))}
+   533→                          placeholder="Write briefly about yourself..."
+   534→                          rows={3}
+   535→                          className={cn(inputClass, 'resize-none')}
+   536→                        />
+   537→                        <span className={cn(
+   538→                          'absolute bottom-2 right-3 text-xs',
+   539→                          form.shortBio.length >= 450 ? 'text-amber-500' : 'text-muted-foreground/40'
+   540→                        )}>
+   541→                          {form.shortBio.length}/500
+   542→                        </span>
+   543→                      </div>
+   544→                    </div>
+   545→                  </div>
+   546→                )}
+   547→
+   548→                {/* Step 3: Document Verification */}
+   549→                {currentStep === 2 && (
+   550→                  <div className="space-y-4">
+   551→                    <div>
+   552→                      <label className="text-sm font-medium text-foreground mb-1.5 block">NID/Birth Certificate Number *</label>
+   553→                      <div className="relative">
+   554→                        <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   555→                        <input
+   556→                          type="text"
+   557→                          value={form.nidNumber}
+   558→                          onChange={(e) => updateField('nidNumber', e.target.value)}
+   559→                          placeholder="NID or birth certificate number"
+   560→                          className={cn(inputClass, 'pl-11')}
+   561→                        />
+   562→                      </div>
+   563→                    </div>
+   564→
+   565→                    <div>
+   566→                      <label className="text-sm font-medium text-foreground mb-1.5 block">NID/Birth Certificate Photo *</label>
+   567→                      {uploadZone('nidPhoto', 'nidPhotoPreview', 'nid', 'Upload NID photo', nidInputRef)}
+   568→                    </div>
+   569→
+   570→                    <div>
+   571→                      <label className="text-sm font-medium text-foreground mb-1.5 block">Academic Certificate Photo</label>
+   572→                      {uploadZone('academicCertPhoto', 'academicCertPhotoPreview', 'cert', 'Upload certificate photo', certInputRef, true)}
+   573→                    </div>
+   574→                  </div>
+   575→                )}
+   576→
+   577→                {/* Step 4: Review & Submit */}
+   578→                {currentStep === 3 && (
+   579→                  <div className="space-y-4">
+   580→                    {/* Personal Info Summary */}
+   581→                    <div className="bg-white/30 dark:bg-white/[0.03] backdrop-blur-sm border border-white/30 dark:border-white/[0.04] rounded-xl p-4">
+   582→                      <div className="flex items-center justify-between mb-2">
+   583→                        <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+   584→                          <User className="w-4 h-4 text-foreground/70" /> Personal Info
+   585→                        </h3>
+   586→                        <button
+   587→                          type="button"
+   588→                          onClick={() => goToStep(0)}
+   589→                          className="text-xs text-foreground/70 hover:text-foreground font-medium"
+   590→                        >
+   591→                          Edit
+   592→                        </button>
+   593→                      </div>
+   594→                      <div className="grid grid-cols-2 gap-2 text-xs">
+   595→                        <div><span className="text-muted-foreground">Name:</span> <span className="text-foreground font-medium">{form.fullName || '—'}</span></div>
+   596→                        <div><span className="text-muted-foreground">Email:</span> <span className="text-foreground font-medium break-all">{form.email || '—'}</span></div>
+   597→                        <div><span className="text-muted-foreground">Phone:</span> <span className="text-foreground font-medium">{form.phone || '—'}</span></div>
+   598→                        <div>
+   599→                          <span className="text-muted-foreground">Photo:</span>{' '}
+   600→                          <span className="text-foreground font-medium">{form.profilePhotoPreview ? '✓' : '—'}</span>
+   601→                        </div>
+   602→                      </div>
+   603→                    </div>
+   604→
+   605→                    {/* Professional Info Summary */}
+   606→                    <div className="bg-white/30 dark:bg-white/[0.03] backdrop-blur-sm border border-white/30 dark:border-white/[0.04] rounded-xl p-4">
+   607→                      <div className="flex items-center justify-between mb-2">
+   608→                        <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+   609→                          <Briefcase className="w-4 h-4 text-foreground/70" /> Professional Info
+   610→                        </h3>
+   611→                        <button
+   612→                          type="button"
+   613→                          onClick={() => goToStep(1)}
+   614→                          className="text-xs text-foreground/70 hover:text-foreground font-medium"
+   615→                        >
+   616→                          Edit
+   617→                        </button>
+   618→                      </div>
+   619→                      <div className="grid grid-cols-2 gap-2 text-xs">
+   620→                        <div><span className="text-muted-foreground">Department:</span> <span className="text-foreground font-medium">{TECHNOLOGY_OPTIONS.find(o => o.value === form.department)?.label || '—'}</span></div>
+   621→                        <div><span className="text-muted-foreground">Specialization:</span> <span className="text-foreground font-medium">{form.specialization || '—'}</span></div>
+   622→                        <div><span className="text-muted-foreground">Experience:</span> <span className="text-foreground font-medium">{EXPERIENCE_OPTIONS.find(o => o.value === form.teachingExperience)?.label || '—'}</span></div>
+   623→                        <div><span className="text-muted-foreground">Qualification:</span> <span className="text-foreground font-medium">{form.highestQualification || '—'}</span></div>
+   624→                        {form.shortBio && (
+   625→                          <div className="col-span-2"><span className="text-muted-foreground">Bio:</span> <span className="text-foreground font-medium">{form.shortBio}</span></div>
+   626→                        )}
+   627→                      </div>
+   628→                    </div>
+   629→
+   630→                    {/* Document Summary */}
+   631→                    <div className="bg-white/30 dark:bg-white/[0.03] backdrop-blur-sm border border-white/30 dark:border-white/[0.04] rounded-xl p-4">
+   632→                      <div className="flex items-center justify-between mb-2">
+   633→                        <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+   634→                          <ShieldCheck className="w-4 h-4 text-emerald-500" /> Verification
+   635→                        </h3>
+   636→                        <button
+   637→                          type="button"
+   638→                          onClick={() => goToStep(2)}
+   639→                          className="text-xs text-foreground/70 hover:text-foreground font-medium"
+   640→                        >
+   641→                          Edit
+   642→                        </button>
+   643→                      </div>
+   644→                      <div className="grid grid-cols-2 gap-2 text-xs">
+   645→                        <div><span className="text-muted-foreground">NID Number:</span> <span className="text-foreground font-medium">{form.nidNumber || '—'}</span></div>
+   646→                        <div><span className="text-muted-foreground">NID Photo:</span> <span className="text-foreground font-medium">{form.nidPhotoPreview ? '✓' : '—'}</span></div>
+   647→                        <div><span className="text-muted-foreground">Certificate Photo:</span> <span className="text-foreground font-medium">{form.academicCertPhotoPreview ? '✓' : '—'}</span></div>
+   648→                      </div>
+   649→                    </div>
+   650→
+   651→                    {/* Terms */}
+   652→                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl bg-white/30 dark:bg-white/[0.03] backdrop-blur-sm border border-white/30 dark:border-white/[0.04] hover:bg-white/40 dark:hover:bg-white/[0.06] transition-colors">
+   653→                      <input
+   654→                        type="checkbox"
+   655→                        checked={form.termsAccepted}
+   656→                        onChange={(e) => updateField('termsAccepted', e.target.checked)}
+   657→                        className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-foreground focus:ring-black/5 accent-foreground"
+   658→                      />
+   659→                      <span className="text-xs text-muted-foreground leading-relaxed">
+   660→                        I understand that instructor accounts on Dakkho are created by admin invitation only. I have read and agree to the <span className="text-foreground/70 font-medium">Terms & Privacy Policy</span>.
+   661→                      </span>
+   662→                    </label>
+   663→                  </div>
+   664→                )}
+   665→              </motion.div>
+   666→            </AnimatePresence>
+   667→          </div>
+   668→
+   669→          {/* Navigation buttons */}
+   670→          <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/20 dark:border-white/10">
+   671→            {currentStep > 0 ? (
+   672→              <GradientButton variant="ghost" size="sm" onClick={goPrev} icon={<ChevronLeft className="w-4 h-4" />}>
+   673→                Previous
+   674→              </GradientButton>
+   675→            ) : (
+   676→              <div />
+   677→            )}
+   678→
+   679→            {currentStep < 3 ? (
+   680→              <GradientButton variant="primary" size="sm" onClick={goNext} icon={<ChevronRight className="w-4 h-4" />}>
+   681→                Next
+   682→              </GradientButton>
+   683→            ) : (
+   684→              <GradientButton
+   685→                variant="primary"
+   686→                size="lg"
+   687→                onClick={handleSubmit}
+   688→                disabled={!form.termsAccepted}
+   689→                icon={<Check className="w-4 h-4" />}
+   690→              >
+   691→                Submit Application
+   692→              </GradientButton>
+   693→            )}
+   694→          </div>
+   695→        </GlassCard>
+   696→      </motion.div>
+   697→    </div>
+   698→  );
+   699→}
+   700→

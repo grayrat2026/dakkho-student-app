@@ -3384,4 +3384,87 @@ studentApiRoutes.post('/student/upload-avatar', studentAuthMiddleware, async (c)
   }
 });
 
+// POST /student/change-password — Change student password (requires current password)
+studentApiRoutes.post('/student/change-password', studentAuthMiddleware, async (c) => {
+  try {
+    const userId = c.get('studentId');
+    const { currentPassword, newPassword } = await c.req.json();
+
+    if (!currentPassword || !newPassword) {
+      return c.json({ error: 'currentPassword and newPassword are required' }, 400);
+    }
+
+    if (newPassword.length < 8) {
+      return c.json({ error: 'New password must be at least 8 characters' }, 400);
+    }
+
+    // Get current password hash
+    const user = await c.env.DB.prepare(
+      'SELECT password_hash FROM users WHERE id = ?'
+    ).bind(userId).first<{ password_hash: string }>();
+
+    if (!user?.password_hash) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    // Verify current password
+    const validPassword = await verifyPassword(currentPassword, user.password_hash);
+    if (!validPassword) {
+      return c.json({ error: 'Current password is incorrect' }, 401);
+    }
+
+    // Hash and save new password
+    const newHash = await hashPassword(newPassword);
+    await c.env.DB.prepare(
+      'UPDATE users SET password_hash = ?, updated_at = datetime(\'now\') WHERE id = ?'
+    ).bind(newHash, userId).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
+// POST /student/delete-account — Delete student account (requires password verification)
+studentApiRoutes.post('/student/delete-account', studentAuthMiddleware, async (c) => {
+  try {
+    const userId = c.get('studentId');
+    const { password, reason, feedback } = await c.req.json();
+
+    if (!password) {
+      return c.json({ error: 'Password is required to delete your account' }, 400);
+    }
+
+    // Verify password
+    const user = await c.env.DB.prepare(
+      'SELECT password_hash FROM users WHERE id = ?'
+    ).bind(userId).first<{ password_hash: string }>();
+
+    if (!user?.password_hash) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+
+    const validPassword = await verifyPassword(password, user.password_hash);
+    if (!validPassword) {
+      return c.json({ error: 'Password is incorrect' }, 401);
+    }
+
+    // Delete user and related data
+    // Delete enrollments first
+    await c.env.DB.prepare('DELETE FROM enrollments WHERE user_id = ?').bind(userId).run();
+    // Delete watch history
+    await c.env.DB.prepare('DELETE FROM watch_history WHERE user_id = ?').bind(userId).run();
+    // Delete student sessions
+    await c.env.DB.prepare('DELETE FROM student_sessions WHERE user_id = ?').bind(userId).run();
+    // Delete notification tokens
+    await c.env.DB.prepare('DELETE FROM notification_tokens WHERE user_id = ?').bind(userId).run();
+    // Finally delete the user
+    await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
+
+    return c.json({ success: true });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
 export default studentApiRoutes;

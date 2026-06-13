@@ -1,0 +1,749 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useRef } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import { Eye, EyeOff, Mail, Lock, User, School, Cpu, ArrowLeft, ArrowRight, Check, ChevronsUpDown, Info, ShieldCheck } from 'lucide-react';
+     6→import { useAuthStore, useNavigationStore } from '@/lib/store';
+     7→import { GlassCard } from '../shared/GlassCard';
+     8→import { GradientButton } from '../shared/GradientButton';
+     9→import { PasswordStrengthIndicator, getPasswordRequirements } from './PasswordStrengthIndicator';
+    10→import { OTPInput } from './OTPInput';
+    11→import { instituteApi, technologyApi, type Institute, type Technology } from '@/lib/api-client';
+    12→import { OTP_RESEND_COOLDOWN } from '@/lib/constants';
+    13→import Image from 'next/image';
+    14→
+    15→const TOTAL_STEPS = 4;
+    16→
+    17→const STEP_MESSAGES = [
+    18→  "Let's get you started!",
+    19→  'Secure your account',
+    20→  'Tell us about your studies',
+    21→  'Almost there!',
+    22→];
+    23→
+    24→const TECHNOLOGY_DESCRIPTIONS: Record<string, string> = {
+    25→  'Computer Science & Technology (CSE)': 'Programming, software development, web & mobile apps, databases, and algorithms',
+    26→  'Electronics & Telecommunication Engineering (ETE)': 'Digital electronics, microcontrollers, communication systems, and signal processing',
+    27→  'Electrical Engineering (EEE)': 'Power systems, circuit design, electrical machines, and renewable energy',
+    28→  'Mechanical Engineering (ME)': 'Thermodynamics, manufacturing, fluid mechanics, and machine design',
+    29→  'Civil Engineering (CE)': 'Structural design, construction, surveying, and infrastructure development',
+    30→  'Architecture & Interior Design': 'Building design, CAD modeling, space planning, and sustainable architecture',
+    31→  'Textile Engineering': 'Fabric technology, dyeing, manufacturing processes, and quality control',
+    32→  'Chemical Engineering': 'Chemical processes, material science, and industrial chemistry',
+    33→  'Automobile Engineering': 'Vehicle design, engine systems, automotive technology, and maintenance',
+    34→  'Refrigeration & Air Conditioning': 'HVAC systems, thermodynamics, and climate control technology',
+    35→  'Glass & Ceramic Engineering': 'Material science, glass manufacturing, and ceramic technology',
+    36→  'Printing Engineering': 'Print technology, graphic arts, and digital publishing',
+    37→  'Surveying Engineering': 'Land surveying, mapping, GIS, and geospatial technology',
+    38→  'Mechatronics Engineering': 'Robotics, automation, control systems, and smart manufacturing',
+    39→  'Mining Engineering': 'Mineral extraction, mine design, and geological engineering',
+    40→  'Metallurgical Engineering': 'Metal processing, material testing, and alloy development',
+    41→  'Power Engineering': 'Power generation, distribution, and electrical grid management',
+    42→  'Instrumentation & Process Control': 'Sensors, control systems, and industrial automation',
+    43→  'Food Engineering': 'Food processing, preservation, quality assurance, and nutrition technology',
+    44→  'Leather Engineering': 'Leather processing, tanning technology, and footwear manufacturing',
+    45→};
+    46→
+    47→// Success confetti particles
+    48→function ConfettiParticles() {
+    49→  const particles = Array.from({ length: 30 }, (_, i) => ({
+    50→    id: i,
+    51→    x: Math.random() * 300 - 150,
+    52→    y: Math.random() * 300 - 150,
+    53→    rotation: Math.random() * 360,
+    54→    scale: Math.random() * 0.5 + 0.5,
+    55→    color: ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'][Math.floor(Math.random() * 6)],
+    56→    delay: Math.random() * 0.5,
+    57→  }));
+    58→
+    59→  return (
+    60→    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+    61→      {particles.map((p) => (
+    62→        <motion.div
+    63→          key={p.id}
+    64→          className="absolute left-1/2 top-1/2 w-2 h-2 rounded-sm"
+    65→          style={{ backgroundColor: p.color }}
+    66→          initial={{ x: 0, y: 0, scale: 0, rotate: 0, opacity: 1 }}
+    67→          animate={{
+    68→            x: p.x,
+    69→            y: p.y,
+    70→            scale: p.scale,
+    71→            rotate: p.rotation,
+    72→            opacity: 0,
+    73→          }}
+    74→          transition={{
+    75→            duration: 1.5,
+    76→            delay: p.delay,
+    77→            ease: [0.4, 0, 0.2, 1],
+    78→          }}
+    79→        />
+    80→      ))}
+    81→    </div>
+    82→  );
+    83→}
+    84→
+    85→export function SignupPage() {
+    86→  const [step, setStep] = useState(1);
+    87→  const [direction, setDirection] = useState(1); // 1 = forward, -1 = backward
+    88→  const [formData, setFormData] = useState({
+    89→    fullName: '',
+    90→    email: '',
+    91→    password: '',
+    92→    confirmPassword: '',
+    93→    institute: '',
+    94→    customInstitute: '',
+    95→    technology: '',
+    96→    instituteId: undefined as number | undefined,
+    97→  });
+    98→  const [showPassword, setShowPassword] = useState(false);
+    99→  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+   100→  const [otpVerified, setOtpVerified] = useState(false);
+   101→  const [cooldown, setCooldown] = useState(0);
+   102→  const [otpError, setOtpError] = useState('');
+   103→  const [instituteSearch, setInstituteSearch] = useState('');
+   104→  const [showInstituteDropdown, setShowInstituteDropdown] = useState(false);
+   105→  const [errors, setErrors] = useState<Record<string, string>>({});
+   106→  const [agreedToTerms, setAgreedToTerms] = useState(false);
+   107→  const [showConfetti, setShowConfetti] = useState(false);
+   108→  const [debouncedSearch, setDebouncedSearch] = useState('');
+   109→  const [hoveredTech, setHoveredTech] = useState<string | null>(null);
+   110→  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   111→
+   112→  const { signup, isLoading, verifyOTP, resendOTP } = useAuthStore();
+   113→  const navigate = useNavigationStore((s) => s.navigate);
+   114→  const [apiInstitutes, setApiInstitutes] = useState<Institute[]>([]);
+   115→  const [apiTechnologies, setApiTechnologies] = useState<Technology[]>([]);
+   116→  const [dataLoading, setDataLoading] = useState(true);
+   117→
+   118→  // Fetch institutes and technologies from Worker API
+   119→  useEffect(() => {
+   120→    async function fetchData() {
+   121→      try {
+   122→        const [instRes, techRes] = await Promise.all([
+   123→          instituteApi.list({ limit: 100 }),
+   124→          technologyApi.list(),
+   125→        ]);
+   126→        setApiInstitutes(instRes.institutes);
+   127→        setApiTechnologies(techRes.technologies);
+   128→      } catch (err) {
+   129→        console.error('Failed to fetch institutes/technologies:', err);
+   130→      } finally {
+   131→        setDataLoading(false);
+   132→      }
+   133→    }
+   134→    fetchData();
+   135→  }, []);
+   136→
+   137→  // Debounced search
+   138→  useEffect(() => {
+   139→    if (debounceRef.current) clearTimeout(debounceRef.current);
+   140→    debounceRef.current = setTimeout(() => {
+   141→      setDebouncedSearch(instituteSearch);
+   142→    }, 300);
+   143→    return () => {
+   144→      if (debounceRef.current) clearTimeout(debounceRef.current);
+   145→    };
+   146→  }, [instituteSearch]);
+   147→
+   148→  // Cooldown timer
+   149→  useEffect(() => {
+   150→    if (cooldown > 0) {
+   151→      const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
+   152→      return () => clearTimeout(timer);
+   153→    }
+   154→  }, [cooldown]);
+   155→
+   156→  // Filter institutes from API
+   157→  const filteredInstitutes = apiInstitutes.filter((inst) =>
+   158→    inst.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+   159→    (inst.name_bn && inst.name_bn.includes(debouncedSearch))
+   160→  );
+   161→
+   162→  const validateStep = (s: number): boolean => {
+   163→    const newErrors: Record<string, string> = {};
+   164→    if (s === 1) {
+   165→      if (!formData.fullName.trim()) newErrors.fullName = 'Name is required';
+   166→      if (!formData.email.trim()) newErrors.email = 'Email is required';
+   167→      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Invalid email';
+   168→    }
+   169→    if (s === 2) {
+   170→      if (!formData.password) newErrors.password = 'Password is required';
+   171→      else if (formData.password.length < 8) newErrors.password = 'Min 8 characters';
+   172→      const reqs = getPasswordRequirements(formData.password);
+   173→      if (!reqs.every((r) => r.met)) newErrors.password = 'Password does not meet all requirements';
+   174→      if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+   175→    }
+   176→    if (s === 3) {
+   177→      const inst = formData.institute === 'custom' ? formData.customInstitute : formData.institute;
+   178→      if (!inst) newErrors.institute = 'Select your institute';
+   179→      if (!formData.technology) newErrors.technology = 'Select your technology';
+   180→    }
+   181→    setErrors(newErrors);
+   182→    return Object.keys(newErrors).length === 0;
+   183→  };
+   184→
+   185→  const nextStep = () => {
+   186→    if (validateStep(step)) {
+   187→      setDirection(1);
+   188→      if (step === 3) {
+   189→        // Step 3 validated — now call signup API which sends OTP
+   190→        setCooldown(OTP_RESEND_COOLDOWN);
+   191→        handleSignup();
+   192→        return;
+   193→      }
+   194→      setStep(step + 1);
+   195→    }
+   196→  };
+   197→
+   198→  const handleSignup = async () => {
+   199→    try {
+   200→      await signup({
+   201→        fullName: formData.fullName,
+   202→        email: formData.email,
+   203→        password: formData.password,
+   204→        instituteId: formData.instituteId,
+   205→        technology: formData.technology,
+   206→      });
+   207→      // Signup succeeded — OTP was sent, move to step 4
+   208→      setStep(4);
+   209→    } catch (err: any) {
+   210→      setErrors({ ...errors, institute: err.message || 'Signup failed' });
+   211→    }
+   212→  };
+   213→
+   214→  const prevStep = () => {
+   215→    if (step > 1) {
+   216→      setDirection(-1);
+   217→      setStep(step - 1);
+   218→    }
+   219→  };
+   220→
+   221→  const handleOTPComplete = async (otp: string) => {
+   222→    const result = await verifyOTP(formData.email, otp);
+   223→    if (result) {
+   224→      setOtpVerified(true);
+   225→      setShowConfetti(true);
+   226→      setTimeout(() => setShowConfetti(false), 2000);
+   227→    } else {
+   228→      setOtpError('Invalid OTP. Please try again.');
+   229→    }
+   230→  };
+   231→
+   232→  const handleResendOTP = async () => {
+   233→    setCooldown(OTP_RESEND_COOLDOWN);
+   234→    setOtpError('');
+   235→    await resendOTP(formData.email);
+   236→  };
+   237→
+   238→  const stepLabels = ['Account', 'Security', 'Institute', 'Verify'];
+   239→
+   240→  const slideVariants = {
+   241→    enter: (dir: number) => ({ opacity: 0, x: dir > 0 ? 80 : -80 }),
+   242→    center: { opacity: 1, x: 0 },
+   243→    exit: (dir: number) => ({ opacity: 0, x: dir > 0 ? -80 : 80 }),
+   244→  };
+   245→
+   246→  return (
+   247→    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-sky-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-sky-950 p-4 relative overflow-hidden">
+   248→      {/* Decorative blobs */}
+   249→      <motion.div
+   250→        className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-sky-200/20 dark:bg-sky-800/10 blur-3xl"
+   251→        animate={{ y: [0, -20, 0], x: [0, -15, 0], scale: [1, 1.1, 1] }}
+   252→        transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+   253→      />
+   254→      <motion.div
+   255→        className="absolute -bottom-20 -left-20 w-64 h-64 rounded-full bg-blue-200/20 dark:bg-blue-800/10 blur-3xl"
+   256→        animate={{ y: [0, 15, 0], x: [0, 10, 0] }}
+   257→        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+   258→      />
+   259→
+   260→      <motion.div
+   261→        initial={{ opacity: 0, y: 30 }}
+   262→        animate={{ opacity: 1, y: 0 }}
+   263→        transition={{ duration: 0.6 }}
+   264→        className="w-full max-w-md relative z-10"
+   265→      >
+   266→        <GlassCard className="p-6 sm:p-8">
+   267→          {/* Logo */}
+   268→          <motion.div
+   269→            className="flex flex-col items-center mb-4"
+   270→            initial={{ opacity: 0, scale: 0.8 }}
+   271→            animate={{ opacity: 1, scale: 1 }}
+   272→            transition={{ delay: 0.1, type: 'spring', stiffness: 200 }}
+   273→          >
+   274→            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center mb-2 shadow-lg shadow-sky-500/30">
+   275→              <Image src="/logo.png" alt="DAKKHO" width={28} height={28} className="rounded-xl" />
+   276→            </div>
+   277→            <h1 className="text-xl font-extrabold gradient-text">Create Account</h1>
+   278→          </motion.div>
+   279→
+   280→          {/* Step welcome message */}
+   281→          <AnimatePresence mode="wait">
+   282→            <motion.div
+   283→              key={`message-${step}`}
+   284→              initial={{ opacity: 0, y: -10 }}
+   285→              animate={{ opacity: 1, y: 0 }}
+   286→              exit={{ opacity: 0, y: 10 }}
+   287→              transition={{ duration: 0.3 }}
+   288→              className="text-center mb-4"
+   289→            >
+   290→              <p className="text-sm font-semibold text-sky-500">{STEP_MESSAGES[step - 1]}</p>
+   291→            </motion.div>
+   292→          </AnimatePresence>
+   293→
+   294→          {/* Step indicator */}
+   295→          <div className="flex items-center justify-between mb-6 px-2 relative">
+   296→            {stepLabels.map((label, i) => (
+   297→              <div key={i} className="flex flex-col items-center relative z-10">
+   298→                <motion.div
+   299→                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors duration-300 ${
+   300→                    i + 1 < step
+   301→                      ? 'bg-emerald-500 text-white'
+   302→                      : i + 1 === step
+   303→                      ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white'
+   304→                      : 'bg-muted text-muted-foreground'
+   305→                  }`}
+   306→                  animate={{ scale: i + 1 === step ? 1.1 : 1 }}
+   307→                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+   308→                >
+   309→                  {i + 1 < step ? <Check className="w-4 h-4" /> : i + 1}
+   310→                </motion.div>
+   311→                <span className="text-[10px] font-semibold text-muted-foreground mt-1">{label}</span>
+   312→              </div>
+   313→            ))}
+   314→            {/* Progress bar */}
+   315→            <div className="absolute left-8 right-8 top-4 h-0.5 bg-muted -z-0">
+   316→              <motion.div
+   317→                className="h-full bg-gradient-to-r from-sky-500 to-blue-600"
+   318→                animate={{ width: `${((step - 1) / (TOTAL_STEPS - 1)) * 100}%` }}
+   319→                transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+   320→              />
+   321→            </div>
+   322→          </div>
+   323→
+   324→          {/* Step content */}
+   325→          <AnimatePresence mode="wait" custom={direction}>
+   326→            {/* Step 1: Account */}
+   327→            {step === 1 && (
+   328→              <motion.div
+   329→                key="step1"
+   330→                custom={direction}
+   331→                variants={slideVariants}
+   332→                initial="enter"
+   333→                animate="center"
+   334→                exit="exit"
+   335→                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+   336→                className="space-y-4"
+   337→              >
+   338→                <div>
+   339→                  <label className="block text-sm font-semibold mb-1.5">Full Name</label>
+   340→                  <div className="relative">
+   341→                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   342→                    <input
+   343→                      type="text"
+   344→                      value={formData.fullName}
+   345→                      onChange={(e) => { setFormData({ ...formData, fullName: e.target.value }); setErrors({ ...errors, fullName: '' }); }}
+   346→                      placeholder="Enter your full name"
+   347→                      className="w-full pl-10 pr-4 py-3 rounded-xl bg-muted/30 border-2 border-transparent focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 outline-none text-sm transition-all"
+   348→                    />
+   349→                  </div>
+   350→                  <AnimatePresence>
+   351→                    {errors.fullName && (
+   352→                      <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-xs text-red-500 mt-1">{errors.fullName}</motion.p>
+   353→                    )}
+   354→                  </AnimatePresence>
+   355→                </div>
+   356→                <div>
+   357→                  <label className="block text-sm font-semibold mb-1.5">Email</label>
+   358→                  <div className="relative">
+   359→                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   360→                    <input
+   361→                      type="email"
+   362→                      value={formData.email}
+   363→                      onChange={(e) => { setFormData({ ...formData, email: e.target.value }); setErrors({ ...errors, email: '' }); }}
+   364→                      placeholder="your@email.com"
+   365→                      className="w-full pl-10 pr-4 py-3 rounded-xl bg-muted/30 border-2 border-transparent focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 outline-none text-sm transition-all"
+   366→                    />
+   367→                  </div>
+   368→                  <AnimatePresence>
+   369→                    {errors.email && (
+   370→                      <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-xs text-red-500 mt-1">{errors.email}</motion.p>
+   371→                    )}
+   372→                  </AnimatePresence>
+   373→                </div>
+   374→              </motion.div>
+   375→            )}
+   376→
+   377→            {/* Step 2: Security */}
+   378→            {step === 2 && (
+   379→              <motion.div
+   380→                key="step2"
+   381→                custom={direction}
+   382→                variants={slideVariants}
+   383→                initial="enter"
+   384→                animate="center"
+   385→                exit="exit"
+   386→                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+   387→                className="space-y-4"
+   388→              >
+   389→                <div>
+   390→                  <label className="block text-sm font-semibold mb-1.5">Password</label>
+   391→                  <div className="relative">
+   392→                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   393→                    <input
+   394→                      type={showPassword ? 'text' : 'password'}
+   395→                      value={formData.password}
+   396→                      onChange={(e) => { setFormData({ ...formData, password: e.target.value }); setErrors({ ...errors, password: '' }); }}
+   397→                      placeholder="Create a strong password"
+   398→                      className="w-full pl-10 pr-10 py-3 rounded-xl bg-muted/30 border-2 border-transparent focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 outline-none text-sm transition-all"
+   399→                    />
+   400→                    <button
+   401→                      type="button"
+   402→                      onClick={() => setShowPassword(!showPassword)}
+   403→                      className="absolute right-3 top-1/2 -translate-y-1/2"
+   404→                    >
+   405→                      {showPassword ? <EyeOff className="w-4 h-4 text-muted-foreground" /> : <Eye className="w-4 h-4 text-muted-foreground" />}
+   406→                    </button>
+   407→                  </div>
+   408→                  <PasswordStrengthIndicator password={formData.password} />
+   409→                  <AnimatePresence>
+   410→                    {errors.password && (
+   411→                      <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-xs text-red-500 mt-1">{errors.password}</motion.p>
+   412→                    )}
+   413→                  </AnimatePresence>
+   414→                </div>
+   415→                <div>
+   416→                  <label className="block text-sm font-semibold mb-1.5">Confirm Password</label>
+   417→                  <div className="relative">
+   418→                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   419→                    <input
+   420→                      type={showConfirmPassword ? 'text' : 'password'}
+   421→                      value={formData.confirmPassword}
+   422→                      onChange={(e) => { setFormData({ ...formData, confirmPassword: e.target.value }); setErrors({ ...errors, confirmPassword: '' }); }}
+   423→                      placeholder="Confirm your password"
+   424→                      className="w-full pl-10 pr-10 py-3 rounded-xl bg-muted/30 border-2 border-transparent focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 outline-none text-sm transition-all"
+   425→                    />
+   426→                    <button
+   427→                      type="button"
+   428→                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+   429→                      className="absolute right-3 top-1/2 -translate-y-1/2"
+   430→                    >
+   431→                      {showConfirmPassword ? <EyeOff className="w-4 h-4 text-muted-foreground" /> : <Eye className="w-4 h-4 text-muted-foreground" />}
+   432→                    </button>
+   433→                  </div>
+   434→                  <AnimatePresence>
+   435→                    {errors.confirmPassword && (
+   436→                      <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-xs text-red-500 mt-1">{errors.confirmPassword}</motion.p>
+   437→                    )}
+   438→                  </AnimatePresence>
+   439→                  {/* Password match indicator */}
+   440→                  <AnimatePresence>
+   441→                    {formData.confirmPassword && (
+   442→                      <motion.div
+   443→                        initial={{ opacity: 0, height: 0 }}
+   444→                        animate={{ opacity: 1, height: 'auto' }}
+   445→                        exit={{ opacity: 0, height: 0 }}
+   446→                        className="mt-1.5"
+   447→                      >
+   448→                        {formData.password === formData.confirmPassword ? (
+   449→                          <p className="text-xs text-emerald-500 font-medium">Passwords match</p>
+   450→                        ) : (
+   451→                          <p className="text-xs text-red-500 font-medium">Passwords do not match</p>
+   452→                        )}
+   453→                      </motion.div>
+   454→                    )}
+   455→                  </AnimatePresence>
+   456→                </div>
+   457→              </motion.div>
+   458→            )}
+   459→
+   460→            {/* Step 3: Institute */}
+   461→            {step === 3 && (
+   462→              <motion.div
+   463→                key="step3"
+   464→                custom={direction}
+   465→                variants={slideVariants}
+   466→                initial="enter"
+   467→                animate="center"
+   468→                exit="exit"
+   469→                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+   470→                className="space-y-4"
+   471→              >
+   472→                {/* Institute dropdown */}
+   473→                <div className="relative">
+   474→                  <label className="block text-sm font-semibold mb-1.5">Polytechnic Institute</label>
+   475→                  <div
+   476→                    className="w-full px-4 py-3 rounded-xl bg-muted/30 border-2 border-transparent focus-within:border-sky-400 focus-within:ring-2 focus-within:ring-sky-400/20 cursor-pointer flex items-center justify-between"
+   477→                    onClick={() => setShowInstituteDropdown(!showInstituteDropdown)}
+   478→                  >
+   479→                    <div className="flex items-center gap-2">
+   480→                      <School className="w-4 h-4 text-muted-foreground" />
+   481→                      <span className={`text-sm ${formData.institute ? 'text-foreground' : 'text-muted-foreground'}`}>
+   482→                        {formData.institute === 'custom' ? 'Other Institute...' : (formData.institute || 'Select your institute')}
+   483→                      </span>
+   484→                    </div>
+   485→                    <ChevronsUpDown className="w-4 h-4 text-muted-foreground" />
+   486→                  </div>
+   487→
+   488→                  <AnimatePresence>
+   489→                    {showInstituteDropdown && (
+   490→                      <motion.div
+   491→                        className="absolute top-full left-0 right-0 mt-1 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-white/50 dark:border-white/10 rounded-xl shadow-xl z-50 max-h-60 overflow-hidden"
+   492→                        initial={{ opacity: 0, y: -5 }}
+   493→                        animate={{ opacity: 1, y: 0 }}
+   494→                        exit={{ opacity: 0, y: -5 }}
+   495→                      >
+   496→                        <div className="p-2">
+   497→                          <input
+   498→                            type="text"
+   499→                            value={instituteSearch}
+   500→                            onChange={(e) => setInstituteSearch(e.target.value)}
+   501→                            placeholder="Search institute..."
+   502→                            className="w-full px-3 py-2 border border-white/20 dark:border-white/5 bg-muted/30 rounded-lg text-sm outline-none focus:border-sky-400"
+   503→                            autoFocus
+   504→                          />
+   505→                        </div>
+   506→                        <div className="overflow-y-auto max-h-40 px-1">
+   507→                          {dataLoading ? (
+   508→                            <p className="text-xs text-muted-foreground text-center py-2">Loading institutes...</p>
+   509→                          ) : filteredInstitutes.length > 0 ? (
+   510→                            filteredInstitutes.map((inst) => (
+   511→                              <button
+   512→                                key={inst.id}
+   513→                                className="w-full text-left px-3 py-2 text-sm hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors rounded-lg"
+   514→                                onClick={() => {
+   515→                                  setFormData({ ...formData, institute: String(inst.id), instituteId: inst.id });
+   516→                                  setShowInstituteDropdown(false);
+   517→                                  setInstituteSearch('');
+   518→                                  setErrors({ ...errors, institute: '' });
+   519→                                }}
+   520→                              >
+   521→                                <span>{inst.name}</span>
+   522→                                {inst.name_bn && <span className="text-muted-foreground text-xs ml-2">{inst.name_bn}</span>}
+   523→                                {inst.division && <span className="text-xs ml-2 px-1.5 py-0.5 bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 rounded">{inst.division}</span>}
+   524→                              </button>
+   525→                            ))
+   526→                          ) : (
+   527→                            <p className="text-xs text-muted-foreground text-center py-2">No institutes found</p>
+   528→                          )}
+   529→                          <button
+   530→                            className="w-full text-left px-3 py-2 text-sm text-sky-500 font-semibold hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors rounded-lg"
+   531→                            onClick={() => {
+   532→                              setFormData({ ...formData, institute: 'custom' });
+   533→                              setShowInstituteDropdown(false);
+   534→                              setInstituteSearch('');
+   535→                            }}
+   536→                          >
+   537→                            Can&apos;t find your institute? Add it
+   538→                          </button>
+   539→                        </div>
+   540→                      </motion.div>
+   541→                    )}
+   542→                  </AnimatePresence>
+   543→                  {formData.institute === 'custom' && (
+   544→                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-2">
+   545→                      <input
+   546→                        type="text"
+   547→                        value={formData.customInstitute}
+   548→                        onChange={(e) => { setFormData({ ...formData, customInstitute: e.target.value }); setErrors({ ...errors, institute: '' }); }}
+   549→                        placeholder="Enter your institute name"
+   550→                        className="w-full px-4 py-3 rounded-xl bg-muted/30 border-2 border-transparent focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 outline-none text-sm transition-all"
+   551→                      />
+   552→                    </motion.div>
+   553→                  )}
+   554→                  <AnimatePresence>
+   555→                    {errors.institute && (
+   556→                      <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-xs text-red-500 mt-1">{errors.institute}</motion.p>
+   557→                    )}
+   558→                  </AnimatePresence>
+   559→                </div>
+   560→
+   561→                {/* Technology */}
+   562→                <div>
+   563→                  <label className="block text-sm font-semibold mb-1.5">Technology</label>
+   564→                  <div className="relative">
+   565→                    <Cpu className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   566→                    <select
+   567→                      value={formData.technology}
+   568→                      onChange={(e) => { setFormData({ ...formData, technology: e.target.value }); setErrors({ ...errors, technology: '' }); }}
+   569→                      onMouseEnter={() => setHoveredTech(formData.technology)}
+   570→                      onMouseLeave={() => setHoveredTech(null)}
+   571→                      className="w-full pl-10 pr-4 py-3 rounded-xl bg-muted/30 border-2 border-transparent focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 outline-none text-sm appearance-none transition-all"
+   572→                    >
+   573→                      <option value="">Select your technology</option>
+   574→                      {apiTechnologies.map((tech) => (
+   575→                        <option key={tech.id} value={tech.short_code}>{tech.name} ({tech.short_code})</option>
+   576→                      ))}
+   577→                    </select>
+   578→                  </div>
+   579→                  {/* Technology description tooltip */}
+   580→                  <AnimatePresence>
+   581→                    {formData.technology && (() => {
+   582→                      const tech = apiTechnologies.find(t => t.short_code === formData.technology);
+   583→                      return tech?.description ? (
+   584→                        <motion.div
+   585→                          initial={{ opacity: 0, y: -5, height: 0 }}
+   586→                          animate={{ opacity: 1, y: 0, height: 'auto' }}
+   587→                          exit={{ opacity: 0, y: -5, height: 0 }}
+   588→                          className="mt-2"
+   589→                        >
+   590→                          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800/50">
+   591→                            <Info className="w-3.5 h-3.5 text-sky-500 mt-0.5 flex-shrink-0" />
+   592→                            <p className="text-xs text-sky-700 dark:text-sky-300">{tech.description}</p>
+   593→                          </div>
+   594→                        </motion.div>
+   595→                      ) : null;
+   596→                    })()}
+   597→                  </AnimatePresence>
+   598→                  <AnimatePresence>
+   599→                    {errors.technology && (
+   600→                      <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-xs text-red-500 mt-1">{errors.technology}</motion.p>
+   601→                    )}
+   602→                  </AnimatePresence>
+   603→                </div>
+   604→              </motion.div>
+   605→            )}
+   606→
+   607→            {/* Step 4: OTP Verification */}
+   608→            {step === 4 && (
+   609→              <motion.div
+   610→                key="step4"
+   611→                custom={direction}
+   612→                variants={slideVariants}
+   613→                initial="enter"
+   614→                animate="center"
+   615→                exit="exit"
+   616→                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+   617→                className="space-y-5 text-center relative"
+   618→              >
+   619→                {showConfetti && <ConfettiParticles />}
+   620→
+   621→                <div>
+   622→                  <h3 className="text-lg font-bold mb-1">Verify Your Email</h3>
+   623→                  <p className="text-sm text-muted-foreground">
+   624→                    We sent a 6-digit code to <span className="font-semibold text-foreground">{formData.email}</span>
+   625→                  </p>
+   626→                </div>
+   627→
+   628→                {otpVerified ? (
+   629→                  <motion.div
+   630→                    initial={{ scale: 0 }}
+   631→                    animate={{ scale: 1 }}
+   632→                    className="flex flex-col items-center"
+   633→                  >
+   634→                    <motion.div
+   635→                      className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-3"
+   636→                      animate={{ scale: [1, 1.1, 1] }}
+   637→                      transition={{ duration: 0.5 }}
+   638→                    >
+   639→                      <Check className="w-8 h-8 text-emerald-500" />
+   640→                    </motion.div>
+   641→                    <p className="text-sm font-semibold text-emerald-600">Verified! Redirecting...</p>
+   642→                  </motion.div>
+   643→                ) : (
+   644→                  <>
+   645→                    <OTPInput
+   646→                      onComplete={handleOTPComplete}
+   647→                      onResend={handleResendOTP}
+   648→                      cooldown={cooldown}
+   649→                      error={otpError}
+   650→                    />
+   651→
+   652→                    {/* Terms & Conditions */}
+   653→                    <motion.div
+   654→                      className="pt-3 border-t border-muted-foreground/10"
+   655→                      initial={{ opacity: 0 }}
+   656→                      animate={{ opacity: 1 }}
+   657→                      transition={{ delay: 0.5 }}
+   658→                    >
+   659→                      <label className="flex items-start gap-2.5 cursor-pointer group">
+   660→                        <div className="relative mt-0.5">
+   661→                          <input
+   662→                            type="checkbox"
+   663→                            checked={agreedToTerms}
+   664→                            onChange={(e) => setAgreedToTerms(e.target.checked)}
+   665→                            className="sr-only peer"
+   666→                          />
+   667→                          <div className="w-4 h-4 rounded border-2 border-muted-foreground/40 peer-checked:border-sky-500 peer-checked:bg-sky-500 transition-all duration-200 flex items-center justify-center">
+   668→                            <AnimatePresence>
+   669→                              {agreedToTerms && (
+   670→                                <motion.div
+   671→                                  initial={{ scale: 0 }}
+   672→                                  animate={{ scale: 1 }}
+   673→                                  exit={{ scale: 0 }}
+   674→                                  transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+   675→                                >
+   676→                                  <Check className="w-3 h-3 text-white" strokeWidth={3} />
+   677→                                </motion.div>
+   678→                              )}
+   679→                            </AnimatePresence>
+   680→                          </div>
+   681→                        </div>
+   682→                        <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors text-left">
+   683→                          I agree to the{' '}
+   684→                          <span className="text-sky-500 font-semibold">Terms of Service</span>{' '}
+   685→                          and{' '}
+   686→                          <span className="text-sky-500 font-semibold">Privacy Policy</span>
+   687→                        </span>
+   688→                      </label>
+   689→                    </motion.div>
+   690→                  </>
+   691→                )}
+   692→              </motion.div>
+   693→            )}
+   694→          </AnimatePresence>
+   695→
+   696→          {/* Navigation buttons */}
+   697→          <div className="flex items-center justify-between mt-6">
+   698→            {step > 1 ? (
+   699→              <motion.button
+   700→                onClick={prevStep}
+   701→                className="flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+   702→                whileHover={{ x: -3 }}
+   703→                whileTap={{ scale: 0.95 }}
+   704→              >
+   705→                <ArrowLeft className="w-4 h-4" />
+   706→                Back
+   707→              </motion.button>
+   708→            ) : (
+   709→              <div />
+   710→            )}
+   711→
+   712→            {step < TOTAL_STEPS && (
+   713→              <GradientButton onClick={nextStep} size="md">
+   714→                Next
+   715→                <ArrowRight className="w-4 h-4" />
+   716→              </GradientButton>
+   717→            )}
+   718→
+   719→            {step === TOTAL_STEPS && !otpVerified && !agreedToTerms && (
+   720→              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   721→                <ShieldCheck className="w-3.5 h-3.5" />
+   722→                <span>Agree to continue</span>
+   723→              </div>
+   724→            )}
+   725→          </div>
+   726→
+   727→          {/* Login link */}
+   728→          <motion.div
+   729→            className="text-center mt-5"
+   730→            initial={{ opacity: 0 }}
+   731→            animate={{ opacity: 1 }}
+   732→            transition={{ delay: 0.5 }}
+   733→          >
+   734→            <p className="text-sm text-muted-foreground">
+   735→              Already have an account?{' '}
+   736→              <button
+   737→                onClick={() => navigate('login')}
+   738→                className="font-bold text-sky-500 hover:text-sky-600 transition-colors"
+   739→              >
+   740→                Sign In
+   741→              </button>
+   742→            </p>
+   743→          </motion.div>
+   744→        </GlassCard>
+   745→      </motion.div>
+   746→    </div>
+   747→  );
+   748→}
+   749→
