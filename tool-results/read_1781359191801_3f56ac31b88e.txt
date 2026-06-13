@@ -1,0 +1,1138 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import {
+     6→  Search,
+     7→  Plus,
+     8→  MoreHorizontal,
+     9→  Pencil,
+    10→  Trash2,
+    11→  RefreshCw,
+    12→  BookMarked,
+    13→  AlertTriangle,
+    14→  ChevronLeft,
+    15→  ChevronRight,
+    16→  Tag,
+    17→  Palette,
+    18→  Hash,
+    19→  ToggleLeft,
+    20→} from 'lucide-react';
+    21→import { Button } from '@/components/ui/button';
+    22→import { Input } from '@/components/ui/input';
+    23→import { Badge } from '@/components/ui/badge';
+    24→import { Label } from '@/components/ui/label';
+    25→import { Switch } from '@/components/ui/switch';
+    26→import { Skeleton } from '@/components/ui/skeleton';
+    27→import { Textarea } from '@/components/ui/textarea';
+    28→import {
+    29→  Dialog,
+    30→  DialogContent,
+    31→  DialogHeader,
+    32→  DialogTitle,
+    33→  DialogFooter,
+    34→  DialogDescription,
+    35→} from '@/components/ui/dialog';
+    36→import {
+    37→  DropdownMenu,
+    38→  DropdownMenuContent,
+    39→  DropdownMenuItem,
+    40→  DropdownMenuSeparator,
+    41→  DropdownMenuTrigger,
+    42→} from '@/components/ui/dropdown-menu';
+    43→import {
+    44→  Select,
+    45→  SelectContent,
+    46→  SelectItem,
+    47→  SelectTrigger,
+    48→  SelectValue,
+    49→} from '@/components/ui/select';
+    50→import {
+    51→  AlertDialog,
+    52→  AlertDialogAction,
+    53→  AlertDialogCancel,
+    54→  AlertDialogContent,
+    55→  AlertDialogDescription,
+    56→  AlertDialogFooter,
+    57→  AlertDialogHeader,
+    58→  AlertDialogTitle,
+    59→} from '@/components/ui/alert-dialog';
+    60→import { useToast } from '@/hooks/use-toast';
+    61→import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api-client';
+    62→import type { Subject } from '@/lib/types';
+    63→
+    64→// ---------------------------------------------------------------------------
+    65→// Helpers
+    66→// ---------------------------------------------------------------------------
+    67→
+    68→function mapSubject(doc: Record<string, unknown>): Subject & { technologyIds?: number[]; technologyNames?: string[] } {
+    69→  return {
+    70→    id: String(doc.id ?? ''),
+    71→    name: String(doc.name ?? ''),
+    72→    slug: String(doc.slug ?? ''),
+    73→    description: doc.description ? String(doc.description) : undefined,
+    74→    icon: doc.icon ? String(doc.icon) : undefined,
+    75→    color: doc.color ? String(doc.color) : undefined,
+    76→    technologyId: doc.technologyId ? Number(doc.technologyId) : undefined,
+    77→    technologyIds: Array.isArray(doc.technologyIds) ? doc.technologyIds.map(Number) : (doc.technology_ids ? (doc.technology_ids as unknown[]).map(Number) : undefined),
+    78→    technologyNames: Array.isArray(doc.technologyNames) ? doc.technologyNames.map(String) : (doc.technology_names ? (doc.technology_names as unknown[]).map(String) : undefined),
+    79→    sortOrder: Number(doc.sortOrder ?? 0),
+    80→    courseCount: Number(doc.courseCount ?? 0),
+    81→    isActive: Boolean(doc.isActive),
+    82→    createdAt: String(doc.createdAt ?? ''),
+    83→    updatedAt: String(doc.updatedAt ?? ''),
+    84→  };
+    85→}
+    86→
+    87→const PAGE_SIZE = 20;
+    88→
+    89→// Predefined color palette (matching categories-table)
+    90→const PREDEFINED_COLORS = [
+    91→  '#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444',
+    92→  '#EC4899', '#06B6D4', '#F97316', '#6366F1', '#14B8A6',
+    93→  '#84CC16', '#A855F7', '#E11D48', '#0EA5E9', '#D946EF',
+    94→];
+    95→
+    96→function slugify(text: string): string {
+    97→  return text
+    98→    .toLowerCase()
+    99→    .replace(/[^a-z0-9\u0980-\u09FF]+/g, '-')
+   100→    .replace(/(^-|-$)/g, '');
+   101→}
+   102→
+   103→// ---------------------------------------------------------------------------
+   104→// Component
+   105→// ---------------------------------------------------------------------------
+   106→
+   107→export default function SubjectsTable() {
+   108→  const [subjects, setSubjects] = useState<Subject[]>([]);
+   109→  const [total, setTotal] = useState(0);
+   110→  const [page, setPage] = useState(1);
+   111→  const [search, setSearch] = useState('');
+   112→  const [statusFilter, setStatusFilter] = useState('all');
+   113→  const [loading, setLoading] = useState(true);
+   114→  const [error, setError] = useState<string | null>(null);
+   115→  const { toast } = useToast();
+   116→
+   117→  // Dialog states
+   118→  const [formOpen, setFormOpen] = useState(false);
+   119→  const [editSubject, setEditSubject] = useState<Subject | null>(null);
+   120→  const [deleteOpen, setDeleteOpen] = useState(false);
+   121→  const [deleteTarget, setDeleteTarget] = useState<Subject | null>(null);
+   122→  const [saving, setSaving] = useState(false);
+   123→
+   124→  // Form state
+   125→  const [form, setForm] = useState({
+   126→    name: '',
+   127→    slug: '',
+   128→    description: '',
+   129→    technologyId: '',
+   130→    technologyIds: [] as number[],
+   131→    icon: '',
+   132→    color: '#10B981',
+   133→    sortOrder: 0,
+   134→    isActive: true,
+   135→  });
+   136→
+   137→  // Inline create state for technology
+   138→  const [inlineTechName, setInlineTechName] = useState('');
+   139→  const [showInlineTech, setShowInlineTech] = useState(false);
+   140→  const [creatingTech, setCreatingTech] = useState(false);
+   141→
+   142→  // Dropdown data — technologies
+   143→  const [technologies, setTechnologies] = useState<{ id: number; name: string }[]>([]);
+   144→
+   145→  // -------------------------------------------------------------------------
+   146→  // Data fetching
+   147→  // -------------------------------------------------------------------------
+   148→
+   149→  const fetchSubjects = useCallback(async () => {
+   150→    setLoading(true);
+   151→    setError(null);
+   152→    try {
+   153→      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+   154→      if (search) params.set('search', search);
+   155→      if (statusFilter === 'active') params.set('isActive', 'true');
+   156→      if (statusFilter === 'inactive') params.set('isActive', 'false');
+   157→
+   158→      const data = (await apiGet(`/subjects?${params}`)) as Record<string, unknown>;
+   159→      const docs = (data.subjects as Record<string, unknown>[]) || (data.documents as Record<string, unknown>[]) || [];
+   160→      setSubjects(docs.map(mapSubject));
+   161→      setTotal((data.total as number) || 0);
+   162→    } catch (err) {
+   163→      const message = err instanceof Error ? err.message : 'Failed to fetch subjects';
+   164→      setError(message);
+   165→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   166→    } finally {
+   167→      setLoading(false);
+   168→    }
+   169→  }, [page, search, statusFilter, toast]);
+   170→
+   171→  const fetchTechnologies = useCallback(async () => {
+   172→    try {
+   173→      const data = (await apiGet('/technologies?limit=200')) as Record<string, unknown>;
+   174→      const docs = (data.technologies as Record<string, unknown>[]) || (data.documents as Record<string, unknown>[]) || [];
+   175→      setTechnologies(
+   176→        docs.map((d) => ({ id: Number(d.id), name: String(d.name ?? 'Unknown') })),
+   177→      );
+   178→    } catch {
+   179→      // silent — dropdown can be empty
+   180→    }
+   181→  }, []);
+   182→
+   183→  useEffect(() => {
+   184→    fetchSubjects();
+   185→  }, [fetchSubjects]);
+   186→
+   187→  useEffect(() => {
+   188→    fetchTechnologies();
+   189→  }, [fetchTechnologies]);
+   190→
+   191→  // -------------------------------------------------------------------------
+   192→  // CRUD handlers
+   193→  // -------------------------------------------------------------------------
+   194→
+   195→  const openCreateDialog = () => {
+   196→    setEditSubject(null);
+   197→    setForm({
+   198→      name: '',
+   199→      slug: '',
+   200→      description: '',
+   201→      technologyId: '',
+   202→      technologyIds: [],
+   203→      icon: '',
+   204→      color: '#10B981',
+   205→      sortOrder: 0,
+   206→      isActive: true,
+   207→    });
+   208→    setInlineTechName('');
+   209→    setShowInlineTech(false);
+   210→    setFormOpen(true);
+   211→  };
+   212→
+   213→  const openEditDialog = (subject: Subject & { technologyIds?: number[]; technologyNames?: string[] }) => {
+   214→    setEditSubject(subject);
+   215→    setForm({
+   216→      name: subject.name,
+   217→      slug: subject.slug,
+   218→      description: subject.description ?? '',
+   219→      technologyId: subject.technologyId ? String(subject.technologyId) : '',
+   220→      technologyIds: subject.technologyIds || (subject.technologyId ? [subject.technologyId] : []),
+   221→      icon: subject.icon ?? '',
+   222→      color: subject.color ?? '#10B981',
+   223→      sortOrder: subject.sortOrder,
+   224→      isActive: subject.isActive,
+   225→    });
+   226→    setInlineTechName('');
+   227→    setShowInlineTech(false);
+   228→    setFormOpen(true);
+   229→  };
+   230→
+   231→  const handleSave = async () => {
+   232→    if (!form.name.trim()) {
+   233→      toast({ title: 'Validation', description: 'Name is required', variant: 'destructive' });
+   234→      return;
+   235→    }
+   236→
+   237→    setSaving(true);
+   238→    try {
+   239→      const slug = form.slug || slugify(form.name);
+   240→      const payload: Record<string, unknown> = {
+   241→        name: form.name,
+   242→        slug,
+   243→        description: form.description || undefined,
+   244→        technology_id: form.technologyId ? Number(form.technologyId) : undefined,
+   245→        technology_ids: form.technologyIds.length > 0 ? form.technologyIds : (form.technologyId ? [Number(form.technologyId)] : undefined),
+   246→        icon: form.icon || undefined,
+   247→        color: form.color || undefined,
+   248→        sort_order: form.sortOrder,
+   249→        is_active: form.isActive,
+   250→      };
+   251→
+   252→      if (editSubject) {
+   253→        await apiPut('/subjects', { subjectId: editSubject.id, ...payload });
+   254→        toast({ title: 'Success', description: 'Subject updated successfully' });
+   255→      } else {
+   256→        await apiPost('/subjects', {
+   257→          ...payload,
+   258→          course_count: 0,
+   259→        });
+   260→        toast({ title: 'Success', description: 'Subject created successfully' });
+   261→      }
+   262→
+   263→      setFormOpen(false);
+   264→      fetchSubjects();
+   265→    } catch (err) {
+   266→      const message = err instanceof Error ? err.message : 'Failed to save subject';
+   267→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   268→    } finally {
+   269→      setSaving(false);
+   270→    }
+   271→  };
+   272→
+   273→  const confirmDelete = async () => {
+   274→    if (!deleteTarget) return;
+   275→    try {
+   276→      await apiDelete(`/subjects?id=${deleteTarget.id}`);
+   277→      toast({ title: 'Deleted', description: 'Subject has been deleted' });
+   278→      setDeleteOpen(false);
+   279→      setDeleteTarget(null);
+   280→      fetchSubjects();
+   281→    } catch (err) {
+   282→      const message = err instanceof Error ? err.message : 'Failed to delete subject';
+   283→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   284→    }
+   285→  };
+   286→
+   287→  const toggleActive = async (subject: Subject) => {
+   288→    try {
+   289→      await apiPut('/subjects', { subjectId: subject.id, is_active: !subject.isActive });
+   290→      toast({
+   291→        title: 'Success',
+   292→        description: `Subject ${!subject.isActive ? 'activated' : 'deactivated'}`,
+   293→      });
+   294→      fetchSubjects();
+   295→    } catch (err) {
+   296→      const message = err instanceof Error ? err.message : 'Failed to update subject';
+   297→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   298→    }
+   299→  };
+   300→
+   301→  // ---- Inline create technology ----
+   302→  const handleInlineCreateTech = async () => {
+   303→    if (!inlineTechName.trim()) return;
+   304→    setCreatingTech(true);
+   305→    try {
+   306→      await apiPost('/technologies', { name: inlineTechName.trim() });
+   307→      toast({ title: 'Technology Created', description: `"${inlineTechName.trim()}" added` });
+   308→      setInlineTechName('');
+   309→      setShowInlineTech(false);
+   310→      // Re-fetch technologies so the new one appears in the dropdown
+   311→      await fetchTechnologies();
+   312→    } catch (err) {
+   313→      const message = err instanceof Error ? err.message : 'Failed to create technology';
+   314→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   315→    } finally {
+   316→      setCreatingTech(false);
+   317→    }
+   318→  };
+   319→
+   320→  // ---- Technology name lookup ----
+   321→  const getTechnologyName = (technologyId: number) => {
+   322→    const tech = technologies.find((t) => t.id === technologyId);
+   323→    return tech?.name || String(technologyId);
+   324→  };
+   325→
+   326→  const totalPages = Math.ceil(total / PAGE_SIZE);
+   327→
+   328→  // ---- Animation variants ----
+   329→  const rowVariants = {
+   330→    hidden: { opacity: 0, y: 8 },
+   331→    visible: (i: number) => ({
+   332→      opacity: 1,
+   333→      y: 0,
+   334→      transition: { delay: i * 0.03, duration: 0.3 },
+   335→    }),
+   336→    exit: { opacity: 0, transition: { duration: 0.15 } },
+   337→  };
+   338→
+   339→  // -------------------------------------------------------------------------
+   340→  // JSX
+   341→  // -------------------------------------------------------------------------
+   342→
+   343→  return (
+   344→    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+   345→      {/* ---- Page Header ---- */}
+   346→      <div className="page-header">
+   347→        <div className="flex items-center gap-3">
+   348→          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+   349→            <BookMarked className="h-5 w-5 text-emerald-400" />
+   350→          </div>
+   351→          <div>
+   352→            <h1 className="page-title">Subjects</h1>
+   353→            <p className="text-sm text-muted-foreground">{total} total subjects</p>
+   354→          </div>
+   355→        </div>
+   356→        <div className="flex items-center gap-2 flex-wrap">
+   357→          <Button onClick={openCreateDialog} className="gradient-primary text-white gap-2">
+   358→            <Plus className="h-4 w-4" />
+   359→            Add Subject
+   360→          </Button>
+   361→        </div>
+   362→      </div>
+   363→
+   364→      {/* ---- Filters Bar ---- */}
+   365→      <div className="glass-card rounded-xl p-4">
+   366→        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+   367→          {/* Search */}
+   368→          <div className="relative flex-1 min-w-0">
+   369→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+   370→            <Input
+   371→              placeholder="Search subjects by name..."
+   372→              value={search}
+   373→              onChange={(e) => {
+   374→                setSearch(e.target.value);
+   375→                setPage(1);
+   376→              }}
+   377→              className="pl-9 bg-white/[0.04] border-white/[0.08] h-10"
+   378→            />
+   379→          </div>
+   380→
+   381→          {/* Status filter */}
+   382→          <Select
+   383→            value={statusFilter}
+   384→            onValueChange={(v) => {
+   385→              setStatusFilter(v);
+   386→              setPage(1);
+   387→            }}
+   388→          >
+   389→            <SelectTrigger className="w-[160px] bg-white/[0.04] border-white/[0.08] h-10">
+   390→              <SelectValue placeholder="All Status" />
+   391→            </SelectTrigger>
+   392→            <SelectContent>
+   393→              <SelectItem value="all">All Status</SelectItem>
+   394→              <SelectItem value="active">Active</SelectItem>
+   395→              <SelectItem value="inactive">Inactive</SelectItem>
+   396→            </SelectContent>
+   397→          </Select>
+   398→
+   399→          {/* Refresh */}
+   400→          <Button
+   401→            variant="outline"
+   402→            size="icon"
+   403→            onClick={fetchSubjects}
+   404→            className="border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.08] h-10 w-10"
+   405→          >
+   406→            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+   407→          </Button>
+   408→        </div>
+   409→      </div>
+   410→
+   411→      {/* ---- Desktop Data Table ---- */}
+   412→      <div className="glass-card rounded-xl overflow-hidden hidden md:block">
+   413→        <div className="overflow-x-auto">
+   414→          <table className="data-table">
+   415→            <thead>
+   416→              <tr>
+   417→                <th>Subject</th>
+   418→                <th>Slug</th>
+   419→                <th className="hidden lg:table-cell">Technology</th>
+   420→                <th>Courses</th>
+   421→                <th>Status</th>
+   422→                <th className="text-right">Actions</th>
+   423→              </tr>
+   424→            </thead>
+   425→            <tbody>
+   426→              {/* ---- Loading skeleton ---- */}
+   427→              {loading &&
+   428→                Array.from({ length: 5 }).map((_, i) => (
+   429→                  <tr key={`skel-${i}`}>
+   430→                    <td>
+   431→                      <div className="flex items-center gap-3">
+   432→                        <Skeleton className="h-9 w-9 rounded-lg" />
+   433→                        <Skeleton className="h-4 w-32" />
+   434→                      </div>
+   435→                    </td>
+   436→                    <td>
+   437→                      <Skeleton className="h-4 w-24" />
+   438→                    </td>
+   439→                    <td className="hidden lg:table-cell">
+   440→                      <Skeleton className="h-5 w-20 rounded-full" />
+   441→                    </td>
+   442→                    <td>
+   443→                      <Skeleton className="h-4 w-10" />
+   444→                    </td>
+   445→                    <td>
+   446→                      <Skeleton className="h-5 w-16 rounded-full" />
+   447→                    </td>
+   448→                    <td className="text-right">
+   449→                      <Skeleton className="h-8 w-8 rounded-md ml-auto" />
+   450→                    </td>
+   451→                  </tr>
+   452→                ))}
+   453→
+   454→              {/* ---- Error state ---- */}
+   455→              {!loading && error && (
+   456→                <tr>
+   457→                  <td colSpan={6} className="text-center py-12">
+   458→                    <div className="flex flex-col items-center gap-3">
+   459→                      <AlertTriangle className="h-10 w-10 text-dakkho-warning" />
+   460→                      <p className="text-muted-foreground text-sm">{error}</p>
+   461→                      <Button variant="outline" size="sm" onClick={fetchSubjects} className="gap-2">
+   462→                        <RefreshCw className="h-3.5 w-3.5" /> Retry
+   463→                      </Button>
+   464→                    </div>
+   465→                  </td>
+   466→                </tr>
+   467→              )}
+   468→
+   469→              {/* ---- Empty state ---- */}
+   470→              {!loading && !error && subjects.length === 0 && (
+   471→                <tr>
+   472→                  <td colSpan={6} className="text-center py-12">
+   473→                    <div className="flex flex-col items-center gap-3">
+   474→                      <BookMarked className="h-10 w-10 text-muted-foreground/50" />
+   475→                      <p className="text-muted-foreground text-sm">No subjects found</p>
+   476→                      <p className="text-muted-foreground/60 text-xs">
+   477→                        Create your first subject or adjust filters
+   478→                      </p>
+   479→                      <Button
+   480→                        variant="outline"
+   481→                        size="sm"
+   482→                        onClick={openCreateDialog}
+   483→                        className="gap-2 mt-1"
+   484→                      >
+   485→                        <Plus className="h-3.5 w-3.5" /> Add Subject
+   486→                      </Button>
+   487→                    </div>
+   488→                  </td>
+   489→                </tr>
+   490→              )}
+   491→
+   492→              {/* ---- Data rows ---- */}
+   493→              {!loading &&
+   494→                !error &&
+   495→                subjects.map((subject, i) => (
+   496→                  <motion.tr
+   497→                    key={subject.id}
+   498→                    custom={i}
+   499→                    variants={rowVariants}
+   500→                    initial="hidden"
+   501→                    animate="visible"
+   502→                    exit="exit"
+   503→                    className="border-white/[0.06] hover:bg-white/[0.03] transition-colors"
+   504→                  >
+   505→                    {/* Icon + Name */}
+   506→                    <td>
+   507→                      <div className="flex items-center gap-3">
+   508→                        <div
+   509→                          className="w-9 h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0"
+   510→                          style={{
+   511→                            background: (subject.color || '#10B981') + '18',
+   512→                            color: subject.color || '#10B981',
+   513→                          }}
+   514→                        >
+   515→                          {subject.icon || subject.name?.charAt(0).toUpperCase() || (
+   516→                            <Tag className="h-4 w-4" />
+   517→                          )}
+   518→                        </div>
+   519→                        <div className="min-w-0">
+   520→                          <span className="font-medium text-foreground truncate max-w-[200px] block">
+   521→                            {subject.name || 'Unnamed'}
+   522→                          </span>
+   523→                          {subject.description && (
+   524→                            <span className="text-xs text-muted-foreground truncate max-w-[200px] block">
+   525→                              {subject.description}
+   526→                            </span>
+   527→                          )}
+   528→                        </div>
+   529→                      </div>
+   530→                    </td>
+   531→
+   532→                    {/* Slug */}
+   533→                    <td className="text-sm text-muted-foreground font-mono">
+   534→                      {subject.slug || '—'}
+   535→                    </td>
+   536→
+   537→                    {/* Technologies (multiple) */}
+   538→                    <td className="hidden lg:table-cell">
+   539→                      {(subject as any).technologyNames && (subject as any).technologyNames.length > 0 ? (
+   540→                        <div className="flex flex-wrap gap-1">
+   541→                          {(subject as any).technologyNames.map((name: string, i: number) => (
+   542→                            <Badge key={i} variant="outline" className="bg-white/[0.04] text-muted-foreground border-white/[0.08] text-xs">
+   543→                              {name}
+   544→                            </Badge>
+   545→                          ))}
+   546→                        </div>
+   547→                      ) : subject.technologyId ? (
+   548→                        <Badge variant="outline" className="bg-white/[0.04] text-muted-foreground border-white/[0.08] text-xs">
+   549→                          {getTechnologyName(subject.technologyId)}
+   550→                        </Badge>
+   551→                      ) : (
+   552→                        <span className="text-muted-foreground/50 text-sm">—</span>
+   553→                      )}
+   554→                    </td>
+   555→
+   556→                    {/* Course Count */}
+   557→                    <td className="text-sm">
+   558→                      {subject.courseCount > 0 ? (
+   559→                        <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 text-xs">
+   560→                          {subject.courseCount} courses
+   561→                        </Badge>
+   562→                      ) : (
+   563→                        <span className="text-muted-foreground/50 text-xs">0</span>
+   564→                      )}
+   565→                    </td>
+   566→
+   567→                    {/* Status */}
+   568→                    <td>
+   569→                      <div
+   570→                        className="cursor-pointer"
+   571→                        onClick={() => toggleActive(subject)}
+   572→                        role="button"
+   573→                        tabIndex={0}
+   574→                        onKeyDown={(e) => {
+   575→                          if (e.key === 'Enter' || e.key === ' ') toggleActive(subject);
+   576→                        }}
+   577→                      >
+   578→                        <Switch
+   579→                          checked={subject.isActive}
+   580→                          className="data-[state=checked]:bg-dakkho-success data-[state=unchecked]:bg-white/10"
+   581→                        />
+   582→                      </div>
+   583→                    </td>
+   584→
+   585→                    {/* Actions */}
+   586→                    <td className="text-right">
+   587→                      <DropdownMenu>
+   588→                        <DropdownMenuTrigger asChild>
+   589→                          <Button
+   590→                            variant="ghost"
+   591→                            size="icon"
+   592→                            className="h-8 w-8 hover:bg-white/[0.06]"
+   593→                          >
+   594→                            <MoreHorizontal className="h-4 w-4" />
+   595→                          </Button>
+   596→                        </DropdownMenuTrigger>
+   597→                        <DropdownMenuContent
+   598→                          align="end"
+   599→                          className="bg-[#1A1A2E] border-white/[0.08] z-50"
+   600→                        >
+   601→                          <DropdownMenuItem
+   602→                            onClick={() => openEditDialog(subject)}
+   603→                            className="gap-2"
+   604→                          >
+   605→                            <Pencil className="h-4 w-4" /> Edit
+   606→                          </DropdownMenuItem>
+   607→                          <DropdownMenuItem
+   608→                            onClick={() => toggleActive(subject)}
+   609→                            className="gap-2"
+   610→                          >
+   611→                            <ToggleLeft className="h-4 w-4" />
+   612→                            {subject.isActive ? 'Deactivate' : 'Activate'}
+   613→                          </DropdownMenuItem>
+   614→                          <DropdownMenuSeparator className="bg-white/[0.06]" />
+   615→                          <DropdownMenuItem
+   616→                            onClick={() => {
+   617→                              setDeleteTarget(subject);
+   618→                              setDeleteOpen(true);
+   619→                            }}
+   620→                            className="gap-2 text-destructive focus:text-destructive"
+   621→                          >
+   622→                            <Trash2 className="h-4 w-4" /> Delete
+   623→                          </DropdownMenuItem>
+   624→                        </DropdownMenuContent>
+   625→                      </DropdownMenu>
+   626→                    </td>
+   627→                  </motion.tr>
+   628→                ))}
+   629→            </tbody>
+   630→          </table>
+   631→        </div>
+   632→
+   633→        {/* ---- Pagination ---- */}
+   634→        {totalPages > 1 && (
+   635→          <div className="flex items-center justify-between px-4 py-3 border-t border-white/[0.06]">
+   636→            <p className="text-sm text-muted-foreground">
+   637→              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
+   638→            </p>
+   639→            <div className="flex items-center gap-1">
+   640→              <Button
+   641→                variant="outline"
+   642→                size="icon"
+   643→                className="h-8 w-8 border-white/[0.08] bg-transparent"
+   644→                onClick={() => setPage(Math.max(1, page - 1))}
+   645→                disabled={page === 1}
+   646→              >
+   647→                <ChevronLeft className="h-4 w-4" />
+   648→              </Button>
+   649→              <span className="text-sm text-muted-foreground px-2">
+   650→                {page} / {totalPages}
+   651→              </span>
+   652→              <Button
+   653→                variant="outline"
+   654→                size="icon"
+   655→                className="h-8 w-8 border-white/[0.08] bg-transparent"
+   656→                onClick={() => setPage(Math.min(totalPages, page + 1))}
+   657→                disabled={page === totalPages}
+   658→              >
+   659→                <ChevronRight className="h-4 w-4" />
+   660→              </Button>
+   661→            </div>
+   662→          </div>
+   663→        )}
+   664→      </div>
+   665→
+   666→      {/* ---- Mobile Card Layout ---- */}
+   667→      <div className="md:hidden space-y-3">
+   668→        {loading &&
+   669→          Array.from({ length: 3 }).map((_, i) => (
+   670→            <div key={i} className="glass-card rounded-xl p-4 space-y-3">
+   671→              <div className="flex items-center gap-3">
+   672→                <Skeleton className="h-9 w-9 rounded-lg" />
+   673→                <div className="space-y-2 flex-1">
+   674→                  <Skeleton className="h-4 w-3/4" />
+   675→                  <Skeleton className="h-3 w-1/2" />
+   676→                </div>
+   677→              </div>
+   678→              <div className="flex gap-2">
+   679→                <Skeleton className="h-5 w-20 rounded-full" />
+   680→                <Skeleton className="h-5 w-16 rounded-full" />
+   681→              </div>
+   682→            </div>
+   683→          ))}
+   684→
+   685→        {!loading && !error && subjects.length === 0 && (
+   686→          <div className="glass-card rounded-xl p-8 text-center">
+   687→            <BookMarked className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+   688→            <p className="text-muted-foreground text-sm">No subjects found</p>
+   689→            <p className="text-muted-foreground/60 text-xs mt-1">
+   690→              Create your first subject or adjust filters
+   691→            </p>
+   692→            <Button
+   693→              variant="outline"
+   694→              size="sm"
+   695→              onClick={openCreateDialog}
+   696→              className="gap-2 mt-3"
+   697→            >
+   698→              <Plus className="h-3.5 w-3.5" /> Add Subject
+   699→            </Button>
+   700→          </div>
+   701→        )}
+   702→
+   703→        <AnimatePresence>
+   704→          {!loading &&
+   705→            !error &&
+   706→            subjects.map((subject, i) => (
+   707→              <motion.div
+   708→                key={subject.id}
+   709→                custom={i}
+   710→                variants={rowVariants}
+   711→                initial="hidden"
+   712→                animate="visible"
+   713→                exit="exit"
+   714→                className="glass-card rounded-xl p-4"
+   715→              >
+   716→                <div className="flex items-start justify-between gap-3">
+   717→                  <div className="flex items-center gap-3 min-w-0 flex-1">
+   718→                    <div
+   719→                      className="w-9 h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0"
+   720→                      style={{
+   721→                        background: (subject.color || '#10B981') + '18',
+   722→                        color: subject.color || '#10B981',
+   723→                      }}
+   724→                    >
+   725→                      {subject.icon || subject.name?.charAt(0).toUpperCase() || (
+   726→                        <Tag className="h-4 w-4" />
+   727→                      )}
+   728→                    </div>
+   729→                    <div className="min-w-0">
+   730→                      <p className="text-sm font-medium text-foreground truncate">
+   731→                        {subject.name || 'Unnamed'}
+   732→                      </p>
+   733→                      <p className="text-xs text-muted-foreground font-mono mt-0.5">
+   734→                        {subject.slug || '—'}
+   735→                      </p>
+   736→                    </div>
+   737→                  </div>
+   738→                  <DropdownMenu>
+   739→                    <DropdownMenuTrigger asChild>
+   740→                      <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
+   741→                        <MoreHorizontal className="h-4 w-4" />
+   742→                      </Button>
+   743→                    </DropdownMenuTrigger>
+   744→                    <DropdownMenuContent
+   745→                      align="end"
+   746→                      className="bg-[#1A1A2E] border-white/[0.08] z-50"
+   747→                    >
+   748→                      <DropdownMenuItem
+   749→                        onClick={() => openEditDialog(subject)}
+   750→                        className="gap-2"
+   751→                      >
+   752→                        <Pencil className="h-4 w-4" /> Edit
+   753→                      </DropdownMenuItem>
+   754→                      <DropdownMenuItem
+   755→                        onClick={() => toggleActive(subject)}
+   756→                        className="gap-2"
+   757→                      >
+   758→                        <ToggleLeft className="h-4 w-4" />
+   759→                        {subject.isActive ? 'Deactivate' : 'Activate'}
+   760→                      </DropdownMenuItem>
+   761→                      <DropdownMenuSeparator className="bg-white/[0.06]" />
+   762→                      <DropdownMenuItem
+   763→                        onClick={() => {
+   764→                          setDeleteTarget(subject);
+   765→                          setDeleteOpen(true);
+   766→                        }}
+   767→                        className="gap-2 text-destructive focus:text-destructive"
+   768→                      >
+   769→                        <Trash2 className="h-4 w-4" /> Delete
+   770→                      </DropdownMenuItem>
+   771→                    </DropdownMenuContent>
+   772→                  </DropdownMenu>
+   773→                </div>
+   774→
+   775→                <div className="flex flex-wrap items-center gap-1.5 mt-3">
+   776→                  <span
+   777→                    className={`status-badge ${
+   778→                      subject.isActive
+   779→                        ? 'status-badge-active'
+   780→                        : 'status-badge-inactive'
+   781→                    }`}
+   782→                  >
+   783→                    {subject.isActive ? 'Active' : 'Inactive'}
+   784→                  </span>
+   785→                  {(subject as any).technologyNames && (subject as any).technologyNames.length > 0 ? (
+   786→                    (subject as any).technologyNames.map((name: string, i: number) => (
+   787→                      <span key={i} className="status-badge bg-white/[0.04] text-muted-foreground border border-white/[0.08]">
+   788→                        {name}
+   789→                      </span>
+   790→                    ))
+   791→                  ) : subject.technologyId ? (
+   792→                    <span className="status-badge bg-white/[0.04] text-muted-foreground border border-white/[0.08]">
+   793→                      {getTechnologyName(subject.technologyId)}
+   794→                    </span>
+   795→                  ) : null}
+   796→                  {subject.courseCount > 0 && (
+   797→                    <span className="status-badge bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+   798→                      {subject.courseCount} courses
+   799→                    </span>
+   800→                  )}
+   801→                  <span className="text-xs text-muted-foreground/50">#{subject.sortOrder}</span>
+   802→                </div>
+   803→              </motion.div>
+   804→            ))}
+   805→        </AnimatePresence>
+   806→
+   807→        {/* ---- Mobile Pagination ---- */}
+   808→        {totalPages > 1 && (
+   809→          <div className="flex items-center justify-center gap-1 pt-2">
+   810→            <Button
+   811→              variant="outline"
+   812→              size="icon"
+   813→              className="h-8 w-8 border-white/[0.08] bg-transparent"
+   814→              onClick={() => setPage(Math.max(1, page - 1))}
+   815→              disabled={page === 1}
+   816→            >
+   817→              <ChevronLeft className="h-4 w-4" />
+   818→            </Button>
+   819→            <span className="text-sm text-muted-foreground px-2">
+   820→              {page} / {totalPages}
+   821→            </span>
+   822→            <Button
+   823→              variant="outline"
+   824→              size="icon"
+   825→              className="h-8 w-8 border-white/[0.08] bg-transparent"
+   826→              onClick={() => setPage(Math.min(totalPages, page + 1))}
+   827→              disabled={page === totalPages}
+   828→            >
+   829→              <ChevronRight className="h-4 w-4" />
+   830→            </Button>
+   831→          </div>
+   832→        )}
+   833→      </div>
+   834→
+   835→      {/* ---- Add/Edit Subject Dialog ---- */}
+   836→      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+   837→        <DialogContent className="bg-[#1A1A2E] border-white/[0.08] max-w-lg max-h-[90vh] overflow-y-auto">
+   838→          <DialogHeader>
+   839→            <DialogTitle className="flex items-center gap-2 text-foreground">
+   840→              <BookMarked className="h-5 w-5 text-emerald-400" />
+   841→              {editSubject ? 'Edit Subject' : 'Add Subject'}
+   842→            </DialogTitle>
+   843→            <DialogDescription className="text-muted-foreground">
+   844→              {editSubject ? 'Update subject information' : 'Create a new subject'}
+   845→            </DialogDescription>
+   846→          </DialogHeader>
+   847→
+   848→          <div className="space-y-5 mt-2">
+   849→            {/* Name */}
+   850→            <div className="space-y-2">
+   851→              <Label className="text-muted-foreground">
+   852→                Name <span className="text-destructive">*</span>
+   853→              </Label>
+   854→              <Input
+   855→                value={form.name}
+   856→                onChange={(e) => {
+   857→                  const name = e.target.value;
+   858→                  setForm((f) => ({
+   859→                    ...f,
+   860→                    name,
+   861→                    slug: f.slug === slugify(f.name) ? slugify(name) : f.slug,
+   862→                  }));
+   863→                }}
+   864→                placeholder="Subject name"
+   865→                className="bg-white/[0.04] border-white/[0.08]"
+   866→              />
+   867→            </div>
+   868→
+   869→            {/* Slug */}
+   870→            <div className="space-y-2">
+   871→              <Label className="text-muted-foreground">
+   872→                Slug{' '}
+   873→                <span className="text-muted-foreground/50 text-xs">(auto-generated if empty)</span>
+   874→              </Label>
+   875→              <Input
+   876→                value={form.slug}
+   877→                onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
+   878→                placeholder="subject-slug"
+   879→                className="bg-white/[0.04] border-white/[0.08] font-mono text-sm"
+   880→              />
+   881→            </div>
+   882→
+   883→            {/* Description */}
+   884→            <div className="space-y-2">
+   885→              <Label className="text-muted-foreground">Description</Label>
+   886→              <Textarea
+   887→                value={form.description}
+   888→                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+   889→                className="bg-white/[0.04] border-white/[0.08] min-h-[80px]"
+   890→                placeholder="Describe the subject..."
+   891→                rows={3}
+   892→              />
+   893→            </div>
+   894→
+   895→            {/* Technologies (Multi-select) */}
+   896→            <div className="space-y-2">
+   897→              <Label className="text-muted-foreground">Technologies</Label>
+   898→              <p className="text-xs text-muted-foreground/60">A subject can belong to multiple technologies (same subject, different departments)</p>
+   899→              <div className="flex flex-wrap gap-2 p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
+   900→                {technologies.map((tech) => {
+   901→                  const isSelected = form.technologyIds.includes(tech.id);
+   902→                  return (
+   903→                    <button
+   904→                      key={tech.id}
+   905→                      type="button"
+   906→                      onClick={() => {
+   907→                        setForm((f) => ({
+   908→                          ...f,
+   909→                          technologyIds: isSelected
+   910→                            ? f.technologyIds.filter((id) => id !== tech.id)
+   911→                            : [...f.technologyIds, tech.id],
+   912→                          technologyId: isSelected
+   913→                            ? (f.technologyIds.length <= 1 ? '' : String(f.technologyIds.find((id) => id !== tech.id) || ''))
+   914→                            : String(tech.id),
+   915→                        }));
+   916→                      }}
+   917→                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+   918→                        isSelected
+   919→                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+   920→                          : 'bg-white/[0.04] text-muted-foreground border-white/[0.08] hover:bg-white/[0.08]'
+   921→                      }`}
+   922→                    >
+   923→                      {isSelected && '✓ '} {tech.name}
+   924→                    </button>
+   925→                  );
+   926→                })}
+   927→                {technologies.length === 0 && (
+   928→                  <p className="text-xs text-muted-foreground/50 py-1">No technologies available</p>
+   929→                )}
+   930→              </div>
+   931→
+   932→              {/* Inline create technology */}
+   933→              {!showInlineTech ? (
+   934→                <button
+   935→                  type="button"
+   936→                  onClick={() => setShowInlineTech(true)}
+   937→                  className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors mt-1"
+   938→                >
+   939→                  + Create new technology
+   940→                </button>
+   941→              ) : (
+   942→                <div className="flex items-center gap-2 mt-2">
+   943→                  <Input
+   944→                    value={inlineTechName}
+   945→                    onChange={(e) => setInlineTechName(e.target.value)}
+   946→                    placeholder="New technology name"
+   947→                    className="bg-white/[0.04] border-white/[0.08] h-8 text-sm flex-1"
+   948→                    onKeyDown={(e) => {
+   949→                      if (e.key === 'Enter') {
+   950→                        e.preventDefault();
+   951→                        handleInlineCreateTech();
+   952→                      }
+   953→                    }}
+   954→                  />
+   955→                  <Button
+   956→                    type="button"
+   957→                    size="sm"
+   958→                    onClick={handleInlineCreateTech}
+   959→                    disabled={creatingTech || !inlineTechName.trim()}
+   960→                    className="gradient-primary text-white h-8 text-xs px-3"
+   961→                  >
+   962→                    {creatingTech ? (
+   963→                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+   964→                    ) : (
+   965→                      'Add'
+   966→                    )}
+   967→                  </Button>
+   968→                  <Button
+   969→                    type="button"
+   970→                    variant="ghost"
+   971→                    size="sm"
+   972→                    onClick={() => {
+   973→                      setShowInlineTech(false);
+   974→                      setInlineTechName('');
+   975→                    }}
+   976→                    className="h-8 text-xs text-muted-foreground px-2"
+   977→                  >
+   978→                    Cancel
+   979→                  </Button>
+   980→                </div>
+   981→              )}
+   982→            </div>
+   983→
+   984→            {/* Icon + Color */}
+   985→            <div className="grid grid-cols-2 gap-4">
+   986→              <div className="space-y-2">
+   987→                <Label className="text-muted-foreground flex items-center gap-1.5">
+   988→                  <Tag className="h-3.5 w-3.5" /> Icon
+   989→                </Label>
+   990→                <Input
+   991→                  value={form.icon}
+   992→                  onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))}
+   993→                  placeholder="emoji or text"
+   994→                  className="bg-white/[0.04] border-white/[0.08]"
+   995→                />
+   996→                {form.icon && (
+   997→                  <div className="flex justify-center">
+   998→                    <div
+   999→                      className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
+  1000→                      style={{
+  1001→                        background: (form.color || '#10B981') + '18',
+  1002→                        color: form.color || '#10B981',
+  1003→                      }}
+  1004→                    >
+  1005→                      {form.icon}
+  1006→                    </div>
+  1007→                  </div>
+  1008→                )}
+  1009→              </div>
+  1010→              <div className="space-y-2">
+  1011→                <Label className="text-muted-foreground flex items-center gap-1.5">
+  1012→                  <Palette className="h-3.5 w-3.5" /> Color
+  1013→                </Label>
+  1014→                <div className="flex items-center gap-2">
+  1015→                  <Input
+  1016→                    type="color"
+  1017→                    value={form.color}
+  1018→                    onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+  1019→                    className="w-10 h-9 p-1 bg-transparent border-white/[0.08] cursor-pointer rounded"
+  1020→                  />
+  1021→                  <Input
+  1022→                    value={form.color}
+  1023→                    onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+  1024→                    className="bg-white/[0.04] border-white/[0.08] font-mono text-sm flex-1"
+  1025→                    placeholder="#hex"
+  1026→                  />
+  1027→                </div>
+  1028→                {/* Predefined color swatches */}
+  1029→                <div className="flex flex-wrap gap-1.5 mt-2">
+  1030→                  {PREDEFINED_COLORS.map((color) => (
+  1031→                    <button
+  1032→                      key={color}
+  1033→                      type="button"
+  1034→                      onClick={() => setForm((f) => ({ ...f, color }))}
+  1035→                      className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${
+  1036→                        form.color === color ? 'border-white scale-110' : 'border-transparent'
+  1037→                      }`}
+  1038→                      style={{ backgroundColor: color }}
+  1039→                    />
+  1040→                  ))}
+  1041→                </div>
+  1042→              </div>
+  1043→            </div>
+  1044→
+  1045→            {/* Sort Order */}
+  1046→            <div className="space-y-2">
+  1047→              <Label className="text-muted-foreground flex items-center gap-1.5">
+  1048→                <Hash className="h-3.5 w-3.5" /> Sort Order
+  1049→              </Label>
+  1050→              <Input
+  1051→                type="number"
+  1052→                value={form.sortOrder}
+  1053→                onChange={(e) => setForm((f) => ({ ...f, sortOrder: Number(e.target.value) }))}
+  1054→                className="bg-white/[0.04] border-white/[0.08]"
+  1055→              />
+  1056→            </div>
+  1057→
+  1058→            {/* Active toggle */}
+  1059→            <div className="flex items-center justify-between rounded-lg bg-white/[0.02] border border-white/[0.06] p-3">
+  1060→              <div>
+  1061→                <Label className="text-foreground text-sm">Active</Label>
+  1062→                <p className="text-xs text-muted-foreground mt-0.5">
+  1063→                  Inactive subjects won&apos;t appear to students
+  1064→                </p>
+  1065→              </div>
+  1066→              <Switch
+  1067→                checked={form.isActive}
+  1068→                onCheckedChange={(checked) => setForm((f) => ({ ...f, isActive: checked }))}
+  1069→                className="data-[state=checked]:bg-dakkho-success data-[state=unchecked]:bg-white/10"
+  1070→              />
+  1071→            </div>
+  1072→
+  1073→            {/* Preview */}
+  1074→            <div className="rounded-lg bg-white/[0.02] border border-white/[0.06] p-4">
+  1075→              <p className="text-xs text-muted-foreground mb-2">Preview</p>
+  1076→              <div className="flex items-center gap-3">
+  1077→                <div
+  1078→                  className="w-11 h-11 rounded-xl flex items-center justify-center text-xl"
+  1079→                  style={{
+  1080→                    background: (form.color || '#10B981') + '18',
+  1081→                    color: form.color || '#10B981',
+  1082→                  }}
+  1083→                >
+  1084→                  {form.icon || form.name?.charAt(0).toUpperCase() || <Tag className="h-5 w-5" />}
+  1085→                </div>
+  1086→                <div>
+  1087→                  <p className="text-sm font-medium">{form.name || 'Subject Name'}</p>
+  1088→                  <p className="text-xs text-muted-foreground font-mono">{form.slug || 'subject-slug'}</p>
+  1089→                </div>
+  1090→              </div>
+  1091→            </div>
+  1092→          </div>
+  1093→
+  1094→          <DialogFooter className="mt-4">
+  1095→            <Button
+  1096→              variant="outline"
+  1097→              onClick={() => setFormOpen(false)}
+  1098→              className="border-white/[0.08]"
+  1099→            >
+  1100→              Cancel
+  1101→            </Button>
+  1102→            <Button onClick={handleSave} disabled={saving} className="gradient-primary text-white">
+  1103→              {saving && (
+  1104→                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+  1105→              )}
+  1106→              {editSubject ? 'Update' : 'Create'} Subject
+  1107→            </Button>
+  1108→          </DialogFooter>
+  1109→        </DialogContent>
+  1110→      </Dialog>
+  1111→
+  1112→      {/* ---- Delete Confirmation AlertDialog ---- */}
+  1113→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+  1114→        <AlertDialogContent className="bg-[#1A1A2E] border-white/[0.08]">
+  1115→          <AlertDialogHeader>
+  1116→            <AlertDialogTitle className="text-foreground">Delete Subject</AlertDialogTitle>
+  1117→            <AlertDialogDescription className="text-muted-foreground">
+  1118→              Are you sure you want to delete &ldquo;{deleteTarget?.name}&rdquo;? This action cannot
+  1119→              be undone. Any courses associated with this subject may be affected.
+  1120→            </AlertDialogDescription>
+  1121→          </AlertDialogHeader>
+  1122→          <AlertDialogFooter>
+  1123→            <AlertDialogCancel className="border-white/[0.08] bg-transparent hover:bg-white/[0.04]">
+  1124→              Cancel
+  1125→            </AlertDialogCancel>
+  1126→            <AlertDialogAction
+  1127→              onClick={confirmDelete}
+  1128→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  1129→            >
+  1130→              Delete
+  1131→            </AlertDialogAction>
+  1132→          </AlertDialogFooter>
+  1133→        </AlertDialogContent>
+  1134→      </AlertDialog>
+  1135→    </motion.div>
+  1136→  );
+  1137→}
+  1138→

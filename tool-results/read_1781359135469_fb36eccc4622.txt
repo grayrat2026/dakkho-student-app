@@ -1,0 +1,741 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import { Star, Users, Clock, BookOpen, Play, ChevronLeft, Heart, Share2, Award, CheckCircle, ChevronDown, User, FileText, Video, Eye, Lock, Loader2 } from 'lucide-react';
+     6→import { useNavigationStore, useBookmarkStore, useAuthStore } from '@/lib/store';
+     7→import { useCourse, useInstructor, useCategories, useCourseVideos, useCourses } from '@/lib/data-hooks';
+     8→import { enrollmentApi, courseApi } from '@/lib/api-client';
+     9→import type { Chapter, Lesson } from '@/lib/api-client';
+    10→import { formatDuration, getLevelColor } from '@/lib/mock-data';
+    11→import { GlassCard } from '../shared/GlassCard';
+    12→import { GradientButton } from '../shared/GradientButton';
+    13→import { ProgressBar } from '../shared/ProgressBar';
+    14→import { CourseCardGrid } from '../shared/CourseCardGrid';
+    15→
+    16→export function CourseDetailPage() {
+    17→  const { pageParams, navigate, goBack } = useNavigationStore();
+    18→  const { isBookmarked, toggleBookmark } = useBookmarkStore();
+    19→  const { user, isAuthenticated } = useAuthStore();
+    20→  const [activeTab, setActiveTab] = useState<'overview' | 'curriculum' | 'reviews' | 'instructor'>('overview');
+    21→  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ 'section-0': true });
+    22→
+    23→  const courseId = pageParams.courseId as string;
+    24→  const { data: course, loading: courseLoading, error: courseError } = useCourse(courseId);
+    25→  const { data: instructor } = useInstructor(course?.instructorId || null);
+    26→  const { data: categories } = useCategories();
+    27→  const { data: videos = [] } = useCourseVideos(courseId);
+    28→  const { data: allCourses = [] } = useCourses();
+    29→  const bookmarked = course ? isBookmarked(course.id) : false;
+    30→
+    31→  // Enrollment check
+    32→  const [isEnrolled, setIsEnrolled] = useState(false);
+    33→  const [enrollmentLoading, setEnrollmentLoading] = useState(true);
+    34→
+    35→  // Curriculum data (subjects/chapters/lessons)
+    36→  const [curriculum, setCurriculum] = useState<{
+    37→    subjects: any[];
+    38→    chapters: Chapter[];
+    39→    lessons: Lesson[];
+    40→  }>({ subjects: [], chapters: [], lessons: [] });
+    41→  const [curriculumLoading, setCurriculumLoading] = useState(false);
+    42→
+    43→  // Check enrollment status
+    44→  const checkEnrollment = useCallback(async () => {
+    45→    if (!isAuthenticated || !courseId) {
+    46→      setEnrollmentLoading(false);
+    47→      return;
+    48→    }
+    49→    setEnrollmentLoading(true);
+    50→    try {
+    51→      const res = await enrollmentApi.check(courseId);
+    52→      setIsEnrolled(res.enrolled === true);
+    53→    } catch {
+    54→      setIsEnrolled(false);
+    55→    } finally {
+    56→      setEnrollmentLoading(false);
+    57→    }
+    58→  }, [isAuthenticated, courseId]);
+    59→
+    60→  useEffect(() => {
+    61→    checkEnrollment();
+    62→  }, [checkEnrollment]);
+    63→
+    64→  // Fetch curriculum data
+    65→  useEffect(() => {
+    66→    if (!courseId) return;
+    67→    setCurriculumLoading(true);
+    68→    courseApi.curriculum(courseId)
+    69→      .then((res) => {
+    70→        setCurriculum({
+    71→          subjects: res.subjects || [],
+    72→          chapters: res.chapters || [],
+    73→          lessons: res.lessons || [],
+    74→        });
+    75→      })
+    76→      .catch(() => {
+    77→        setCurriculum({ subjects: [], chapters: [], lessons: [] });
+    78→      })
+    79→      .finally(() => setCurriculumLoading(false));
+    80→  }, [courseId]);
+    81→
+    82→  // Category from categories list
+    83→  const category = course ? categories.find((c) => c.id === course.categoryId) : undefined;
+    84→
+    85→  // Related courses - same category, different course
+    86→  const relatedCourses = course
+    87→    ? allCourses.filter((c) => c.categoryId === course.categoryId && c.id !== course.id).slice(0, 4)
+    88→    : [];
+    89→
+    90→  // What You'll Learn items
+    91→  const learnings: string[] = course?.learningItems ?? [];
+    92→
+    93→  // Build curriculum sections from API data
+    94→  const curriculumSections = curriculum.subjects.length > 0
+    95→    ? curriculum.subjects.map((subject: any, si: number) => {
+    96→        const subjectChapters = curriculum.chapters.filter(
+    97→          (ch) => String(ch.subjectId) === String(subject.id)
+    98→        );
+    99→        const subjectLessons = curriculum.lessons.filter(
+   100→          (ls) => String(ls.subjectId) === String(subject.id)
+   101→        );
+   102→        return {
+   103→          id: `subject-${si}`,
+   104→          title: subject.title || subject.name || `Section ${si + 1}`,
+   105→          chapters: subjectChapters,
+   106→          lessons: subjectLessons,
+   107→        };
+   108→      })
+   109→    : curriculum.chapters.length > 0
+   110→      ? curriculum.chapters.map((chapter, ci) => {
+   111→          const chapterLessons = curriculum.lessons.filter(
+   112→            (ls) => String(ls.chapterId) === String(chapter.id)
+   113→          );
+   114→          return {
+   115→            id: `chapter-${ci}`,
+   116→            title: chapter.title || `Chapter ${ci + 1}`,
+   117→            chapters: [],
+   118→            lessons: chapterLessons,
+   119→          };
+   120→        })
+   121→      : // Fallback: group videos into sections
+   122→        videos.length > 0
+   123→          ? Array.from(
+   124→              { length: Math.ceil(videos.length / 8) },
+   125→              (_, i) => ({
+   126→                id: `section-${i}`,
+   127→                title: `Section ${i + 1}`,
+   128→                chapters: [],
+   129→                lessons: [],
+   130→                fallbackVideos: videos.slice(i * 8, (i + 1) * 8),
+   131→              })
+   132→            )
+   133→          : [];
+   134→
+   135→  // Lesson type icon
+   136→  const getLessonTypeIcon = (lessonType: string) => {
+   137→    switch (lessonType) {
+   138→      case 'video': return Video;
+   139→      case 'lecture': return FileText;
+   140→      case 'note': return FileText;
+   141→      case 'quiz': return BookOpen;
+   142→      case 'assignment': return Award;
+   143→      default: return Play;
+   144→    }
+   145→  };
+   146→
+   147→  // Lesson type label
+   148→  const getLessonTypeLabel = (lessonType: string) => {
+   149→    switch (lessonType) {
+   150→      case 'video': return 'Video';
+   151→      case 'lecture': return 'Lecture';
+   152→      case 'note': return 'Note';
+   153→      case 'quiz': return 'Quiz';
+   154→      case 'assignment': return 'Assignment';
+   155→      case 'extra_class': return 'Extra Class';
+   156→      case 'unit': return 'Unit';
+   157→      case 'part': return 'Part';
+   158→      default: return lessonType || 'Lesson';
+   159→    }
+   160→  };
+   161→
+   162→  if (courseLoading) {
+   163→    return (
+   164→      <div className="text-center py-16">
+   165→        <div className="animate-pulse space-y-4">
+   166→          <div className="h-8 bg-muted/30 rounded-lg w-1/2 mx-auto"></div>
+   167→          <div className="h-4 bg-muted/30 rounded w-3/4 mx-auto"></div>
+   168→          <div className="h-64 bg-muted/20 rounded-xl mx-auto max-w-4xl"></div>
+   169→        </div>
+   170→      </div>
+   171→    );
+   172→  }
+   173→
+   174→  if (courseError || !course) {
+   175→    return (
+   176→      <div className="text-center py-16">
+   177→        <p className="text-lg font-bold">Course not found</p>
+   178→        <GradientButton onClick={goBack} className="mt-4">Go Back</GradientButton>
+   179→      </div>
+   180→    );
+   181→  }
+   182→
+   183→  const tabs = [
+   184→    { key: 'overview' as const, label: 'Overview' },
+   185→    { key: 'curriculum' as const, label: 'Curriculum' },
+   186→    { key: 'reviews' as const, label: 'Reviews' },
+   187→    { key: 'instructor' as const, label: 'Instructor' },
+   188→  ];
+   189→
+   190→  const thumbnailColors = [
+   191→    'from-sky-400 to-blue-600',
+   192→    'from-emerald-400 to-teal-600',
+   193→    'from-purple-400 to-indigo-600',
+   194→    'from-amber-400 to-orange-600',
+   195→  ];
+   196→  const colorClass = thumbnailColors[course.id.charCodeAt(1) % thumbnailColors.length];
+   197→
+   198→  const toggleSection = (sectionId: string) => {
+   199→    setExpandedSections((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
+   200→  };
+   201→
+   202→  const handleEnrollOrContinue = () => {
+   203→    if (isEnrolled) {
+   204→      // Continue learning - go to first video
+   205→      navigate('video-player', { videoId: videos[0]?.id, courseId: course.id });
+   206→    } else if (course.price > 0) {
+   207→      navigate('subscription', { courseId: course.id });
+   208→    } else {
+   209→      // Free course - enroll directly
+   210→      enrollmentApi.enrollFree({ course_id: course.id })
+   211→        .then(() => {
+   212→          setIsEnrolled(true);
+   213→          navigate('video-player', { videoId: videos[0]?.id, courseId: course.id });
+   214→        })
+   215→        .catch(() => {
+   216→          navigate('subscription', { courseId: course.id });
+   217→        });
+   218→    }
+   219→  };
+   220→
+   221→  return (
+   222→    <div className="pb-20 lg:pb-0">
+   223→      {/* Breadcrumb */}
+   224→      <motion.div
+   225→        className="flex items-center gap-2 text-sm text-muted-foreground mb-4"
+   226→        initial={{ opacity: 0 }}
+   227→        animate={{ opacity: 1 }}
+   228→      >
+   229→        <button onClick={() => navigate('home')} className="hover:text-sky-500 transition-colors">Home</button>
+   230→        <span>/</span>
+   231→        <button onClick={() => navigate('explore')} className="hover:text-sky-500 transition-colors">Courses</button>
+   232→        <span>/</span>
+   233→        <span className="text-foreground font-semibold line-clamp-1">{course.title}</span>
+   234→      </motion.div>
+   235→
+   236→      {/* Course header */}
+   237→      <GlassCard className="overflow-hidden mb-6">
+   238→        <div className={`relative aspect-video md:aspect-[21/9] ${course.thumbnailUrl ? '' : 'bg-gradient-to-br ' + colorClass}`}>
+   239→          {course.thumbnailUrl ? (
+   240→            <img
+   241→              src={course.thumbnailUrl}
+   242→              alt={course.title}
+   243→              className="absolute inset-0 w-full h-full object-cover"
+   244→              onError={(e) => {
+   245→                const target = e.target as HTMLImageElement;
+   246→                target.style.display = 'none';
+   247→                if (target.parentElement) {
+   248→                  target.parentElement.classList.add('bg-gradient-to-br', colorClass);
+   249→                }
+   250→              }}
+   251→            />
+   252→          ) : null}
+   253→          <div className="absolute inset-0 flex items-center justify-center">
+   254→            {!course.thumbnailUrl && <BookOpen className="w-20 h-20 text-white/20" />}
+   255→          </div>
+   256→          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+   257→          <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
+   258→            {category && (
+   259→              <span className="text-xs font-bold uppercase tracking-wider text-white/70 mb-2 block">{category.name}</span>
+   260→            )}
+   261→            <h1 className="text-xl md:text-2xl font-extrabold mb-2">{course.title}</h1>
+   262→            <div className="flex flex-wrap items-center gap-4 text-sm">
+   263→              {instructor && (
+   264→                <span className="flex items-center gap-2">
+   265→                  {instructor.avatarUrl ? (
+   266→                    <img src={instructor.avatarUrl} alt={instructor.name} className="w-6 h-6 rounded-full object-cover" />
+   267→                  ) : (
+   268→                    <div className="w-6 h-6 rounded-full bg-white/30 flex items-center justify-center text-[10px] font-bold">{instructor.name.charAt(0)}</div>
+   269→                  )}
+   270→                  {instructor.name}
+   271→                </span>
+   272→              )}
+   273→              <span className="flex items-center gap-1"><Star className="w-4 h-4 text-amber-400 fill-amber-400" />{course.rating}</span>
+   274→              <span className="flex items-center gap-1"><Users className="w-4 h-4" />{course.totalStudents} students</span>
+   275→              <span className="flex items-center gap-1"><Clock className="w-4 h-4" />{formatDuration(course.duration)}</span>
+   276→            </div>
+   277→          </div>
+   278→        </div>
+   279→      </GlassCard>
+   280→
+   281→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   282→        {/* Main content */}
+   283→        <div className="lg:col-span-2">
+   284→          {/* Tabs */}
+   285→          <div className="flex gap-1 mb-6 bg-muted/30 rounded-xl p-1">
+   286→            {tabs.map((tab) => (
+   287→              <motion.button
+   288→                key={tab.key}
+   289→                className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all ${
+   290→                  activeTab === tab.key
+   291→                    ? 'bg-white dark:bg-slate-800 shadow-sm text-sky-600 dark:text-sky-400'
+   292→                    : 'text-muted-foreground hover:text-foreground'
+   293→                }`}
+   294→                onClick={() => setActiveTab(tab.key)}
+   295→                whileTap={{ scale: 0.97 }}
+   296→              >
+   297→                {tab.label}
+   298→              </motion.button>
+   299→            ))}
+   300→          </div>
+   301→
+   302→          {/* Tab content */}
+   303→          <motion.div
+   304→            key={activeTab}
+   305→            initial={{ opacity: 0, y: 10 }}
+   306→            animate={{ opacity: 1, y: 0 }}
+   307→            transition={{ duration: 0.3 }}
+   308→          >
+   309→            {activeTab === 'overview' && (
+   310→              <div className="space-y-6">
+   311→                {/* About This Course */}
+   312→                <GlassCard className="p-6 space-y-4">
+   313→                  <h2 className="text-lg font-bold">About This Course</h2>
+   314→                  <p className="text-sm text-muted-foreground leading-relaxed">{course.description}</p>
+   315→                  <div className="grid grid-cols-2 gap-3 pt-2">
+   316→                    <div className="flex items-center gap-2 text-sm">
+   317→                      <Award className="w-4 h-4 text-sky-500" />
+   318→                      <span className="text-muted-foreground">Level: <span className="font-semibold text-foreground">{course.level}</span></span>
+   319→                    </div>
+   320→                    <div className="flex items-center gap-2 text-sm">
+   321→                      <Clock className="w-4 h-4 text-sky-500" />
+   322→                      <span className="text-muted-foreground">Duration: <span className="font-semibold text-foreground">{formatDuration(course.duration)}</span></span>
+   323→                    </div>
+   324→                    <div className="flex items-center gap-2 text-sm">
+   325→                      <BookOpen className="w-4 h-4 text-sky-500" />
+   326→                      <span className="text-muted-foreground">Videos: <span className="font-semibold text-foreground">{course.totalVideos}</span></span>
+   327→                    </div>
+   328→                    <div className="flex items-center gap-2 text-sm">
+   329→                      <Users className="w-4 h-4 text-sky-500" />
+   330→                      <span className="text-muted-foreground">Students: <span className="font-semibold text-foreground">{course.totalStudents}</span></span>
+   331→                    </div>
+   332→                  </div>
+   333→                  {course.tags.length > 0 && (
+   334→                    <div className="flex flex-wrap gap-2 pt-2">
+   335→                      {course.tags.map((tag) => (
+   336→                        <span key={tag} className="px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 text-xs font-semibold">
+   337→                          {tag}
+   338→                        </span>
+   339→                      ))}
+   340→                    </div>
+   341→                  )}
+   342→                </GlassCard>
+   343→
+   344→                {/* What You'll Learn */}
+   345→                {learnings.length > 0 && (
+   346→                  <GlassCard className="p-6">
+   347→                    <h2 className="text-lg font-bold mb-4">What You&apos;ll Learn</h2>
+   348→                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+   349→                      {learnings.map((item, i) => (
+   350→                        <motion.div
+   351→                          key={i}
+   352→                          className="flex items-start gap-3"
+   353→                          initial={{ opacity: 0, x: -10 }}
+   354→                          animate={{ opacity: 1, x: 0 }}
+   355→                          transition={{ delay: i * 0.05 }}
+   356→                        >
+   357→                          <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+   358→                          <span className="text-sm text-foreground">{item}</span>
+   359→                        </motion.div>
+   360→                      ))}
+   361→                    </div>
+   362→                  </GlassCard>
+   363→                )}
+   364→
+   365→                {/* Instructor Card */}
+   366→                {instructor && (
+   367→                  <GlassCard className="p-6">
+   368→                    <h2 className="text-lg font-bold mb-4">Your Instructor</h2>
+   369→                    <div className="flex items-start gap-4">
+   370→                      <motion.div
+   371→                        className="w-14 h-14 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-lg font-extrabold flex-shrink-0 overflow-hidden"
+   372→                        whileHover={{ scale: 1.1 }}
+   373→                      >
+   374→                        {instructor.avatarUrl ? (
+   375→                          <img src={instructor.avatarUrl} alt={instructor.name} className="w-full h-full object-cover" />
+   376→                        ) : (
+   377→                          instructor.name.charAt(0)
+   378→                        )}
+   379→                      </motion.div>
+   380→                      <div className="flex-1 min-w-0">
+   381→                        <h3 className="text-base font-bold text-foreground">{instructor.name}</h3>
+   382→                        <p className="text-sm text-sky-500 font-semibold">{instructor.specialization}</p>
+   383→                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+   384→                          <span className="flex items-center gap-1">
+   385→                            <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+   386→                            {instructor.rating} Rating
+   387→                          </span>
+   388→                          <span className="flex items-center gap-1">
+   389→                            <Users className="w-3 h-3" />
+   390→                            {instructor.totalStudents.toLocaleString()} Students
+   391→                          </span>
+   392→                          <span className="flex items-center gap-1">
+   393→                            <BookOpen className="w-3 h-3" />
+   394→                            {instructor.totalCourses} Courses
+   395→                          </span>
+   396→                        </div>
+   397→                        <motion.button
+   398→                          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 text-xs font-semibold"
+   399→                          onClick={() => navigate('instructor-profile', { instructorId: instructor.id })}
+   400→                          whileHover={{ scale: 1.05 }}
+   401→                          whileTap={{ scale: 0.95 }}
+   402→                        >
+   403→                          <User className="w-3 h-3" />
+   404→                          View Full Profile
+   405→                        </motion.button>
+   406→                      </div>
+   407→                    </div>
+   408→                  </GlassCard>
+   409→                )}
+   410→              </div>
+   411→            )}
+   412→
+   413→            {activeTab === 'curriculum' && (
+   414→              <div className="space-y-3">
+   415→                {/* Overview stats */}
+   416→                <GlassCard className="p-4 flex items-center gap-6 text-sm">
+   417→                  <span className="text-muted-foreground">{curriculumSections.length} sections</span>
+   418→                  <span className="text-muted-foreground">{videos.length} lectures</span>
+   419→                  <span className="text-muted-foreground">{formatDuration(course.duration)} total</span>
+   420→                </GlassCard>
+   421→
+   422→                {/* Expandable sections with curriculum data */}
+   423→                {curriculumLoading ? (
+   424→                  <GlassCard className="p-8 text-center">
+   425→                    <Loader2 className="w-6 h-6 text-muted-foreground animate-spin mx-auto mb-2" />
+   426→                    <p className="text-sm text-muted-foreground">Loading curriculum...</p>
+   427→                  </GlassCard>
+   428→                ) : curriculumSections.length > 0 ? curriculumSections.map((section, si) => {
+   429→                  const isExpanded = expandedSections[section.id] ?? si === 0;
+   430→                  const sectionLessons = section.lessons || [];
+   431→                  const fallbackVideos = (section as any).fallbackVideos || [];
+   432→                  const hasContent = sectionLessons.length > 0 || fallbackVideos.length > 0;
+   433→
+   434→                  return (
+   435→                    <motion.div
+   436→                      key={section.id}
+   437→                      initial={{ opacity: 0, y: 10 }}
+   438→                      animate={{ opacity: 1, y: 0 }}
+   439→                      transition={{ delay: si * 0.05 }}
+   440→                    >
+   441→                      <GlassCard className="overflow-hidden">
+   442→                        {/* Section header */}
+   443→                        <button
+   444→                          className="w-full p-4 flex items-center justify-between text-left"
+   445→                          onClick={() => toggleSection(section.id)}
+   446→                        >
+   447→                          <div className="flex items-center gap-3">
+   448→                            <span className="w-7 h-7 rounded-lg bg-sky-50 dark:bg-sky-900/20 flex items-center justify-center text-sky-500 text-xs font-bold">
+   449→                              {si + 1}
+   450→                            </span>
+   451→                            <div>
+   452→                              <h3 className="text-sm font-bold text-foreground">{section.title}</h3>
+   453→                              <p className="text-xs text-muted-foreground">
+   454→                                {sectionLessons.length || fallbackVideos.length} lessons
+   455→                                {sectionLessons.length > 0 && ` \u00B7 ${formatDuration(sectionLessons.reduce((a: number, l: any) => a + (l.duration || 0), 0))}`}
+   456→                              </p>
+   457→                            </div>
+   458→                          </div>
+   459→                          <motion.div
+   460→                            animate={{ rotate: isExpanded ? 180 : 0 }}
+   461→                            transition={{ duration: 0.2 }}
+   462→                          >
+   463→                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+   464→                          </motion.div>
+   465→                        </button>
+   466→
+   467→                        {/* Section content */}
+   468→                        <AnimatePresence>
+   469→                          {isExpanded && (
+   470→                            <motion.div
+   471→                              initial={{ height: 0, opacity: 0 }}
+   472→                              animate={{ height: 'auto', opacity: 1 }}
+   473→                              exit={{ height: 0, opacity: 0 }}
+   474→                              transition={{ duration: 0.3 }}
+   475→                              className="overflow-hidden"
+   476→                            >
+   477→                              <div className="border-t border-white/20 dark:border-white/5">
+   478→                                {/* Lessons from curriculum API */}
+   479→                                {sectionLessons.map((lesson: any, li: number) => {
+   480→                                  const LessonIcon = getLessonTypeIcon(lesson.lessonType);
+   481→                                  const isPreview = lesson.isPreview;
+   482→                                  const canAccess = isEnrolled || isPreview;
+   483→
+   484→                                  return (
+   485→                                    <motion.div
+   486→                                      key={lesson.id}
+   487→                                      initial={{ opacity: 0, x: -10 }}
+   488→                                      animate={{ opacity: 1, x: 0 }}
+   489→                                      transition={{ delay: li * 0.03 }}
+   490→                                      className={`flex items-center gap-4 px-4 py-3 hover:bg-white/30 dark:hover:bg-slate-800/30 transition-colors border-b border-white/10 dark:border-white/5 last:border-b-0 ${canAccess ? 'cursor-pointer' : 'opacity-60'}`}
+   491→                                      onClick={() => {
+   492→                                        if (canAccess && lesson.lessonType === 'video') {
+   493→                                          navigate('video-player', { videoId: lesson.id, courseId: course.id });
+   494→                                        }
+   495→                                      }}
+   496→                                    >
+   497→                                      <div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center text-muted-foreground font-medium text-xs flex-shrink-0">
+   498→                                        {li + 1}
+   499→                                      </div>
+   500→                                      <div className="flex-1 min-w-0">
+   501→                                        <h4 className="text-sm font-medium text-foreground line-clamp-1">{lesson.title}</h4>
+   502→                                        <div className="flex items-center gap-2 mt-0.5">
+   503→                                          <LessonIcon className="w-3 h-3 text-muted-foreground" />
+   504→                                          <span className="text-xs text-muted-foreground">{getLessonTypeLabel(lesson.lessonType)}</span>
+   505→                                          {lesson.duration > 0 && (
+   506→                                            <span className="text-xs text-muted-foreground">{formatDuration(lesson.duration)}</span>
+   507→                                          )}
+   508→                                          {isPreview && (
+   509→                                            <span className="text-xs text-sky-500 font-semibold flex items-center gap-0.5">
+   510→                                              <Eye className="w-3 h-3" /> Preview
+   511→                                            </span>
+   512→                                          )}
+   513→                                          {!isEnrolled && !isPreview && (
+   514→                                            <span className="text-xs text-amber-500 font-semibold flex items-center gap-0.5">
+   515→                                              <Lock className="w-3 h-3" /> Paid
+   516→                                            </span>
+   517→                                          )}
+   518→                                        </div>
+   519→                                      </div>
+   520→                                      {lesson.lessonType === 'video' && canAccess ? (
+   521→                                        <Play className="w-4 h-4 text-sky-500 flex-shrink-0" />
+   522→                                      ) : !isEnrolled && !isPreview ? (
+   523→                                        <Lock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+   524→                                      ) : null}
+   525→                                    </motion.div>
+   526→                                  );
+   527→                                })}
+   528→
+   529→                                {/* Fallback videos (when no curriculum API data) */}
+   530→                                {fallbackVideos.map((video: any, vi: number) => {
+   531→                                  const canAccess = isEnrolled || video.isPreview;
+   532→                                  return (
+   533→                                    <motion.div
+   534→                                      key={video.id}
+   535→                                      initial={{ opacity: 0, x: -10 }}
+   536→                                      animate={{ opacity: 1, x: 0 }}
+   537→                                      transition={{ delay: vi * 0.03 }}
+   538→                                      className={`flex items-center gap-4 px-4 py-3 hover:bg-white/30 dark:hover:bg-slate-800/30 transition-colors border-b border-white/10 dark:border-white/5 last:border-b-0 ${canAccess ? 'cursor-pointer' : 'opacity-60'}`}
+   539→                                      onClick={() => {
+   540→                                        if (canAccess) {
+   541→                                          navigate('video-player', { videoId: video.id, courseId: course.id });
+   542→                                        }
+   543→                                      }}
+   544→                                    >
+   545→                                      <div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center text-muted-foreground font-medium text-xs flex-shrink-0">
+   546→                                        {vi + 1}
+   547→                                      </div>
+   548→                                      <div className="flex-1 min-w-0">
+   549→                                        <h4 className="text-sm font-medium text-foreground line-clamp-1">{video.title}</h4>
+   550→                                        <p className="text-xs text-muted-foreground mt-0.5">
+   551→                                          {formatDuration(video.duration)}
+   552→                                          {video.isPreview && <span className="text-sky-500 font-semibold"> \u00B7 Preview</span>}
+   553→                                          {!isEnrolled && !video.isPreview && <span className="text-amber-500 font-semibold"> \u00B7 Paid</span>}
+   554→                                        </p>
+   555→                                      </div>
+   556→                                      {canAccess ? (
+   557→                                        <Play className="w-4 h-4 text-sky-500 flex-shrink-0" />
+   558→                                      ) : (
+   559→                                        <Lock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+   560→                                      )}
+   561→                                    </motion.div>
+   562→                                  );
+   563→                                })}
+   564→                              </div>
+   565→                            </motion.div>
+   566→                          )}
+   567→                        </AnimatePresence>
+   568→                      </GlassCard>
+   569→                    </motion.div>
+   570→                  );
+   571→                }) : (
+   572→                  <GlassCard className="p-8 text-center">
+   573→                    <p className="text-sm text-muted-foreground">No curriculum available yet</p>
+   574→                  </GlassCard>
+   575→                )}
+   576→              </div>
+   577→            )}
+   578→
+   579→            {activeTab === 'reviews' && (
+   580→              <GlassCard className="p-6">
+   581→                <h2 className="text-lg font-bold mb-4">Reviews</h2>
+   582→                <div className="text-center py-8">
+   583→                  <Star className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+   584→                  <p className="text-2xl font-extrabold text-foreground">{course.rating}</p>
+   585→                  <p className="text-sm text-muted-foreground">{course.totalReviews} reviews</p>
+   586→                </div>
+   587→                <div className="text-center py-8 border-t border-white/20 dark:border-white/5">
+   588→                  <Star className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+   589→                  <p className="text-sm font-semibold text-muted-foreground">No reviews yet</p>
+   590→                  <p className="text-xs text-muted-foreground/60 mt-1">Be the first to review this course!</p>
+   591→                </div>
+   592→              </GlassCard>
+   593→            )}
+   594→
+   595→            {activeTab === 'instructor' && instructor && (
+   596→              <GlassCard className="p-6">
+   597→                <div className="flex items-center gap-4 mb-4">
+   598→                  <motion.div
+   599→                    className="w-16 h-16 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-xl font-extrabold overflow-hidden"
+   600→                    whileHover={{ scale: 1.1 }}
+   601→                  >
+   602→                    {instructor.avatarUrl ? (
+   603→                      <img src={instructor.avatarUrl} alt={instructor.name} className="w-full h-full object-cover" />
+   604→                    ) : (
+   605→                      instructor.name.charAt(0)
+   606→                    )}
+   607→                  </motion.div>
+   608→                  <div>
+   609→                    <h3 className="text-lg font-bold text-foreground">{instructor.name}</h3>
+   610→                    <p className="text-sm text-sky-500 font-semibold">{instructor.specialization}</p>
+   611→                  </div>
+   612→                </div>
+   613→                <p className="text-sm text-muted-foreground leading-relaxed mb-4">{instructor.bio}</p>
+   614→                <div className="flex gap-6 text-sm">
+   615→                  <div><span className="font-bold text-foreground">{instructor.totalStudents.toLocaleString()}</span> <span className="text-muted-foreground">students</span></div>
+   616→                  <div><span className="font-bold text-foreground">{instructor.totalCourses}</span> <span className="text-muted-foreground">courses</span></div>
+   617→                  <div><span className="font-bold text-foreground">{instructor.rating}</span> <span className="text-muted-foreground">rating</span></div>
+   618→                </div>
+   619→              </GlassCard>
+   620→            )}
+   621→          </motion.div>
+   622→        </div>
+   623→
+   624→        {/* Sidebar */}
+   625→        <div>
+   626→          <GlassCard className="p-6 sticky top-20 space-y-4">
+   627→            {isEnrolled ? (
+   628→              /* ===== ENROLLED STATE ===== */
+   629→              <>
+   630→                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50">
+   631→                  <CheckCircle className="w-5 h-5 text-emerald-500" />
+   632→                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">Enrolled</span>
+   633→                </div>
+   634→
+   635→                <GradientButton className="w-full" size="lg" onClick={() => navigate('video-player', { videoId: videos[0]?.id, courseId: course.id })}>
+   636→                  <Play className="w-4 h-4" />
+   637→                  Continue Learning
+   638→                </GradientButton>
+   639→
+   640→                <div className="space-y-3 text-sm pt-2">
+   641→                  <div className="flex justify-between">
+   642→                    <span className="text-muted-foreground">Level</span>
+   643→                    <span className="font-semibold">{course.level.charAt(0).toUpperCase() + course.level.slice(1)}</span>
+   644→                  </div>
+   645→                  <div className="flex justify-between">
+   646→                    <span className="text-muted-foreground">Duration</span>
+   647→                    <span className="font-semibold">{formatDuration(course.duration)}</span>
+   648→                  </div>
+   649→                  <div className="flex justify-between">
+   650→                    <span className="text-muted-foreground">Videos</span>
+   651→                    <span className="font-semibold">{course.totalVideos}</span>
+   652→                  </div>
+   653→                  <div className="flex justify-between">
+   654→                    <span className="text-muted-foreground">Language</span>
+   655→                    <span className="font-semibold">{course.language}</span>
+   656→                  </div>
+   657→                </div>
+   658→              </>
+   659→            ) : (
+   660→              /* ===== NOT ENROLLED STATE ===== */
+   661→              <>
+   662→                <div className="flex items-center justify-between">
+   663→                  {course.price > 0 ? (
+   664→                    <span className="text-2xl font-extrabold text-foreground">&#2547;{course.price}</span>
+   665→                  ) : (
+   666→                    <span className="text-2xl font-extrabold text-emerald-500">Free</span>
+   667→                  )}
+   668→                  <div className="flex gap-2">
+   669→                    <motion.button
+   670→                      className="w-10 h-10 rounded-xl bg-muted/50 flex items-center justify-center"
+   671→                      onClick={() => toggleBookmark(course.id)}
+   672→                      whileTap={{ scale: 0.9 }}
+   673→                    >
+   674→                      <Heart className={`w-5 h-5 ${bookmarked ? 'text-red-500 fill-red-500' : 'text-muted-foreground'}`} />
+   675→                    </motion.button>
+   676→                    <motion.button
+   677→                      className="w-10 h-10 rounded-xl bg-muted/50 flex items-center justify-center"
+   678→                      whileTap={{ scale: 0.9 }}
+   679→                    >
+   680→                      <Share2 className="w-5 h-5 text-muted-foreground" />
+   681→                    </motion.button>
+   682→                  </div>
+   683→                </div>
+   684→
+   685→                <GradientButton className="w-full" size="lg" onClick={handleEnrollOrContinue} loading={enrollmentLoading}>
+   686→                  <Play className="w-4 h-4" />
+   687→                  {course.price > 0 ? 'Enroll Now' : 'Start Learning'}
+   688→                </GradientButton>
+   689→
+   690→                <div className="space-y-3 text-sm pt-2">
+   691→                  <div className="flex justify-between">
+   692→                    <span className="text-muted-foreground">Level</span>
+   693→                    <span className="font-semibold">{course.level.charAt(0).toUpperCase() + course.level.slice(1)}</span>
+   694→                  </div>
+   695→                  <div className="flex justify-between">
+   696→                    <span className="text-muted-foreground">Duration</span>
+   697→                    <span className="font-semibold">{formatDuration(course.duration)}</span>
+   698→                  </div>
+   699→                  <div className="flex justify-between">
+   700→                    <span className="text-muted-foreground">Videos</span>
+   701→                    <span className="font-semibold">{course.totalVideos}</span>
+   702→                  </div>
+   703→                  <div className="flex justify-between">
+   704→                    <span className="text-muted-foreground">Language</span>
+   705→                    <span className="font-semibold">{course.language}</span>
+   706→                  </div>
+   707→                  <div className="flex justify-between">
+   708→                    <span className="text-muted-foreground">Students</span>
+   709→                    <span className="font-semibold">{course.totalStudents.toLocaleString()}</span>
+   710→                  </div>
+   711→                </div>
+   712→              </>
+   713→            )}
+   714→          </GlassCard>
+   715→        </div>
+   716→      </div>
+   717→
+   718→      {/* Related Courses */}
+   719→      {relatedCourses.length > 0 && (
+   720→        <div className="mt-8">
+   721→          <h2 className="text-lg font-extrabold text-foreground mb-4">Related Courses</h2>
+   722→          <CourseCardGrid courses={relatedCourses} />
+   723→        </div>
+   724→      )}
+   725→
+   726→      {/* Sticky enroll/continue button on mobile */}
+   727→      <div className="fixed bottom-16 left-0 right-0 p-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-t border-white/50 dark:border-white/10 lg:hidden z-40">
+   728→        <GradientButton
+   729→          className="w-full"
+   730→          size="lg"
+   731→          onClick={handleEnrollOrContinue}
+   732→          loading={enrollmentLoading}
+   733→        >
+   734→          <Play className="w-4 h-4" />
+   735→          {isEnrolled ? 'Continue Learning' : course.price > 0 ? 'Enroll Now' : 'Start Learning'}
+   736→        </GradientButton>
+   737→      </div>
+   738→    </div>
+   739→  );
+   740→}
+   741→

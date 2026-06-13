@@ -219,3 +219,28 @@ Stage Summary:
 - Student app deployed: https://dakkho-student.pages.dev
 - Video player now has landscape episode panel, portrait fixed position, PIP persistence
 - 5 new files created, VideoPlayerPage.tsx rewritten
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix multiple bugs across student, instructor, and worker apps
+
+Work Log:
+- Explored all codebases (student app, instructor app, admin app, worker routes)
+- Fixed worker API: instructor profile stats computation, video search auth, instructor search/list endpoints, course instructor CRUD, subject junction table support
+- Fixed student app: InstructorProfilePage cover image, avatar, stats, shared courses tab, category filtering, useInstructorCourses using proper API endpoint
+- Fixed instructor app: CourseInstructors default list + search, VideoPreview universal player (YouTube/MP4/R2), useVideoSearch hook, api-hooks video search
+- Deployed worker to Cloudflare (v d0fbf8ed)
+- Built and deployed student app to Cloudflare Pages
+- Built and deployed instructor app to Cloudflare Pages
+- Pushed all changes to GitHub (student, instructor, worker repos)
+- Updated README files for worker, student app, and instructor app
+
+Stage Summary:
+- Instructor Profile now shows cover image, avatar, computed stats (totalStudents, totalCourses, rating)
+- Shared Courses tab and Category filtering added to instructor profile
+- Instructor search now works with default list + search query
+- Video Preview now supports YouTube iframe, direct MP4/MKV, R2 URLs
+- Video search hook added for instructor to search uploaded videos by title
+- Subjects support multiple technologies via junction table
+- Course instructor CRUD endpoints added (GET/POST/DELETE)
+- All apps deployed to Cloudflare, all repos pushed to GitHub

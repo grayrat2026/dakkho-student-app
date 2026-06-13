@@ -1,0 +1,1518 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import {
+     6→  ArrowLeft, Plus, Trash2, ChevronDown, ChevronUp, ChevronRight, GripVertical,
+     7→  Loader2, BookOpen, FileText, Upload, X, Save, Eye, Send,
+     8→  Edit3, Video, File, Image, Pencil,
+     9→} from 'lucide-react';
+    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    11→import { Button } from '@/components/ui/button';
+    12→import { Input } from '@/components/ui/input';
+    13→import { Textarea } from '@/components/ui/textarea';
+    14→import { Label } from '@/components/ui/label';
+    15→import { Badge } from '@/components/ui/badge';
+    16→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    17→import {
+    18→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    19→} from '@/components/ui/dialog';
+    20→import {
+    21→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    22→} from '@/components/ui/select';
+    23→import { Switch } from '@/components/ui/switch';
+    24→import { useToast } from '@/hooks/use-toast';
+    25→import {
+    26→  instructorApi,
+    27→  type InstructorCourse,
+    28→  type ChapterItem,
+    29→  type LessonItem,
+    30→  type ResourceItem,
+    31→} from '@/lib/instructor-api-client';
+    32→
+    33→interface CourseEditorProps {
+    34→  courseId?: string;
+    35→  onNavigate?: (page: string, params?: Record<string, string>) => void;
+    36→  onBack?: () => void;
+    37→}
+    38→
+    39→const LEVELS = ['Beginner', 'Intermediate', 'Advanced', 'All Levels'];
+    40→const LANGUAGES = ['Bengali', 'English', 'Hindi', 'Urdu'];
+    41→const LESSON_TYPES = ['video', 'document', 'quiz', 'assignment'];
+    42→
+    43→const containerVariants = {
+    44→  hidden: { opacity: 0 },
+    45→  visible: { opacity: 1, transition: { staggerChildren: 0.06 } },
+    46→};
+    47→const itemVariants = {
+    48→  hidden: { opacity: 0, y: 12 },
+    49→  visible: { opacity: 1, y: 0 },
+    50→};
+    51→
+    52→export default function CourseEditor({ courseId, onNavigate, onBack }: CourseEditorProps) {
+    53→  const { toast } = useToast();
+    54→  const isEditMode = !!courseId;
+    55→
+    56→  // Course form state
+    57→  const [loading, setLoading] = useState(false);
+    58→  const [saving, setSaving] = useState(false);
+    59→  const [activeTab, setActiveTab] = useState('details');
+    60→  const [course, setCourse] = useState<InstructorCourse | null>(null);
+    61→
+    62→  const [form, setForm] = useState({
+    63→    title: '',
+    64→    description: '',
+    65→    level: 'Beginner',
+    66→    language: 'Bengali',
+    67→    price: 0,
+    68→    tags: '',
+    69→    semester: '',
+    70→    what_you_learn: '',
+    71→    is_published: false,
+    72→    thumbnail_url: '',
+    73→  });
+    74→
+    75→  // Curriculum state
+    76→  const [chapters, setChapters] = useState<ChapterItem[]>([]);
+    77→  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
+    78→
+    79→  // Chapter dialog
+    80→  const [chapterDialogOpen, setChapterDialogOpen] = useState(false);
+    81→  const [editingChapter, setEditingChapter] = useState<ChapterItem | null>(null);
+    82→  const [chapterForm, setChapterForm] = useState({ title: '', description: '', sort_order: 0 });
+    83→
+    84→  // Lesson dialog
+    85→  const [lessonDialogOpen, setLessonDialogOpen] = useState(false);
+    86→  const [editingLesson, setEditingLesson] = useState<LessonItem | null>(null);
+    87→  const [lessonChapterId, setLessonChapterId] = useState('');
+    88→  const [lessonForm, setLessonForm] = useState({
+    89→    title: '',
+    90→    chapter_id: '',
+    91→    description: '',
+    92→    lesson_type: 'video',
+    93→    sort_order: 0,
+    94→    is_preview: false,
+    95→    duration: 0,
+    96→    video_url: '',
+    97→    thumbnail_url: '',
+    98→    document_url: '',
+    99→  });
+   100→
+   101→  // Resources state
+   102→  const [resources, setResources] = useState<ResourceItem[]>([]);
+   103→  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+   104→  const [resourceForm, setResourceForm] = useState({ title: '', description: '', file_type: 'pdf' });
+   105→  const [resourceFile, setResourceFile] = useState<File | null>(null);
+   106→  const [uploading, setUploading] = useState(false);
+   107→
+   108→  // Delete confirm dialog
+   109→  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+   110→  const [deleteTarget, setDeleteTarget] = useState<{ type: 'chapter' | 'lesson' | 'resource'; id: string; parentId?: string } | null>(null);
+   111→
+   112→  // Publish dialog
+   113→  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+   114→
+   115→  // Load course data in edit mode
+   116→  useEffect(() => {
+   117→    if (courseId) {
+   118→      loadCourse();
+   119→      loadCurriculum();
+   120→      loadResources();
+   121→    }
+   122→  }, [courseId]);
+   123→
+   124→  const loadCourse = async () => {
+   125→    if (!courseId) return;
+   126→    setLoading(true);
+   127→    try {
+   128→      const data = await instructorApi.getCourse(courseId);
+   129→      setCourse(data.course);
+   130→      setForm({
+   131→        title: data.course.title || '',
+   132→        description: (data.course.description as string) || '',
+   133→        level: data.course.level || 'Beginner',
+   134→        language: (data.course.language as string) || 'Bengali',
+   135→        price: data.course.price ?? 0,
+   136→        tags: (data.course.tags as string) || '',
+   137→        semester: (data.course.semester as string) || '',
+   138→        what_you_learn: (data.course.what_you_learn as string) || '',
+   139→        is_published: data.course.isPublished ?? false,
+   140→        thumbnail_url: data.course.thumbnailUrl || '',
+   141→      });
+   142→    } catch (err) {
+   143→      console.error('Failed to load course:', err);
+   144→      toast({ title: 'Error', description: 'Failed to load course data', variant: 'destructive' });
+   145→    } finally {
+   146→      setLoading(false);
+   147→    }
+   148→  };
+   149→
+   150→  const loadCurriculum = async () => {
+   151→    if (!courseId) return;
+   152→    try {
+   153→      const data = await instructorApi.getCurriculum(courseId);
+   154→      const sortedChapters = (data.chapters || []).sort((a, b) => a.sort_order - b.sort_order);
+   155→      setChapters(sortedChapters);
+   156→      // Expand all chapters by default
+   157→      setExpandedChapters(new Set(sortedChapters.map(c => c.id)));
+   158→    } catch (err) {
+   159→      console.error('Failed to load curriculum:', err);
+   160→    }
+   161→  };
+   162→
+   163→  const loadResources = async () => {
+   164→    if (!courseId) return;
+   165→    try {
+   166→      const data = await instructorApi.getResources(courseId);
+   167→      setResources(data.resources || []);
+   168→    } catch (err) {
+   169→      console.error('Failed to load resources:', err);
+   170→    }
+   171→  };
+   172→
+   173→  // Save course details
+   174→  const handleSaveCourse = async () => {
+   175→    if (!form.title.trim()) {
+   176→      toast({ title: 'Validation Error', description: 'Course title is required', variant: 'destructive' });
+   177→      return;
+   178→    }
+   179→    setSaving(true);
+   180→    try {
+   181→      if (isEditMode && courseId) {
+   182→        await instructorApi.updateCourse(courseId, {
+   183→          title: form.title,
+   184→          description: form.description,
+   185→          level: form.level,
+   186→          language: form.language,
+   187→          price: form.price,
+   188→          tags: form.tags,
+   189→          semester: form.semester,
+   190→          what_you_learn: form.what_you_learn,
+   191→          thumbnail_url: form.thumbnail_url,
+   192→        });
+   193→        toast({ title: 'Success', description: 'Course updated successfully' });
+   194→      } else {
+   195→        const data = await instructorApi.createCourse({
+   196→          title: form.title,
+   197→          description: form.description,
+   198→          level: form.level,
+   199→          language: form.language,
+   200→          price: form.price,
+   201→          tags: form.tags,
+   202→          semester: form.semester,
+   203→          what_you_learn: form.what_you_learn,
+   204→        });
+   205→        toast({ title: 'Success', description: 'Course created successfully' });
+   206→        // Navigate to edit mode with the new course ID
+   207→        const newCourseId = data.course?.$id;
+   208→        if (newCourseId) {
+   209→          onNavigate?.('course-editor', { courseId: newCourseId });
+   210→        }
+   211→      }
+   212→    } catch (err: unknown) {
+   213→      const message = (err as { message?: string })?.message || 'Failed to save course';
+   214→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   215→    } finally {
+   216→      setSaving(false);
+   217→    }
+   218→  };
+   219→
+   220→  // Publish course
+   221→  const handlePublishCourse = async () => {
+   222→    if (!courseId) return;
+   223→    setSaving(true);
+   224→    try {
+   225→      await instructorApi.updateCourse(courseId, { is_published: true });
+   226→      setForm(prev => ({ ...prev, is_published: true }));
+   227→      toast({ title: 'Success', description: 'Course published successfully!' });
+   228→      setPublishDialogOpen(false);
+   229→    } catch (err: unknown) {
+   230→      const message = (err as { message?: string })?.message || 'Failed to publish course';
+   231→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   232→    } finally {
+   233→      setSaving(false);
+   234→    }
+   235→  };
+   236→
+   237→  // Unpublish course
+   238→  const handleUnpublishCourse = async () => {
+   239→    if (!courseId) return;
+   240→    setSaving(true);
+   241→    try {
+   242→      await instructorApi.updateCourse(courseId, { is_published: false });
+   243→      setForm(prev => ({ ...prev, is_published: false }));
+   244→      toast({ title: 'Success', description: 'Course unpublished' });
+   245→    } catch (err: unknown) {
+   246→      const message = (err as { message?: string })?.message || 'Failed to unpublish course';
+   247→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   248→    } finally {
+   249→      setSaving(false);
+   250→    }
+   251→  };
+   252→
+   253→  // Chapter CRUD
+   254→  const handleOpenChapterDialog = (chapter?: ChapterItem) => {
+   255→    if (chapter) {
+   256→      setEditingChapter(chapter);
+   257→      setChapterForm({
+   258→        title: chapter.title,
+   259→        description: chapter.description || '',
+   260→        sort_order: chapter.sort_order,
+   261→      });
+   262→    } else {
+   263→      setEditingChapter(null);
+   264→      setChapterForm({
+   265→        title: '',
+   266→        description: '',
+   267→        sort_order: chapters.length,
+   268→      });
+   269→    }
+   270→    setChapterDialogOpen(true);
+   271→  };
+   272→
+   273→  const handleSaveChapter = async () => {
+   274→    if (!courseId || !chapterForm.title.trim()) {
+   275→      toast({ title: 'Error', description: 'Chapter title is required', variant: 'destructive' });
+   276→      return;
+   277→    }
+   278→    try {
+   279→      if (editingChapter) {
+   280→        await instructorApi.updateChapter(courseId, editingChapter.id, {
+   281→          title: chapterForm.title,
+   282→          description: chapterForm.description,
+   283→          sort_order: chapterForm.sort_order,
+   284→        });
+   285→        toast({ title: 'Success', description: 'Chapter updated' });
+   286→      } else {
+   287→        await instructorApi.createChapter(courseId, {
+   288→          title: chapterForm.title,
+   289→          description: chapterForm.description || undefined,
+   290→          sort_order: chapterForm.sort_order,
+   291→        });
+   292→        toast({ title: 'Success', description: 'Chapter added' });
+   293→      }
+   294→      setChapterDialogOpen(false);
+   295→      loadCurriculum();
+   296→    } catch (err: unknown) {
+   297→      const message = (err as { message?: string })?.message || 'Failed to save chapter';
+   298→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   299→    }
+   300→  };
+   301→
+   302→  const handleDeleteChapter = async (chapterId: string) => {
+   303→    if (!courseId) return;
+   304→    try {
+   305→      await instructorApi.deleteChapter(courseId, chapterId);
+   306→      toast({ title: 'Success', description: 'Chapter deleted' });
+   307→      setDeleteDialogOpen(false);
+   308→      setDeleteTarget(null);
+   309→      loadCurriculum();
+   310→    } catch (err: unknown) {
+   311→      const message = (err as { message?: string })?.message || 'Failed to delete chapter';
+   312→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   313→    }
+   314→  };
+   315→
+   316→  const handleMoveChapter = async (chapterId: string, direction: 'up' | 'down') => {
+   317→    if (!courseId) return;
+   318→    const sorted = [...chapters].sort((a, b) => a.sort_order - b.sort_order);
+   319→    const idx = sorted.findIndex(c => c.id === chapterId);
+   320→    if (idx < 0) return;
+   321→    if (direction === 'up' && idx === 0) return;
+   322→    if (direction === 'down' && idx === sorted.length - 1) return;
+   323→
+   324→    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+   325→    const chapterA = sorted[idx];
+   326→    const chapterB = sorted[swapIdx];
+   327→
+   328→    try {
+   329→      await Promise.all([
+   330→        instructorApi.updateChapter(courseId, chapterA.id, { sort_order: chapterB.sort_order }),
+   331→        instructorApi.updateChapter(courseId, chapterB.id, { sort_order: chapterA.sort_order }),
+   332→      ]);
+   333→      loadCurriculum();
+   334→    } catch (err: unknown) {
+   335→      const message = (err as { message?: string })?.message || 'Failed to reorder chapter';
+   336→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   337→    }
+   338→  };
+   339→
+   340→  // Lesson CRUD
+   341→  const handleOpenLessonDialog = (chapterId: string, lesson?: LessonItem) => {
+   342→    setLessonChapterId(chapterId);
+   343→    if (lesson) {
+   344→      setEditingLesson(lesson);
+   345→      setLessonForm({
+   346→        title: lesson.title,
+   347→        chapter_id: lesson.chapter_id,
+   348→        description: lesson.description || '',
+   349→        lesson_type: lesson.lesson_type || 'video',
+   350→        sort_order: lesson.sort_order,
+   351→        is_preview: lesson.is_preview,
+   352→        duration: lesson.duration,
+   353→        video_url: lesson.video_url || '',
+   354→        thumbnail_url: lesson.thumbnail_url || '',
+   355→        document_url: lesson.document_url || '',
+   356→      });
+   357→    } else {
+   358→      const chapter = chapters.find(c => c.id === chapterId);
+   359→      const lessonCount = chapter?.lessons?.length || 0;
+   360→      setEditingLesson(null);
+   361→      setLessonForm({
+   362→        title: '',
+   363→        chapter_id: chapterId,
+   364→        description: '',
+   365→        lesson_type: 'video',
+   366→        sort_order: lessonCount,
+   367→        is_preview: false,
+   368→        duration: 0,
+   369→        video_url: '',
+   370→        thumbnail_url: '',
+   371→        document_url: '',
+   372→      });
+   373→    }
+   374→    setLessonDialogOpen(true);
+   375→  };
+   376→
+   377→  const handleSaveLesson = async () => {
+   378→    if (!courseId || !lessonForm.title.trim()) {
+   379→      toast({ title: 'Error', description: 'Lesson title is required', variant: 'destructive' });
+   380→      return;
+   381→    }
+   382→    try {
+   383→      if (editingLesson) {
+   384→        await instructorApi.updateLesson(courseId, editingLesson.id, {
+   385→          title: lessonForm.title,
+   386→          chapter_id: lessonForm.chapter_id,
+   387→          description: lessonForm.description,
+   388→          lesson_type: lessonForm.lesson_type,
+   389→          sort_order: lessonForm.sort_order,
+   390→          is_preview: lessonForm.is_preview,
+   391→          duration: lessonForm.duration,
+   392→          video_url: lessonForm.video_url,
+   393→          thumbnail_url: lessonForm.thumbnail_url,
+   394→          document_url: lessonForm.document_url,
+   395→        });
+   396→        toast({ title: 'Success', description: 'Lesson updated' });
+   397→      } else {
+   398→        await instructorApi.createLesson(courseId, {
+   399→          title: lessonForm.title,
+   400→          chapter_id: lessonForm.chapter_id,
+   401→          description: lessonForm.description || undefined,
+   402→          lesson_type: lessonForm.lesson_type,
+   403→          sort_order: lessonForm.sort_order,
+   404→          is_preview: lessonForm.is_preview,
+   405→          duration: lessonForm.duration || undefined,
+   406→          video_url: lessonForm.video_url || undefined,
+   407→          thumbnail_url: lessonForm.thumbnail_url || undefined,
+   408→          document_url: lessonForm.document_url || undefined,
+   409→        });
+   410→        toast({ title: 'Success', description: 'Lesson added' });
+   411→      }
+   412→      setLessonDialogOpen(false);
+   413→      loadCurriculum();
+   414→    } catch (err: unknown) {
+   415→      const message = (err as { message?: string })?.message || 'Failed to save lesson';
+   416→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   417→    }
+   418→  };
+   419→
+   420→  const handleDeleteLesson = async (lessonId: string) => {
+   421→    if (!courseId) return;
+   422→    try {
+   423→      await instructorApi.deleteLesson(courseId, lessonId);
+   424→      toast({ title: 'Success', description: 'Lesson deleted' });
+   425→      setDeleteDialogOpen(false);
+   426→      setDeleteTarget(null);
+   427→      loadCurriculum();
+   428→    } catch (err: unknown) {
+   429→      const message = (err as { message?: string })?.message || 'Failed to delete lesson';
+   430→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   431→    }
+   432→  };
+   433→
+   434→  const handleMoveLesson = async (chapterId: string, lessonId: string, direction: 'up' | 'down') => {
+   435→    if (!courseId) return;
+   436→    const chapter = chapters.find(c => c.id === chapterId);
+   437→    if (!chapter?.lessons) return;
+   438→    const sorted = [...chapter.lessons].sort((a, b) => a.sort_order - b.sort_order);
+   439→    const idx = sorted.findIndex(l => l.id === lessonId);
+   440→    if (idx < 0) return;
+   441→    if (direction === 'up' && idx === 0) return;
+   442→    if (direction === 'down' && idx === sorted.length - 1) return;
+   443→
+   444→    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+   445→    const lessonA = sorted[idx];
+   446→    const lessonB = sorted[swapIdx];
+   447→
+   448→    try {
+   449→      await Promise.all([
+   450→        instructorApi.updateLesson(courseId, lessonA.id, { sort_order: lessonB.sort_order }),
+   451→        instructorApi.updateLesson(courseId, lessonB.id, { sort_order: lessonA.sort_order }),
+   452→      ]);
+   453→      loadCurriculum();
+   454→    } catch (err: unknown) {
+   455→      const message = (err as { message?: string })?.message || 'Failed to reorder lesson';
+   456→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   457→    }
+   458→  };
+   459→
+   460→  // Resource CRUD
+   461→  const handleUploadResource = async () => {
+   462→    if (!courseId || !resourceForm.title.trim() || !resourceFile) {
+   463→      toast({ title: 'Error', description: 'Title and file are required', variant: 'destructive' });
+   464→      return;
+   465→    }
+   466→    setUploading(true);
+   467→    try {
+   468→      await instructorApi.createResource(courseId, {
+   469→        title: resourceForm.title,
+   470→        description: resourceForm.description || undefined,
+   471→        file_type: resourceForm.file_type,
+   472→      }, resourceFile);
+   473→      toast({ title: 'Success', description: 'Resource uploaded' });
+   474→      setUploadDialogOpen(false);
+   475→      setResourceForm({ title: '', description: '', file_type: 'pdf' });
+   476→      setResourceFile(null);
+   477→      loadResources();
+   478→    } catch (err: unknown) {
+   479→      const message = (err as { message?: string })?.message || 'Failed to upload resource';
+   480→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   481→    } finally {
+   482→      setUploading(false);
+   483→    }
+   484→  };
+   485→
+   486→  const handleDeleteResource = async (resourceId: string) => {
+   487→    if (!courseId) return;
+   488→    try {
+   489→      await instructorApi.deleteResource(courseId, resourceId);
+   490→      toast({ title: 'Success', description: 'Resource deleted' });
+   491→      setDeleteDialogOpen(false);
+   492→      setDeleteTarget(null);
+   493→      loadResources();
+   494→    } catch (err: unknown) {
+   495→      const message = (err as { message?: string })?.message || 'Failed to delete resource';
+   496→      toast({ title: 'Error', description: message, variant: 'destructive' });
+   497→    }
+   498→  };
+   499→
+   500→  const toggleChapter = useCallback((chapterId: string) => {
+   501→    setExpandedChapters(prev => {
+   502→      const next = new Set(prev);
+   503→      if (next.has(chapterId)) next.delete(chapterId);
+   504→      else next.add(chapterId);
+   505→      return next;
+   506→    });
+   507→  }, []);
+   508→
+   509→  const confirmDelete = (type: 'chapter' | 'lesson' | 'resource', id: string, parentId?: string) => {
+   510→    setDeleteTarget({ type, id, parentId });
+   511→    setDeleteDialogOpen(true);
+   512→  };
+   513→
+   514→  const executeDelete = () => {
+   515→    if (!deleteTarget) return;
+   516→    if (deleteTarget.type === 'chapter') handleDeleteChapter(deleteTarget.id);
+   517→    else if (deleteTarget.type === 'lesson') handleDeleteLesson(deleteTarget.id);
+   518→    else if (deleteTarget.type === 'resource') handleDeleteResource(deleteTarget.id);
+   519→  };
+   520→
+   521→  const formatFileSize = (bytes: number) => {
+   522→    if (bytes < 1024) return `${bytes} B`;
+   523→    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+   524→    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+   525→  };
+   526→
+   527→  const getFileIcon = (fileType: string) => {
+   528→    switch (fileType?.toLowerCase()) {
+   529→      case 'pdf': return <FileText className="h-4 w-4 text-red-500" />;
+   530→      case 'doc': case 'docx': return <FileText className="h-4 w-4 text-blue-500" />;
+   531→      case 'xls': case 'xlsx': return <FileText className="h-4 w-4 text-green-500" />;
+   532→      case 'ppt': case 'pptx': return <FileText className="h-4 w-4 text-orange-500" />;
+   533→      case 'zip': case 'rar': return <File className="h-4 w-4 text-purple-500" />;
+   534→      case 'mp4': case 'video': return <Video className="h-4 w-4 text-teal-500" />;
+   535→      default: return <File className="h-4 w-4 text-gray-500" />;
+   536→    }
+   537→  };
+   538→
+   539→  if (loading) {
+   540→    return (
+   541→      <div className="flex items-center justify-center min-h-[60vh]">
+   542→        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+   543→      </div>
+   544→    );
+   545→  }
+   546→
+   547→  return (
+   548→    <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+   549→      {/* Back button and header */}
+   550→      <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+   551→        <div className="flex items-center gap-3">
+   552→          <button
+   553→            onClick={onBack || (() => onNavigate?.('courses'))}
+   554→            className="flex items-center gap-2 text-sm text-gray-500 hover:text-emerald-600 font-semibold transition-colors"
+   555→          >
+   556→            <ArrowLeft className="h-4 w-4" /> Back
+   557→          </button>
+   558→          <span className="text-gray-300">|</span>
+   559→          <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+   560→            {isEditMode ? 'Edit Course' : 'Create New Course'}
+   561→          </h2>
+   562→        </div>
+   563→        <div className="flex items-center gap-2">
+   564→          {isEditMode && form.is_published ? (
+   565→            <Button variant="outline" size="sm" onClick={handleUnpublishCourse} disabled={saving}>
+   566→              Unpublish
+   567→            </Button>
+   568→          ) : isEditMode ? (
+   569→            <Button
+   570→              size="sm"
+   571→              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   572→              onClick={() => setPublishDialogOpen(true)}
+   573→              disabled={saving}
+   574→            >
+   575→              <Send className="h-4 w-4 mr-1" /> Publish
+   576→            </Button>
+   577→          ) : null}
+   578→          <Button
+   579→            size="sm"
+   580→            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   581→            onClick={handleSaveCourse}
+   582→            disabled={saving}
+   583→          >
+   584→            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+   585→            {isEditMode ? 'Save Changes' : 'Create Course'}
+   586→          </Button>
+   587→        </div>
+   588→      </motion.div>
+   589→
+   590→      {/* Status badge */}
+   591→      {isEditMode && (
+   592→        <motion.div variants={itemVariants}>
+   593→          {form.is_published ? (
+   594→            <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 text-sm px-3 py-1">
+   595→              Published
+   596→            </Badge>
+   597→          ) : (
+   598→            <Badge className="bg-gray-100 text-gray-600 hover:bg-gray-100 text-sm px-3 py-1">
+   599→              Draft
+   600→            </Badge>
+   601→          )}
+   602→        </motion.div>
+   603→      )}
+   604→
+   605→      {/* Tabs */}
+   606→      <motion.div variants={itemVariants}>
+   607→        <Tabs value={activeTab} onValueChange={setActiveTab}>
+   608→          <TabsList className="bg-gray-100">
+   609→            <TabsTrigger value="details" className="data-[state=active]:bg-white data-[state=active]:text-emerald-700">
+   610→              <BookOpen className="h-4 w-4 mr-1.5" /> Details
+   611→            </TabsTrigger>
+   612→            <TabsTrigger value="curriculum" className="data-[state=active]:bg-white data-[state=active]:text-emerald-700">
+   613→              <Edit3 className="h-4 w-4 mr-1.5" /> Curriculum
+   614→            </TabsTrigger>
+   615→            <TabsTrigger value="resources" className="data-[state=active]:bg-white data-[state=active]:text-emerald-700">
+   616→              <FileText className="h-4 w-4 mr-1.5" /> Resources
+   617→            </TabsTrigger>
+   618→            <TabsTrigger value="publish" className="data-[state=active]:bg-white data-[state=active]:text-emerald-700">
+   619→              <Eye className="h-4 w-4 mr-1.5" /> Preview
+   620→            </TabsTrigger>
+   621→          </TabsList>
+   622→
+   623→          {/* ========== DETAILS TAB ========== */}
+   624→          <TabsContent value="details">
+   625→            <Card className="shadow-sm border border-gray-200 bg-white">
+   626→              <CardContent className="p-6 space-y-6">
+   627→                {/* Title */}
+   628→                <div className="space-y-2">
+   629→                  <Label htmlFor="title" className="text-sm font-semibold text-gray-700">
+   630→                    Course Title <span className="text-red-500">*</span>
+   631→                  </Label>
+   632→                  <Input
+   633→                    id="title"
+   634→                    placeholder="Enter course title..."
+   635→                    value={form.title}
+   636→                    onChange={(e) => setForm(prev => ({ ...prev, title: e.target.value }))}
+   637→                    className="bg-white border-gray-200"
+   638→                  />
+   639→                </div>
+   640→
+   641→                {/* Description */}
+   642→                <div className="space-y-2">
+   643→                  <Label htmlFor="description" className="text-sm font-semibold text-gray-700">
+   644→                    Description
+   645→                  </Label>
+   646→                  <Textarea
+   647→                    id="description"
+   648→                    placeholder="Describe your course..."
+   649→                    rows={4}
+   650→                    value={form.description}
+   651→                    onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))}
+   652→                    className="bg-white border-gray-200 resize-none"
+   653→                  />
+   654→                </div>
+   655→
+   656→                {/* Row: Level + Language */}
+   657→                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   658→                  <div className="space-y-2">
+   659→                    <Label className="text-sm font-semibold text-gray-700">Level</Label>
+   660→                    <Select value={form.level} onValueChange={(val) => setForm(prev => ({ ...prev, level: val }))}>
+   661→                      <SelectTrigger className="w-full bg-white border-gray-200">
+   662→                        <SelectValue placeholder="Select level" />
+   663→                      </SelectTrigger>
+   664→                      <SelectContent>
+   665→                        {LEVELS.map(level => (
+   666→                          <SelectItem key={level} value={level}>{level}</SelectItem>
+   667→                        ))}
+   668→                      </SelectContent>
+   669→                    </Select>
+   670→                  </div>
+   671→                  <div className="space-y-2">
+   672→                    <Label className="text-sm font-semibold text-gray-700">Language</Label>
+   673→                    <Select value={form.language} onValueChange={(val) => setForm(prev => ({ ...prev, language: val }))}>
+   674→                      <SelectTrigger className="w-full bg-white border-gray-200">
+   675→                        <SelectValue placeholder="Select language" />
+   676→                      </SelectTrigger>
+   677→                      <SelectContent>
+   678→                        {LANGUAGES.map(lang => (
+   679→                          <SelectItem key={lang} value={lang}>{lang}</SelectItem>
+   680→                        ))}
+   681→                      </SelectContent>
+   682→                    </Select>
+   683→                  </div>
+   684→                </div>
+   685→
+   686→                {/* Row: Price + Semester */}
+   687→                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   688→                  <div className="space-y-2">
+   689→                    <Label htmlFor="price" className="text-sm font-semibold text-gray-700">
+   690→                      Price (৳)
+   691→                    </Label>
+   692→                    <Input
+   693→                      id="price"
+   694→                      type="number"
+   695→                      min={0}
+   696→                      placeholder="0"
+   697→                      value={form.price}
+   698→                      onChange={(e) => setForm(prev => ({ ...prev, price: Number(e.target.value) }))}
+   699→                      className="bg-white border-gray-200"
+   700→                    />
+   701→                  </div>
+   702→                  <div className="space-y-2">
+   703→                    <Label htmlFor="semester" className="text-sm font-semibold text-gray-700">Semester</Label>
+   704→                    <Input
+   705→                      id="semester"
+   706→                      placeholder="e.g., Spring 2025"
+   707→                      value={form.semester}
+   708→                      onChange={(e) => setForm(prev => ({ ...prev, semester: e.target.value }))}
+   709→                      className="bg-white border-gray-200"
+   710→                    />
+   711→                  </div>
+   712→                </div>
+   713→
+   714→                {/* Tags */}
+   715→                <div className="space-y-2">
+   716→                  <Label htmlFor="tags" className="text-sm font-semibold text-gray-700">Tags</Label>
+   717→                  <Input
+   718→                    id="tags"
+   719→                    placeholder="e.g., web development, javascript, react"
+   720→                    value={form.tags}
+   721→                    onChange={(e) => setForm(prev => ({ ...prev, tags: e.target.value }))}
+   722→                    className="bg-white border-gray-200"
+   723→                  />
+   724→                  <p className="text-xs text-gray-400">Comma-separated tags</p>
+   725→                </div>
+   726→
+   727→                {/* Thumbnail URL */}
+   728→                <div className="space-y-2">
+   729→                  <Label htmlFor="thumbnail_url" className="text-sm font-semibold text-gray-700">Thumbnail URL</Label>
+   730→                  <Input
+   731→                    id="thumbnail_url"
+   732→                    placeholder="https://example.com/image.jpg"
+   733→                    value={form.thumbnail_url}
+   734→                    onChange={(e) => setForm(prev => ({ ...prev, thumbnail_url: e.target.value }))}
+   735→                    className="bg-white border-gray-200"
+   736→                  />
+   737→                  {form.thumbnail_url && (
+   738→                    <div className="mt-2 w-full h-40 rounded-lg overflow-hidden border border-gray-200">
+   739→                      <img src={form.thumbnail_url} alt="Thumbnail preview" className="w-full h-full object-cover" />
+   740→                    </div>
+   741→                  )}
+   742→                </div>
+   743→
+   744→                {/* What you'll learn */}
+   745→                <div className="space-y-2">
+   746→                  <Label htmlFor="what_you_learn" className="text-sm font-semibold text-gray-700">
+   747→                    What You&apos;ll Learn
+   748→                  </Label>
+   749→                  <Textarea
+   750→                    id="what_you_learn"
+   751→                    placeholder="Enter key learning outcomes, one per line:&#10;- Build modern web applications&#10;- Understand React fundamentals&#10;- Deploy to production"
+   752→                    rows={5}
+   753→                    value={form.what_you_learn}
+   754→                    onChange={(e) => setForm(prev => ({ ...prev, what_you_learn: e.target.value }))}
+   755→                    className="bg-white border-gray-200 resize-none"
+   756→                  />
+   757→                  <p className="text-xs text-gray-400">One learning point per line</p>
+   758→                </div>
+   759→
+   760→                {/* Save button at bottom */}
+   761→                <div className="flex justify-end pt-2">
+   762→                  <Button
+   763→                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   764→                    onClick={handleSaveCourse}
+   765→                    disabled={saving}
+   766→                  >
+   767→                    {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+   768→                    {isEditMode ? 'Save Changes' : 'Create Course'}
+   769→                  </Button>
+   770→                </div>
+   771→              </CardContent>
+   772→            </Card>
+   773→          </TabsContent>
+   774→
+   775→          {/* ========== CURRICULUM TAB ========== */}
+   776→          <TabsContent value="curriculum">
+   777→            {!isEditMode ? (
+   778→              <Card className="shadow-sm border border-gray-200 bg-white">
+   779→                <CardContent className="p-8 text-center">
+   780→                  <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+   781→                  <h3 className="text-lg font-bold text-gray-700" style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+   782→                    Save Course First
+   783→                  </h3>
+   784→                  <p className="text-sm text-gray-500 mt-1">
+   785→                    Please create the course before adding curriculum content.
+   786→                  </p>
+   787→                </CardContent>
+   788→              </Card>
+   789→            ) : (
+   790→              <div className="space-y-4">
+   791→                {/* Add Chapter Button */}
+   792→                <div className="flex items-center justify-between">
+   793→                  <h3 className="text-lg font-bold text-gray-900" style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+   794→                    Chapters ({chapters.length})
+   795→                  </h3>
+   796→                  <Button
+   797→                    size="sm"
+   798→                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   799→                    onClick={() => handleOpenChapterDialog()}
+   800→                  >
+   801→                    <Plus className="h-4 w-4 mr-1" /> Add Chapter
+   802→                  </Button>
+   803→                </div>
+   804→
+   805→                {/* Chapter List */}
+   806→                {chapters.length === 0 ? (
+   807→                  <Card className="shadow-sm border border-gray-200 bg-white">
+   808→                    <CardContent className="p-8 text-center">
+   809→                      <BookOpen className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+   810→                      <p className="text-sm text-gray-500">No chapters yet. Add your first chapter to start building the curriculum.</p>
+   811→                    </CardContent>
+   812→                  </Card>
+   813→                ) : (
+   814→                  <AnimatePresence>
+   815→                    {chapters.sort((a, b) => a.sort_order - b.sort_order).map((chapter, idx) => (
+   816→                      <motion.div
+   817→                        key={chapter.id}
+   818→                        initial={{ opacity: 0, y: 8 }}
+   819→                        animate={{ opacity: 1, y: 0 }}
+   820→                        exit={{ opacity: 0, y: -8 }}
+   821→                        transition={{ delay: idx * 0.03 }}
+   822→                      >
+   823→                        <Card className="shadow-sm border border-gray-200 bg-white overflow-hidden">
+   824→                          {/* Chapter Header */}
+   825→                          <div
+   826→                            className="flex items-center gap-2 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+   827→                            onClick={() => toggleChapter(chapter.id)}
+   828→                          >
+   829→                            <GripVertical className="h-4 w-4 text-gray-300 flex-shrink-0" />
+   830→                            <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+   831→                              {expandedChapters.has(chapter.id) ? (
+   832→                                <ChevronDown className="h-4 w-4 text-gray-400" />
+   833→                              ) : (
+   834→                                <ChevronRight className="h-4 w-4 text-gray-400" />
+   835→                              )}
+   836→                            </motion.div>
+   837→                            <div className="flex-1 min-w-0">
+   838→                              <span className="text-sm font-bold text-gray-900">
+   839→                                Chapter {idx + 1}: {chapter.title}
+   840→                              </span>
+   841→                              {chapter.description && (
+   842→                                <p className="text-xs text-gray-500 mt-0.5 truncate">{chapter.description}</p>
+   843→                              )}
+   844→                            </div>
+   845→                            <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600 hover:bg-gray-100">
+   846→                              {chapter.lessons?.length || 0} lessons
+   847→                            </Badge>
+   848→                            <div className="flex items-center gap-1 ml-2" onClick={(e) => e.stopPropagation()}>
+   849→                              <Button
+   850→                                variant="ghost"
+   851→                                size="sm"
+   852→                                className="h-7 w-7 p-0"
+   853→                                onClick={() => handleMoveChapter(chapter.id, 'up')}
+   854→                                disabled={idx === 0}
+   855→                              >
+   856→                                <ChevronUp className="h-3.5 w-3.5" />
+   857→                              </Button>
+   858→                              <Button
+   859→                                variant="ghost"
+   860→                                size="sm"
+   861→                                className="h-7 w-7 p-0"
+   862→                                onClick={() => handleMoveChapter(chapter.id, 'down')}
+   863→                                disabled={idx === chapters.length - 1}
+   864→                              >
+   865→                                <ChevronDown className="h-3.5 w-3.5" />
+   866→                              </Button>
+   867→                              <Button
+   868→                                variant="ghost"
+   869→                                size="sm"
+   870→                                className="h-7 w-7 p-0 text-gray-500 hover:text-emerald-600"
+   871→                                onClick={() => handleOpenChapterDialog(chapter)}
+   872→                              >
+   873→                                <Pencil className="h-3.5 w-3.5" />
+   874→                              </Button>
+   875→                              <Button
+   876→                                variant="ghost"
+   877→                                size="sm"
+   878→                                className="h-7 w-7 p-0 text-gray-500 hover:text-red-600"
+   879→                                onClick={() => confirmDelete('chapter', chapter.id)}
+   880→                              >
+   881→                                <Trash2 className="h-3.5 w-3.5" />
+   882→                              </Button>
+   883→                            </div>
+   884→                          </div>
+   885→
+   886→                          {/* Lessons inside chapter */}
+   887→                          <AnimatePresence>
+   888→                            {expandedChapters.has(chapter.id) && (
+   889→                              <motion.div
+   890→                                initial={{ height: 0, opacity: 0 }}
+   891→                                animate={{ height: 'auto', opacity: 1 }}
+   892→                                exit={{ height: 0, opacity: 0 }}
+   893→                                transition={{ duration: 0.2 }}
+   894→                                className="border-t border-gray-100"
+   895→                              >
+   896→                                <div className="p-4 pt-3 space-y-2 bg-gray-50/50">
+   897→                                  {(chapter.lessons || [])
+   898→                                    .sort((a, b) => a.sort_order - b.sort_order)
+   899→                                    .map((lesson, lessonIdx) => (
+   900→                                    <motion.div
+   901→                                      key={lesson.id}
+   902→                                      className="flex items-center gap-2 p-3 rounded-lg bg-white border border-gray-100 hover:border-emerald-200 transition-colors"
+   903→                                      initial={{ opacity: 0, x: -10 }}
+   904→                                      animate={{ opacity: 1, x: 0 }}
+   905→                                      transition={{ delay: lessonIdx * 0.03 }}
+   906→                                    >
+   907→                                      <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+   908→                                        {lesson.lesson_type === 'video' ? (
+   909→                                          <Video className="h-4 w-4 text-emerald-600" />
+   910→                                        ) : lesson.lesson_type === 'document' ? (
+   911→                                          <FileText className="h-4 w-4 text-emerald-600" />
+   912→                                        ) : (
+   913→                                          <BookOpen className="h-4 w-4 text-emerald-600" />
+   914→                                        )}
+   915→                                      </div>
+   916→                                      <div className="flex-1 min-w-0">
+   917→                                        <p className="text-sm font-medium text-gray-900 truncate">
+   918→                                          {lesson.title}
+   919→                                        </p>
+   920→                                        <p className="text-xs text-gray-500">
+   921→                                          {lesson.lesson_type} · {lesson.duration ? `${lesson.duration}min` : 'No duration'}
+   922→                                          {lesson.is_preview && ' · Preview'}
+   923→                                        </p>
+   924→                                      </div>
+   925→                                      <div className="flex items-center gap-1">
+   926→                                        <Button
+   927→                                          variant="ghost"
+   928→                                          size="sm"
+   929→                                          className="h-6 w-6 p-0"
+   930→                                          onClick={() => handleMoveLesson(chapter.id, lesson.id, 'up')}
+   931→                                          disabled={lessonIdx === 0}
+   932→                                        >
+   933→                                          <ChevronUp className="h-3 w-3" />
+   934→                                        </Button>
+   935→                                        <Button
+   936→                                          variant="ghost"
+   937→                                          size="sm"
+   938→                                          className="h-6 w-6 p-0"
+   939→                                          onClick={() => handleMoveLesson(chapter.id, lesson.id, 'down')}
+   940→                                          disabled={lessonIdx === (chapter.lessons?.length || 0) - 1}
+   941→                                        >
+   942→                                          <ChevronDown className="h-3 w-3" />
+   943→                                        </Button>
+   944→                                        <Button
+   945→                                          variant="ghost"
+   946→                                          size="sm"
+   947→                                          className="h-6 w-6 p-0 text-gray-500 hover:text-emerald-600"
+   948→                                          onClick={() => handleOpenLessonDialog(chapter.id, lesson)}
+   949→                                        >
+   950→                                          <Pencil className="h-3 w-3" />
+   951→                                        </Button>
+   952→                                        <Button
+   953→                                          variant="ghost"
+   954→                                          size="sm"
+   955→                                          className="h-6 w-6 p-0 text-gray-500 hover:text-red-600"
+   956→                                          onClick={() => confirmDelete('lesson', lesson.id, chapter.id)}
+   957→                                        >
+   958→                                          <Trash2 className="h-3 w-3" />
+   959→                                        </Button>
+   960→                                      </div>
+   961→                                    </motion.div>
+   962→                                  ))}
+   963→
+   964→                                  {/* Add Lesson Button */}
+   965→                                  <Button
+   966→                                    variant="outline"
+   967→                                    size="sm"
+   968→                                    className="w-full border-dashed border-gray-300 text-gray-500 hover:text-emerald-600 hover:border-emerald-300"
+   969→                                    onClick={() => handleOpenLessonDialog(chapter.id)}
+   970→                                  >
+   971→                                    <Plus className="h-4 w-4 mr-1" /> Add Lesson
+   972→                                  </Button>
+   973→                                </div>
+   974→                              </motion.div>
+   975→                            )}
+   976→                          </AnimatePresence>
+   977→                        </Card>
+   978→                      </motion.div>
+   979→                    ))}
+   980→                  </AnimatePresence>
+   981→                )}
+   982→              </div>
+   983→            )}
+   984→          </TabsContent>
+   985→
+   986→          {/* ========== RESOURCES TAB ========== */}
+   987→          <TabsContent value="resources">
+   988→            {!isEditMode ? (
+   989→              <Card className="shadow-sm border border-gray-200 bg-white">
+   990→                <CardContent className="p-8 text-center">
+   991→                  <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+   992→                  <h3 className="text-lg font-bold text-gray-700" style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+   993→                    Save Course First
+   994→                  </h3>
+   995→                  <p className="text-sm text-gray-500 mt-1">
+   996→                    Please create the course before uploading resources.
+   997→                  </p>
+   998→                </CardContent>
+   999→              </Card>
+  1000→            ) : (
+  1001→              <div className="space-y-4">
+  1002→                <div className="flex items-center justify-between">
+  1003→                  <h3 className="text-lg font-bold text-gray-900" style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+  1004→                    Resources ({resources.length})
+  1005→                  </h3>
+  1006→                  <Button
+  1007→                    size="sm"
+  1008→                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+  1009→                    onClick={() => setUploadDialogOpen(true)}
+  1010→                  >
+  1011→                    <Upload className="h-4 w-4 mr-1" /> Upload Resource
+  1012→                  </Button>
+  1013→                </div>
+  1014→
+  1015→                {resources.length === 0 ? (
+  1016→                  <Card className="shadow-sm border border-gray-200 bg-white">
+  1017→                    <CardContent className="p-8 text-center">
+  1018→                      <FileText className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+  1019→                      <p className="text-sm text-gray-500">No resources uploaded yet. Upload PDFs, sheets, or documents for your students.</p>
+  1020→                    </CardContent>
+  1021→                  </Card>
+  1022→                ) : (
+  1023→                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  1024→                    {resources.map((resource, idx) => (
+  1025→                      <motion.div
+  1026→                        key={resource.id}
+  1027→                        initial={{ opacity: 0, y: 8 }}
+  1028→                        animate={{ opacity: 1, y: 0 }}
+  1029→                        transition={{ delay: idx * 0.04 }}
+  1030→                      >
+  1031→                        <Card className="shadow-sm border border-gray-200 bg-white hover:shadow-md transition-shadow">
+  1032→                          <CardContent className="p-4">
+  1033→                            <div className="flex items-start gap-3">
+  1034→                              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+  1035→                                {getFileIcon(resource.file_type)}
+  1036→                              </div>
+  1037→                              <div className="flex-1 min-w-0">
+  1038→                                <p className="text-sm font-semibold text-gray-900 truncate">{resource.title}</p>
+  1039→                                {resource.description && (
+  1040→                                  <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{resource.description}</p>
+  1041→                                )}
+  1042→                                <div className="flex items-center gap-2 mt-2">
+  1043→                                  <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600 hover:bg-gray-100">
+  1044→                                    {resource.file_type?.toUpperCase()}
+  1045→                                  </Badge>
+  1046→                                  <span className="text-xs text-gray-400">
+  1047→                                    {formatFileSize(resource.file_size)}
+  1048→                                  </span>
+  1049→                                </div>
+  1050→                              </div>
+  1051→                              <Button
+  1052→                                variant="ghost"
+  1053→                                size="sm"
+  1054→                                className="h-8 w-8 p-0 text-gray-400 hover:text-red-600 flex-shrink-0"
+  1055→                                onClick={() => confirmDelete('resource', resource.id)}
+  1056→                              >
+  1057→                                <Trash2 className="h-4 w-4" />
+  1058→                              </Button>
+  1059→                            </div>
+  1060→                          </CardContent>
+  1061→                        </Card>
+  1062→                      </motion.div>
+  1063→                    ))}
+  1064→                  </div>
+  1065→                )}
+  1066→              </div>
+  1067→            )}
+  1068→          </TabsContent>
+  1069→
+  1070→          {/* ========== PUBLISH TAB ========== */}
+  1071→          <TabsContent value="publish">
+  1072→            {!isEditMode ? (
+  1073→              <Card className="shadow-sm border border-gray-200 bg-white">
+  1074→                <CardContent className="p-8 text-center">
+  1075→                  <Eye className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+  1076→                  <h3 className="text-lg font-bold text-gray-700" style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+  1077→                    Create Course First
+  1078→                  </h3>
+  1079→                  <p className="text-sm text-gray-500 mt-1">
+  1080→                    Save your course before previewing and publishing.
+  1081→                  </p>
+  1082→                </CardContent>
+  1083→              </Card>
+  1084→            ) : (
+  1085→              <div className="space-y-4">
+  1086→                {/* Preview Card */}
+  1087→                <Card className="shadow-sm border border-gray-200 bg-white overflow-hidden">
+  1088→                  <div className="flex flex-col md:flex-row">
+  1089→                    <div className="md:w-64 h-48 md:h-auto flex-shrink-0 bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center">
+  1090→                      {form.thumbnail_url ? (
+  1091→                        <img src={form.thumbnail_url} alt="Thumbnail" className="w-full h-full object-cover" />
+  1092→                      ) : (
+  1093→                        <Image className="h-12 w-12 text-emerald-300" />
+  1094→                      )}
+  1095→                    </div>
+  1096→                    <div className="flex-1 p-5">
+  1097→                      <div className="flex items-start justify-between gap-3">
+  1098→                        <div>
+  1099→                          <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+  1100→                            {form.title || 'Untitled Course'}
+  1101→                          </h2>
+  1102→                          <p className="text-sm text-gray-500 mt-1">{form.description || 'No description'}</p>
+  1103→                        </div>
+  1104→                        {form.is_published ? (
+  1105→                          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Published</Badge>
+  1106→                        ) : (
+  1107→                          <Badge className="bg-gray-100 text-gray-600 hover:bg-gray-100">Draft</Badge>
+  1108→                        )}
+  1109→                      </div>
+  1110→                      <div className="flex items-center gap-6 mt-4 text-sm text-gray-500">
+  1111→                        <span className="flex items-center gap-1.5">
+  1112→                          <BookOpen className="h-4 w-4 text-emerald-600" /> {form.level}
+  1113→                        </span>
+  1114→                        <span className="flex items-center gap-1.5">
+  1115→                          ৳{form.price}
+  1116→                        </span>
+  1117→                        <span className="flex items-center gap-1.5">
+  1118→                          {chapters.length} Chapters · {chapters.reduce((sum, c) => sum + (c.lessons?.length || 0), 0)} Lessons
+  1119→                        </span>
+  1120→                      </div>
+  1121→                      {form.what_you_learn && (
+  1122→                        <div className="mt-4 pt-3 border-t border-gray-100">
+  1123→                          <p className="text-xs font-semibold text-gray-500 uppercase mb-2">What You&apos;ll Learn</p>
+  1124→                          <ul className="space-y-1">
+  1125→                            {form.what_you_learn.split('\n').filter(l => l.trim()).map((line, i) => (
+  1126→                              <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+  1127→                                <span className="text-emerald-500 mt-0.5">✓</span>
+  1128→                                {line.replace(/^[-•*]\s*/, '').trim()}
+  1129→                              </li>
+  1130→                            ))}
+  1131→                          </ul>
+  1132→                        </div>
+  1133→                      )}
+  1134→                    </div>
+  1135→                  </div>
+  1136→                </Card>
+  1137→
+  1138→                {/* Checklist */}
+  1139→                <Card className="shadow-sm border border-gray-200 bg-white">
+  1140→                  <CardHeader className="pb-3">
+  1141→                    <CardTitle className="text-base" style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+  1142→                      Publishing Checklist
+  1143→                    </CardTitle>
+  1144→                  </CardHeader>
+  1145→                  <CardContent>
+  1146→                    <div className="space-y-3">
+  1147→                      {[
+  1148→                        { label: 'Course title is set', ok: !!form.title.trim() },
+  1149→                        { label: 'Course description is set', ok: !!form.description.trim() },
+  1150→                        { label: 'At least one chapter exists', ok: chapters.length > 0 },
+  1151→                        { label: 'At least one lesson exists', ok: chapters.some(c => (c.lessons?.length || 0) > 0) },
+  1152→                        { label: 'Price is set', ok: form.price > 0 },
+  1153→                      ].map((item, i) => (
+  1154→                        <div key={i} className="flex items-center gap-3">
+  1155→                          <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${item.ok ? 'bg-emerald-500' : 'bg-gray-200'}`}>
+  1156→                            {item.ok && <span className="text-white text-xs">✓</span>}
+  1157→                          </div>
+  1158→                          <span className={`text-sm ${item.ok ? 'text-gray-900' : 'text-gray-500'}`}>{item.label}</span>
+  1159→                        </div>
+  1160→                      ))}
+  1161→                    </div>
+  1162→                  </CardContent>
+  1163→                </Card>
+  1164→
+  1165→                {/* Publish Button */}
+  1166→                <div className="flex justify-center pt-2">
+  1167→                  {form.is_published ? (
+  1168→                    <div className="text-center">
+  1169→                      <p className="text-sm text-emerald-600 font-semibold mb-2">This course is currently published</p>
+  1170→                      <Button variant="outline" onClick={handleUnpublishCourse} disabled={saving}>
+  1171→                        Unpublish Course
+  1172→                      </Button>
+  1173→                    </div>
+  1174→                  ) : (
+  1175→                    <Button
+  1176→                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 text-base"
+  1177→                      onClick={() => setPublishDialogOpen(true)}
+  1178→                      disabled={saving}
+  1179→                    >
+  1180→                      <Send className="h-5 w-5 mr-2" /> Publish Course
+  1181→                    </Button>
+  1182→                  )}
+  1183→                </div>
+  1184→              </div>
+  1185→            )}
+  1186→          </TabsContent>
+  1187→        </Tabs>
+  1188→      </motion.div>
+  1189→
+  1190→      {/* ========== CHAPTER DIALOG ========== */}
+  1191→      <Dialog open={chapterDialogOpen} onOpenChange={setChapterDialogOpen}>
+  1192→        <DialogContent className="sm:max-w-md">
+  1193→          <DialogHeader>
+  1194→            <DialogTitle style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+  1195→              {editingChapter ? 'Edit Chapter' : 'Add Chapter'}
+  1196→            </DialogTitle>
+  1197→            <DialogDescription>
+  1198→              {editingChapter ? 'Update chapter details' : 'Add a new chapter to your course curriculum'}
+  1199→            </DialogDescription>
+  1200→          </DialogHeader>
+  1201→          <div className="space-y-4 py-2">
+  1202→            <div className="space-y-2">
+  1203→              <Label htmlFor="chapter-title" className="text-sm font-semibold text-gray-700">
+  1204→                Chapter Title <span className="text-red-500">*</span>
+  1205→              </Label>
+  1206→              <Input
+  1207→                id="chapter-title"
+  1208→                placeholder="e.g., Introduction to React"
+  1209→                value={chapterForm.title}
+  1210→                onChange={(e) => setChapterForm(prev => ({ ...prev, title: e.target.value }))}
+  1211→                className="bg-white border-gray-200"
+  1212→              />
+  1213→            </div>
+  1214→            <div className="space-y-2">
+  1215→              <Label htmlFor="chapter-desc" className="text-sm font-semibold text-gray-700">Description</Label>
+  1216→              <Textarea
+  1217→                id="chapter-desc"
+  1218→                placeholder="Brief description of this chapter..."
+  1219→                rows={3}
+  1220→                value={chapterForm.description}
+  1221→                onChange={(e) => setChapterForm(prev => ({ ...prev, description: e.target.value }))}
+  1222→                className="bg-white border-gray-200 resize-none"
+  1223→              />
+  1224→            </div>
+  1225→          </div>
+  1226→          <DialogFooter>
+  1227→            <Button variant="outline" onClick={() => setChapterDialogOpen(false)}>Cancel</Button>
+  1228→            <Button
+  1229→              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+  1230→              onClick={handleSaveChapter}
+  1231→            >
+  1232→              {editingChapter ? 'Update Chapter' : 'Add Chapter'}
+  1233→            </Button>
+  1234→          </DialogFooter>
+  1235→        </DialogContent>
+  1236→      </Dialog>
+  1237→
+  1238→      {/* ========== LESSON DIALOG ========== */}
+  1239→      <Dialog open={lessonDialogOpen} onOpenChange={setLessonDialogOpen}>
+  1240→        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+  1241→          <DialogHeader>
+  1242→            <DialogTitle style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+  1243→              {editingLesson ? 'Edit Lesson' : 'Add Lesson'}
+  1244→            </DialogTitle>
+  1245→            <DialogDescription>
+  1246→              {editingLesson ? 'Update lesson details' : 'Add a new lesson to this chapter'}
+  1247→            </DialogDescription>
+  1248→          </DialogHeader>
+  1249→          <div className="space-y-4 py-2">
+  1250→            <div className="space-y-2">
+  1251→              <Label htmlFor="lesson-title" className="text-sm font-semibold text-gray-700">
+  1252→                Lesson Title <span className="text-red-500">*</span>
+  1253→              </Label>
+  1254→              <Input
+  1255→                id="lesson-title"
+  1256→                placeholder="e.g., Getting Started with Components"
+  1257→                value={lessonForm.title}
+  1258→                onChange={(e) => setLessonForm(prev => ({ ...prev, title: e.target.value }))}
+  1259→                className="bg-white border-gray-200"
+  1260→              />
+  1261→            </div>
+  1262→
+  1263→            <div className="grid grid-cols-2 gap-4">
+  1264→              <div className="space-y-2">
+  1265→                <Label className="text-sm font-semibold text-gray-700">Lesson Type</Label>
+  1266→                <Select value={lessonForm.lesson_type} onValueChange={(val) => setLessonForm(prev => ({ ...prev, lesson_type: val }))}>
+  1267→                  <SelectTrigger className="w-full bg-white border-gray-200">
+  1268→                    <SelectValue />
+  1269→                  </SelectTrigger>
+  1270→                  <SelectContent>
+  1271→                    {LESSON_TYPES.map(type => (
+  1272→                      <SelectItem key={type} value={type} className="capitalize">{type}</SelectItem>
+  1273→                    ))}
+  1274→                  </SelectContent>
+  1275→                </Select>
+  1276→              </div>
+  1277→              <div className="space-y-2">
+  1278→                <Label htmlFor="lesson-duration" className="text-sm font-semibold text-gray-700">Duration (min)</Label>
+  1279→                <Input
+  1280→                  id="lesson-duration"
+  1281→                  type="number"
+  1282→                  min={0}
+  1283→                  placeholder="0"
+  1284→                  value={lessonForm.duration}
+  1285→                  onChange={(e) => setLessonForm(prev => ({ ...prev, duration: Number(e.target.value) }))}
+  1286→                  className="bg-white border-gray-200"
+  1287→                />
+  1288→              </div>
+  1289→            </div>
+  1290→
+  1291→            <div className="space-y-2">
+  1292→              <Label htmlFor="lesson-desc" className="text-sm font-semibold text-gray-700">Description</Label>
+  1293→              <Textarea
+  1294→                id="lesson-desc"
+  1295→                placeholder="Brief description of this lesson..."
+  1296→                rows={2}
+  1297→                value={lessonForm.description}
+  1298→                onChange={(e) => setLessonForm(prev => ({ ...prev, description: e.target.value }))}
+  1299→                className="bg-white border-gray-200 resize-none"
+  1300→              />
+  1301→            </div>
+  1302→
+  1303→            {lessonForm.lesson_type === 'video' && (
+  1304→              <div className="space-y-2">
+  1305→                <Label htmlFor="lesson-video-url" className="text-sm font-semibold text-gray-700">Video URL</Label>
+  1306→                <Input
+  1307→                  id="lesson-video-url"
+  1308→                  placeholder="https://..."
+  1309→                  value={lessonForm.video_url}
+  1310→                  onChange={(e) => setLessonForm(prev => ({ ...prev, video_url: e.target.value }))}
+  1311→                  className="bg-white border-gray-200"
+  1312→                />
+  1313→              </div>
+  1314→            )}
+  1315→
+  1316→            {(lessonForm.lesson_type === 'document' || lessonForm.lesson_type === 'assignment') && (
+  1317→              <div className="space-y-2">
+  1318→                <Label htmlFor="lesson-doc-url" className="text-sm font-semibold text-gray-700">Document URL</Label>
+  1319→                <Input
+  1320→                  id="lesson-doc-url"
+  1321→                  placeholder="https://..."
+  1322→                  value={lessonForm.document_url}
+  1323→                  onChange={(e) => setLessonForm(prev => ({ ...prev, document_url: e.target.value }))}
+  1324→                  className="bg-white border-gray-200"
+  1325→                />
+  1326→              </div>
+  1327→            )}
+  1328→
+  1329→            <div className="space-y-2">
+  1330→              <Label htmlFor="lesson-thumb" className="text-sm font-semibold text-gray-700">Thumbnail URL</Label>
+  1331→              <Input
+  1332→                id="lesson-thumb"
+  1333→                placeholder="https://..."
+  1334→                value={lessonForm.thumbnail_url}
+  1335→                onChange={(e) => setLessonForm(prev => ({ ...prev, thumbnail_url: e.target.value }))}
+  1336→                className="bg-white border-gray-200"
+  1337→              />
+  1338→            </div>
+  1339→
+  1340→            <div className="flex items-center gap-3">
+  1341→              <Switch
+  1342→                checked={lessonForm.is_preview}
+  1343→                onCheckedChange={(checked) => setLessonForm(prev => ({ ...prev, is_preview: checked }))}
+  1344→              />
+  1345→              <Label className="text-sm font-semibold text-gray-700">Free Preview</Label>
+  1346→            </div>
+  1347→          </div>
+  1348→          <DialogFooter>
+  1349→            <Button variant="outline" onClick={() => setLessonDialogOpen(false)}>Cancel</Button>
+  1350→            <Button
+  1351→              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+  1352→              onClick={handleSaveLesson}
+  1353→            >
+  1354→              {editingLesson ? 'Update Lesson' : 'Add Lesson'}
+  1355→            </Button>
+  1356→          </DialogFooter>
+  1357→        </DialogContent>
+  1358→      </Dialog>
+  1359→
+  1360→      {/* ========== UPLOAD RESOURCE DIALOG ========== */}
+  1361→      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+  1362→        <DialogContent className="sm:max-w-md">
+  1363→          <DialogHeader>
+  1364→            <DialogTitle style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+  1365→              Upload Resource
+  1366→            </DialogTitle>
+  1367→            <DialogDescription>
+  1368→              Upload PDFs, spreadsheets, documents, or other files for your students
+  1369→            </DialogDescription>
+  1370→          </DialogHeader>
+  1371→          <div className="space-y-4 py-2">
+  1372→            <div className="space-y-2">
+  1373→              <Label htmlFor="resource-title" className="text-sm font-semibold text-gray-700">
+  1374→                Title <span className="text-red-500">*</span>
+  1375→              </Label>
+  1376→              <Input
+  1377→                id="resource-title"
+  1378→                placeholder="e.g., Course Syllabus"
+  1379→                value={resourceForm.title}
+  1380→                onChange={(e) => setResourceForm(prev => ({ ...prev, title: e.target.value }))}
+  1381→                className="bg-white border-gray-200"
+  1382→              />
+  1383→            </div>
+  1384→            <div className="space-y-2">
+  1385→              <Label htmlFor="resource-desc" className="text-sm font-semibold text-gray-700">Description</Label>
+  1386→              <Textarea
+  1387→                id="resource-desc"
+  1388→                placeholder="Brief description of this resource..."
+  1389→                rows={2}
+  1390→                value={resourceForm.description}
+  1391→                onChange={(e) => setResourceForm(prev => ({ ...prev, description: e.target.value }))}
+  1392→                className="bg-white border-gray-200 resize-none"
+  1393→              />
+  1394→            </div>
+  1395→            <div className="space-y-2">
+  1396→              <Label className="text-sm font-semibold text-gray-700">File Type</Label>
+  1397→              <Select value={resourceForm.file_type} onValueChange={(val) => setResourceForm(prev => ({ ...prev, file_type: val }))}>
+  1398→                <SelectTrigger className="w-full bg-white border-gray-200">
+  1399→                  <SelectValue />
+  1400→                </SelectTrigger>
+  1401→                <SelectContent>
+  1402→                  <SelectItem value="pdf">PDF</SelectItem>
+  1403→                  <SelectItem value="doc">Word Document</SelectItem>
+  1404→                  <SelectItem value="xls">Spreadsheet</SelectItem>
+  1405→                  <SelectItem value="ppt">Presentation</SelectItem>
+  1406→                  <SelectItem value="zip">Archive (ZIP)</SelectItem>
+  1407→                  <SelectItem value="other">Other</SelectItem>
+  1408→                </SelectContent>
+  1409→              </Select>
+  1410→            </div>
+  1411→            <div className="space-y-2">
+  1412→              <Label className="text-sm font-semibold text-gray-700">
+  1413→                File <span className="text-red-500">*</span>
+  1414→              </Label>
+  1415→              <div className="relative">
+  1416→                <input
+  1417→                  type="file"
+  1418→                  id="resource-file"
+  1419→                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+  1420→                  onChange={(e) => setResourceFile(e.target.files?.[0] || null)}
+  1421→                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar"
+  1422→                />
+  1423→                <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 text-center hover:border-emerald-300 transition-colors">
+  1424→                  {resourceFile ? (
+  1425→                    <div className="flex items-center justify-center gap-2">
+  1426→                      <FileText className="h-5 w-5 text-emerald-600" />
+  1427→                      <span className="text-sm font-medium text-gray-900">{resourceFile.name}</span>
+  1428→                      <button
+  1429→                        className="ml-2 text-gray-400 hover:text-red-500"
+  1430→                        onClick={(e) => {
+  1431→                          e.stopPropagation();
+  1432→                          setResourceFile(null);
+  1433→                        }}
+  1434→                      >
+  1435→                        <X className="h-4 w-4" />
+  1436→                      </button>
+  1437→                    </div>
+  1438→                  ) : (
+  1439→                    <>
+  1440→                      <Upload className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+  1441→                      <p className="text-sm text-gray-500">Click to select or drag a file</p>
+  1442→                      <p className="text-xs text-gray-400 mt-1">PDF, DOC, XLS, PPT, ZIP up to 50MB</p>
+  1443→                    </>
+  1444→                  )}
+  1445→                </div>
+  1446→              </div>
+  1447→            </div>
+  1448→          </div>
+  1449→          <DialogFooter>
+  1450→            <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>Cancel</Button>
+  1451→            <Button
+  1452→              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+  1453→              onClick={handleUploadResource}
+  1454→              disabled={uploading}
+  1455→            >
+  1456→              {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
+  1457→              Upload
+  1458→            </Button>
+  1459→          </DialogFooter>
+  1460→        </DialogContent>
+  1461→      </Dialog>
+  1462→
+  1463→      {/* ========== DELETE CONFIRM DIALOG ========== */}
+  1464→      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+  1465→        <DialogContent className="sm:max-w-sm">
+  1466→          <DialogHeader>
+  1467→            <DialogTitle style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+  1468→              Confirm Delete
+  1469→            </DialogTitle>
+  1470→            <DialogDescription>
+  1471→              {deleteTarget?.type === 'chapter' && 'Are you sure you want to delete this chapter? All lessons inside will also be deleted. This action cannot be undone.'}
+  1472→              {deleteTarget?.type === 'lesson' && 'Are you sure you want to delete this lesson? This action cannot be undone.'}
+  1473→              {deleteTarget?.type === 'resource' && 'Are you sure you want to delete this resource? This action cannot be undone.'}
+  1474→            </DialogDescription>
+  1475→          </DialogHeader>
+  1476→          <DialogFooter className="gap-2 sm:gap-0">
+  1477→            <Button variant="outline" onClick={() => { setDeleteDialogOpen(false); setDeleteTarget(null); }}>
+  1478→              Cancel
+  1479→            </Button>
+  1480→            <Button
+  1481→              variant="destructive"
+  1482→              onClick={executeDelete}
+  1483→            >
+  1484→              Delete
+  1485→            </Button>
+  1486→          </DialogFooter>
+  1487→        </DialogContent>
+  1488→      </Dialog>
+  1489→
+  1490→      {/* ========== PUBLISH CONFIRM DIALOG ========== */}
+  1491→      <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+  1492→        <DialogContent className="sm:max-w-sm">
+  1493→          <DialogHeader>
+  1494→            <DialogTitle style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+  1495→              Publish Course
+  1496→            </DialogTitle>
+  1497→            <DialogDescription>
+  1498→              Are you sure you want to publish this course? It will be visible to all students and available for enrollment.
+  1499→            </DialogDescription>
+  1500→          </DialogHeader>
+  1501→          <DialogFooter className="gap-2 sm:gap-0">
+  1502→            <Button variant="outline" onClick={() => setPublishDialogOpen(false)}>
+  1503→              Cancel
+  1504→            </Button>
+  1505→            <Button
+  1506→              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+  1507→              onClick={handlePublishCourse}
+  1508→              disabled={saving}
+  1509→            >
+  1510→              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+  1511→              Publish
+  1512→            </Button>
+  1513→          </DialogFooter>
+  1514→        </DialogContent>
+  1515→      </Dialog>
+  1516→    </motion.div>
+  1517→  );
+  1518→}

@@ -1,0 +1,1025 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useRef, useCallback } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import {
+     6→  Play,
+     7→  Pause,
+     8→  Volume2,
+     9→  VolumeX,
+    10→  Volume1,
+    11→  Maximize,
+    12→  Minimize,
+    13→  SkipForward,
+    14→  SkipBack,
+    15→  Loader2,
+    16→  AlertCircle,
+    17→  RefreshCw,
+    18→} from 'lucide-react';
+    19→import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+    20→
+    21→// --- Types ---
+    22→export interface StreamData {
+    23→  type: 'youtube' | 'hls' | 'direct';
+    24→  url: string;
+    25→  title?: string;
+    26→  thumbnailUrl?: string;
+    27→}
+    28→
+    29→export interface UniversalVideoPlayerProps {
+    30→  streamData: StreamData;
+    31→  onProgress?: (progress: { currentTime: number; duration: number; percent: number }) => void;
+    32→  onComplete?: () => void;
+    33→  initialTime?: number;
+    34→  autoplay?: boolean;
+    35→}
+    36→
+    37→// --- Constants ---
+    38→const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+    39→
+    40→function formatTime(seconds: number): string {
+    41→  if (!isFinite(seconds) || isNaN(seconds)) return '0:00';
+    42→  const h = Math.floor(seconds / 3600);
+    43→  const m = Math.floor((seconds % 3600) / 60);
+    44→  const s = Math.floor(seconds % 60);
+    45→  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    46→  return `${m}:${s.toString().padStart(2, '0')}`;
+    47→}
+    48→
+    49→// --- YouTube IFrame API type ---
+    50→interface YTPlayer {
+    51→  getCurrentTime: () => number;
+    52→  getDuration: () => number;
+    53→  playVideo: () => void;
+    54→  pauseVideo: () => void;
+    55→  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+    56→  setVolume: (volume: number) => void;
+    57→  getVolume: () => number;
+    58→  mute: () => void;
+    59→  unMute: () => void;
+    60→  isMuted: () => boolean;
+    61→  setPlaybackRate: (rate: number) => void;
+    62→  getPlaybackRate: () => number;
+    63→  destroy: () => void;
+    64→  getPlayerState: () => number;
+    65→}
+    66→
+    67→interface YTEvent {
+    68→  data: number;
+    69→  target: YTPlayer;
+    70→}
+    71→
+    72→// YouTube player states
+    73→const YT_PLAYING = 1;
+    74→const YT_ENDED = 0;
+    75→const YT_BUFFERING = 3;
+    76→
+    77→// ============================================================
+    78→// Main Component
+    79→// ============================================================
+    80→export function UniversalVideoPlayer({
+    81→  streamData,
+    82→  onProgress,
+    83→  onComplete,
+    84→  initialTime = 0,
+    85→  autoplay = false,
+    86→}: UniversalVideoPlayerProps) {
+    87→  const { type, url } = streamData;
+    88→
+    89→  // --- Shared player state ---
+    90→  const [isPlaying, setIsPlaying] = useState(false);
+    91→  const [currentTime, setCurrentTime] = useState(initialTime);
+    92→  const [duration, setDuration] = useState(0);
+    93→  const [volume, setVolume] = useState(80);
+    94→  const [isMuted, setIsMuted] = useState(false);
+    95→  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+    96→  const [isFullscreen, setIsFullscreen] = useState(false);
+    97→  const [buffered, setBuffered] = useState(0);
+    98→  const [isLoading, setIsLoading] = useState(true);
+    99→  const [error, setError] = useState<string | null>(null);
+   100→
+   101→  // --- Controls visibility ---
+   102→  const [controlsVisible, setControlsVisible] = useState(true);
+   103→  const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   104→
+   105→  // --- Refs ---
+   106→  const containerRef = useRef<HTMLDivElement>(null);
+   107→  const videoRef = useRef<HTMLVideoElement>(null);
+   108→  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   109→  const hlsRef = useRef<any>(null);
+   110→  const ytPlayerRef = useRef<YTPlayer | null>(null);
+   111→  const ytContainerRef = useRef<HTMLDivElement>(null);
+   112→  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+   113→  const ytProgressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+   114→  const hasCompletedRef = useRef(false);
+   115→
+   116→  // ===========================================
+   117→  // Controls auto-hide
+   118→  // ===========================================
+   119→  const showControls = useCallback(() => {
+   120→    setControlsVisible(true);
+   121→    if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+   122→    if (isPlaying) {
+   123→      controlsTimerRef.current = setTimeout(() => setControlsVisible(false), 3000);
+   124→    }
+   125→  }, [isPlaying]);
+   126→
+   127→  // ===========================================
+   128→  // Progress callback (every 5 seconds)
+   129→  // ===========================================
+   130→  const fireProgress = useCallback(
+   131→    (ct: number, dur: number) => {
+   132→      if (onProgress && dur > 0) {
+   133→        const percent = Math.min((ct / dur) * 100, 100);
+   134→        onProgress({ currentTime: ct, duration: dur, percent });
+   135→
+   136→        // Auto-complete at 90%
+   137→        if (percent >= 90 && !hasCompletedRef.current) {
+   138→          hasCompletedRef.current = true;
+   139→          onComplete?.();
+   140→        }
+   141→      }
+   142→    },
+   143→    [onProgress, onComplete],
+   144→  );
+   145→
+   146→  // ===========================================
+   147→  // Fullscreen
+   148→  // ===========================================
+   149→  const toggleFullscreen = useCallback(() => {
+   150→    const el = containerRef.current;
+   151→    if (!el) return;
+   152→    if (!document.fullscreenElement) {
+   153→      el.requestFullscreen().catch(() => {});
+   154→      // Try to lock landscape on mobile
+   155→      try {
+   156→        if (screen.orientation && (screen.orientation as unknown as { lock: (o: string) => Promise<void> }).lock) {
+   157→          (screen.orientation as unknown as { lock: (o: string) => Promise<void> }).lock('landscape').catch(() => {});
+   158→        }
+   159→      } catch {}
+   160→    } else {
+   161→      document.exitFullscreen().catch(() => {});
+   162→      try {
+   163→        const so = screen.orientation as unknown as { unlock: () => void };
+   164→        if (screen.orientation && so.unlock) {
+   165→          so.unlock();
+   166→        }
+   167→      } catch {}
+   168→    }
+   169→  }, []);
+   170→
+   171→  useEffect(() => {
+   172→    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+   173→    document.addEventListener('fullscreenchange', handler);
+   174→    return () => document.removeEventListener('fullscreenchange', handler);
+   175→  }, []);
+   176→
+   177→  // ===========================================
+   178→  // Player control functions
+   179→  // ===========================================
+   180→  const togglePlay = useCallback(() => {
+   181→    if (type === 'youtube') {
+   182→      const player = ytPlayerRef.current;
+   183→      if (!player) return;
+   184→      const state = player.getPlayerState();
+   185→      if (state === YT_PLAYING) {
+   186→        player.pauseVideo();
+   187→      } else {
+   188→        player.playVideo();
+   189→      }
+   190→    } else {
+   191→      const video = videoRef.current;
+   192→      if (!video) return;
+   193→      if (video.paused) {
+   194→        video.play().catch(() => {});
+   195→      } else {
+   196→        video.pause();
+   197→      }
+   198→    }
+   199→  }, [type]);
+   200→
+   201→  const seekRelative = useCallback(
+   202→    (delta: number) => {
+   203→      if (type === 'youtube') {
+   204→        const player = ytPlayerRef.current;
+   205→        if (!player) return;
+   206→        const newTime = Math.max(0, Math.min(player.getCurrentTime() + delta, player.getDuration()));
+   207→        player.seekTo(newTime, true);
+   208→        setCurrentTime(newTime);
+   209→      } else {
+   210→        const video = videoRef.current;
+   211→        if (!video) return;
+   212→        const newTime = Math.max(0, Math.min(video.currentTime + delta, video.duration || 0));
+   213→        video.currentTime = newTime;
+   214→        setCurrentTime(newTime);
+   215→      }
+   216→    },
+   217→    [type],
+   218→  );
+   219→
+   220→  const seekTo = useCallback(
+   221→    (time: number) => {
+   222→      if (type === 'youtube') {
+   223→        const player = ytPlayerRef.current;
+   224→        if (!player) return;
+   225→        player.seekTo(time, true);
+   226→        setCurrentTime(time);
+   227→      } else {
+   228→        const video = videoRef.current;
+   229→        if (!video) return;
+   230→        video.currentTime = time;
+   231→        setCurrentTime(time);
+   232→      }
+   233→    },
+   234→    [type],
+   235→  );
+   236→
+   237→  const adjustVolume = useCallback(
+   238→    (delta: number) => {
+   239→      const newVol = Math.max(0, Math.min(volume + delta, 100));
+   240→      setVolume(newVol);
+   241→      setIsMuted(newVol === 0);
+   242→      if (type === 'youtube') {
+   243→        const player = ytPlayerRef.current;
+   244→        if (!player) return;
+   245→        player.setVolume(newVol);
+   246→        if (newVol === 0) player.mute();
+   247→        else player.unMute();
+   248→      } else {
+   249→        const video = videoRef.current;
+   250→        if (video) {
+   251→          video.volume = newVol / 100;
+   252→          video.muted = newVol === 0;
+   253→        }
+   254→      }
+   255→    },
+   256→    [type, volume],
+   257→  );
+   258→
+   259→  const toggleMute = useCallback(() => {
+   260→    const newMuted = !isMuted;
+   261→    setIsMuted(newMuted);
+   262→    if (type === 'youtube') {
+   263→      const player = ytPlayerRef.current;
+   264→      if (!player) return;
+   265→      if (newMuted) player.mute();
+   266→      else player.unMute();
+   267→    } else {
+   268→      const video = videoRef.current;
+   269→      if (video) video.muted = newMuted;
+   270→    }
+   271→  }, [type, isMuted]);
+   272→
+   273→  const cycleSpeed = useCallback(
+   274→    (direction: 1 | -1) => {
+   275→      setPlaybackSpeed((prev) => {
+   276→        const idx = PLAYBACK_SPEEDS.indexOf(prev as typeof PLAYBACK_SPEEDS[number]);
+   277→        const newIdx = Math.max(0, Math.min(idx + direction, PLAYBACK_SPEEDS.length - 1));
+   278→        const newSpeed = PLAYBACK_SPEEDS[newIdx];
+   279→
+   280→        if (type === 'youtube') {
+   281→          const player = ytPlayerRef.current;
+   282→          if (player) player.setPlaybackRate(newSpeed);
+   283→        } else {
+   284→          const video = videoRef.current;
+   285→          if (video) video.playbackRate = newSpeed;
+   286→        }
+   287→
+   288→        return newSpeed;
+   289→      });
+   290→    },
+   291→    [type],
+   292→  );
+   293→
+   294→  const handleProgressClick = useCallback(
+   295→    (e: React.MouseEvent<HTMLDivElement>) => {
+   296→      const rect = e.currentTarget.getBoundingClientRect();
+   297→      const x = e.clientX - rect.left;
+   298→      const pct = x / rect.width;
+   299→      const dur = type === 'youtube' ? ytPlayerRef.current?.getDuration() || 0 : videoRef.current?.duration || 0;
+   300→      if (dur > 0) {
+   301→        seekTo(pct * dur);
+   302→      }
+   303→    },
+   304→    [type, seekTo],
+   305→  );
+   306→
+   307→  const handleVolumeSlider = useCallback(
+   308→    (v: number) => {
+   309→      setVolume(v);
+   310→      setIsMuted(v === 0);
+   311→      if (type === 'youtube') {
+   312→        const player = ytPlayerRef.current;
+   313→        if (player) {
+   314→          player.setVolume(v);
+   315→          if (v === 0) player.mute();
+   316→          else player.unMute();
+   317→        }
+   318→      } else {
+   319→        const video = videoRef.current;
+   320→        if (video) {
+   321→          video.volume = v / 100;
+   322→          video.muted = v === 0;
+   323→        }
+   324→      }
+   325→    },
+   326→    [type],
+   327→  );
+   328→
+   329→  const handleRetry = useCallback(() => {
+   330→    setError(null);
+   331→    setIsLoading(true);
+   332→    if (type === 'hls' && hlsRef.current) {
+   333→      hlsRef.current.loadSource(url);
+   334→      hlsRef.current.startLoad();
+   335→    } else if (type === 'direct' && videoRef.current) {
+   336→      videoRef.current.load();
+   337→    }
+   338→    // YouTube retry is handled by re-mounting the component
+   339→  }, [type, url]);
+   340→
+   341→  // ===========================================
+   342→  // Keyboard shortcuts
+   343→  // ===========================================
+   344→  useEffect(() => {
+   345→    const handleKey = (e: KeyboardEvent) => {
+   346→      const target = e.target as HTMLElement;
+   347→      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+   348→
+   349→      switch (e.key) {
+   350→        case ' ':
+   351→          e.preventDefault();
+   352→          togglePlay();
+   353→          break;
+   354→        case 'ArrowLeft':
+   355→          e.preventDefault();
+   356→          seekRelative(-10);
+   357→          break;
+   358→        case 'ArrowRight':
+   359→          e.preventDefault();
+   360→          seekRelative(10);
+   361→          break;
+   362→        case 'ArrowUp':
+   363→          e.preventDefault();
+   364→          adjustVolume(10);
+   365→          break;
+   366→        case 'ArrowDown':
+   367→          e.preventDefault();
+   368→          adjustVolume(-10);
+   369→          break;
+   370→        case 'f':
+   371→        case 'F':
+   372→          e.preventDefault();
+   373→          toggleFullscreen();
+   374→          break;
+   375→        case 'm':
+   376→        case 'M':
+   377→          e.preventDefault();
+   378→          toggleMute();
+   379→          break;
+   380→        case '[':
+   381→          e.preventDefault();
+   382→          cycleSpeed(-1);
+   383→          break;
+   384→        case ']':
+   385→          e.preventDefault();
+   386→          cycleSpeed(1);
+   387→          break;
+   388→      }
+   389→    };
+   390→    document.addEventListener('keydown', handleKey);
+   391→    return () => document.removeEventListener('keydown', handleKey);
+   392→  }, [togglePlay, seekRelative, adjustVolume, toggleFullscreen, toggleMute, cycleSpeed]);
+   393→
+   394→  // ===========================================
+   395→  // YouTube IFrame API initialization
+   396→  // ===========================================
+   397→  const initYouTubePlayer = useCallback(() => {
+   398→    if (!ytContainerRef.current) return;
+   399→
+   400→    const extractVideoId = (ytUrl: string): string | null => {
+   401→      // Support various YouTube URL formats
+   402→      const patterns = [
+   403→        /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
+   404→        /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+   405→        /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+   406→        /(?:youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+   407→      ];
+   408→      for (const pattern of patterns) {
+   409→        const match = ytUrl.match(pattern);
+   410→        if (match) return match[1];
+   411→      }
+   412→      return null;
+   413→    };
+   414→
+   415→    const videoId = extractVideoId(url);
+   416→    if (!videoId) {
+   417→      setError('Invalid YouTube URL');
+   418→      setIsLoading(false);
+   419→      return;
+   420→    }
+   421→
+   422→    const createPlayer = () => {
+   423→      if (!ytContainerRef.current) return;
+   424→
+   425→      // Destroy previous player if exists
+   426→      if (ytPlayerRef.current) {
+   427→        try { ytPlayerRef.current.destroy(); } catch {}
+   428→        ytPlayerRef.current = null;
+   429→      }
+   430→
+   431→      // Clear container
+   432→      ytContainerRef.current.innerHTML = '';
+   433→
+   434→      const playerDiv = document.createElement('div');
+   435→      playerDiv.id = `yt-player-${videoId}-${Date.now()}`;
+   436→      playerDiv.style.width = '100%';
+   437→      playerDiv.style.height = '100%';
+   438→      playerDiv.style.position = 'absolute';
+   439→      playerDiv.style.top = '0';
+   440→      playerDiv.style.left = '0';
+   441→      ytContainerRef.current.appendChild(playerDiv);
+   442→
+   443→      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   444→      ytPlayerRef.current = new (window as any).YT.Player(playerDiv.id, {
+   445→        videoId,
+   446→        playerVars: {
+   447→          autoplay: autoplay ? 1 : 0,
+   448→          start: Math.floor(initialTime),
+   449→          modestbranding: 1,
+   450→          rel: 0,
+   451→          enablejsapi: 1,
+   452→          origin: window.location.origin,
+   453→          playsinline: 1,
+   454→        },
+   455→        events: {
+   456→          onReady: () => {
+   457→            setIsLoading(false);
+   458→            const player = ytPlayerRef.current;
+   459→            if (player) {
+   460→              setDuration(player.getDuration());
+   461→              player.setVolume(volume);
+   462→              if (autoplay) {
+   463→                player.playVideo();
+   464→              }
+   465→            }
+   466→          },
+   467→          onStateChange: (event: YTEvent) => {
+   468→            const state = event.data;
+   469→            setIsPlaying(state === YT_PLAYING);
+   470→            setIsLoading(state === YT_BUFFERING);
+   471→
+   472→            if (state === YT_PLAYING) {
+   473→              showControls();
+   474→            }
+   475→
+   476→            if (state === YT_ENDED) {
+   477→              setIsPlaying(false);
+   478→              if (!hasCompletedRef.current) {
+   479→                hasCompletedRef.current = true;
+   480→                onComplete?.();
+   481→              }
+   482→            }
+   483→          },
+   484→          onError: () => {
+   485→            setError('Failed to load YouTube video. It may be private or unavailable.');
+   486→            setIsLoading(false);
+   487→          },
+   488→        },
+   489→      });
+   490→    };
+   491→
+   492→    // Load YouTube IFrame API if not already loaded
+   493→    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   494→    if ((window as any).YT && (window as any).YT.Player) {
+   495→      createPlayer();
+   496→    } else {
+   497→      const tag = document.createElement('script');
+   498→      tag.src = 'https://www.youtube.com/iframe_api';
+   499→      document.head.appendChild(tag);
+   500→      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   501→      (window as any).onYouTubeIframeAPIReady = () => {
+   502→        createPlayer();
+   503→      };
+   504→    }
+   505→
+   506→    // Progress tracking for YouTube
+   507→    if (ytProgressRef.current) clearInterval(ytProgressRef.current);
+   508→    ytProgressRef.current = setInterval(() => {
+   509→      const player = ytPlayerRef.current;
+   510→      if (player && typeof player.getCurrentTime === 'function') {
+   511→        const ct = player.getCurrentTime();
+   512→        const dur = player.getDuration();
+   513→        setCurrentTime(ct);
+   514→        setDuration(dur);
+   515→      }
+   516→    }, 1000);
+   517→
+   518→    // Progress callback every 5 seconds
+   519→    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+   520→    progressIntervalRef.current = setInterval(() => {
+   521→      const player = ytPlayerRef.current;
+   522→      if (player && typeof player.getCurrentTime === 'function') {
+   523→        const ct = player.getCurrentTime();
+   524→        const dur = player.getDuration();
+   525→        if (dur > 0 && player.getPlayerState() === YT_PLAYING) {
+   526→          fireProgress(ct, dur);
+   527→        }
+   528→      }
+   529→    }, 5000);
+   530→
+   531→    return () => {
+   532→      if (ytProgressRef.current) clearInterval(ytProgressRef.current);
+   533→      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+   534→      if (ytPlayerRef.current) {
+   535→        try { ytPlayerRef.current.destroy(); } catch {}
+   536→        ytPlayerRef.current = null;
+   537→      }
+   538→    };
+   539→  }, [url, autoplay, initialTime, volume, showControls, fireProgress, onComplete]);
+   540→
+   541→  // ===========================================
+   542→  // YouTube initialization effect
+   543→  // ===========================================
+   544→  useEffect(() => {
+   545→    if (type !== 'youtube') return;
+   546→    const cleanup = initYouTubePlayer();
+   547→    return () => {
+   548→      cleanup?.();
+   549→    };
+   550→  }, [type, initYouTubePlayer]);
+   551→
+   552→  // ===========================================
+   553→  // HLS initialization
+   554→  // ===========================================
+   555→  useEffect(() => {
+   556→    if (type !== 'hls') return;
+   557→    const video = videoRef.current;
+   558→    if (!video) return;
+   559→
+   560→    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   561→    let hls: any = null;
+   562→
+   563→    const initHls = async () => {
+   564→      // Dynamic import of hls.js
+   565→      const Hls = (await import('hls.js')).default;
+   566→
+   567→      if (Hls.isSupported()) {
+   568→        hls = new Hls({
+   569→          enableWorker: true,
+   570→          lowLatencyMode: false,
+   571→          backBufferLength: 90,
+   572→        });
+   573→        hlsRef.current = hls;
+   574→
+   575→        hls.loadSource(url);
+   576→        hls.attachMedia(video);
+   577→
+   578→        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+   579→          setIsLoading(false);
+   580→          if (autoplay) {
+   581→            video.play().catch(() => {});
+   582→          }
+   583→        });
+   584→
+   585→        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   586→        hls.on(Hls.Events.ERROR, (_event: any, data: any) => {
+   587→          if (data.fatal) {
+   588→            switch (data.type) {
+   589→              case Hls.ErrorTypes.NETWORK_ERROR:
+   590→                setError('Network error. Check your connection and try again.');
+   591→                hls.startLoad();
+   592→                break;
+   593→              case Hls.ErrorTypes.MEDIA_ERROR:
+   594→                setError('Media error. Attempting recovery...');
+   595→                hls.recoverMediaError();
+   596→                break;
+   597→              default:
+   598→                setError('An error occurred while playing this video.');
+   599→                hls.destroy();
+   600→                break;
+   601→            }
+   602→            setIsLoading(false);
+   603→          }
+   604→        });
+   605→
+   606→        hls.on(Hls.Events.FRAG_LOADED, () => {
+   607→          // Update buffered range
+   608→          if (video.buffered.length > 0) {
+   609→            setBuffered(video.buffered.end(video.buffered.length - 1));
+   610→          }
+   611→        });
+   612→      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+   613→        // Safari native HLS support
+   614→        video.src = url;
+   615→        video.addEventListener('loadedmetadata', () => {
+   616→          setIsLoading(false);
+   617→          if (autoplay) {
+   618→            video.play().catch(() => {});
+   619→          }
+   620→        });
+   621→      } else {
+   622→        setError('HLS is not supported in this browser.');
+   623→        setIsLoading(false);
+   624→      }
+   625→    };
+   626→
+   627→    initHls();
+   628→
+   629→    return () => {
+   630→      if (hls) {
+   631→        hls.destroy();
+   632→        hlsRef.current = null;
+   633→      }
+   634→    };
+   635→  }, [type, url, autoplay]);
+   636→
+   637→  // ===========================================
+   638→  // Direct video (MP4/MKV/WebM) initialization
+   639→  // ===========================================
+   640→  useEffect(() => {
+   641→    if (type !== 'direct') return;
+   642→    const video = videoRef.current;
+   643→    if (!video) return;
+   644→
+   645→    video.src = url;
+   646→    video.load();
+   647→
+   648→    if (initialTime > 0) {
+   649→      video.currentTime = initialTime;
+   650→    }
+   651→
+   652→    if (autoplay) {
+   653→      video.play().catch(() => {});
+   654→    }
+   655→  }, [type, url, autoplay, initialTime]);
+   656→
+   657→  // ===========================================
+   658→  // HTML5 video event handlers (HLS + Direct)
+   659→  // ===========================================
+   660→  useEffect(() => {
+   661→    if (type === 'youtube') return;
+   662→    const video = videoRef.current;
+   663→    if (!video) return;
+   664→
+   665→    const onPlay = () => {
+   666→      setIsPlaying(true);
+   667→      showControls();
+   668→    };
+   669→    const onPause = () => setIsPlaying(false);
+   670→    const onLoadedMetadata = () => {
+   671→      setDuration(video.duration);
+   672→      setIsLoading(false);
+   673→      if (initialTime > 0) {
+   674→        video.currentTime = initialTime;
+   675→      }
+   676→    };
+   677→    const onTimeUpdate = () => {
+   678→      setCurrentTime(video.currentTime);
+   679→      if (video.buffered.length > 0) {
+   680→        setBuffered(video.buffered.end(video.buffered.length - 1));
+   681→      }
+   682→    };
+   683→    const onWaiting = () => setIsLoading(true);
+   684→    const onCanPlay = () => setIsLoading(false);
+   685→    const onEnded = () => {
+   686→      setIsPlaying(false);
+   687→      if (!hasCompletedRef.current) {
+   688→        hasCompletedRef.current = true;
+   689→        onComplete?.();
+   690→      }
+   691→    };
+   692→    const onError = () => {
+   693→      setError('Failed to load video. The file format may not be supported.');
+   694→      setIsLoading(false);
+   695→    };
+   696→    const onVolumeChange = () => {
+   697→      setVolume(Math.round(video.volume * 100));
+   698→      setIsMuted(video.muted);
+   699→    };
+   700→    const onRateChange = () => {
+   701→      setPlaybackSpeed(video.playbackRate);
+   702→    };
+   703→
+   704→    video.addEventListener('play', onPlay);
+   705→    video.addEventListener('pause', onPause);
+   706→    video.addEventListener('loadedmetadata', onLoadedMetadata);
+   707→    video.addEventListener('timeupdate', onTimeUpdate);
+   708→    video.addEventListener('waiting', onWaiting);
+   709→    video.addEventListener('canplay', onCanPlay);
+   710→    video.addEventListener('ended', onEnded);
+   711→    video.addEventListener('error', onError);
+   712→    video.addEventListener('volumechange', onVolumeChange);
+   713→    video.addEventListener('ratechange', onRateChange);
+   714→
+   715→    // Progress callback every 5 seconds for HTML5 video
+   716→    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+   717→    progressIntervalRef.current = setInterval(() => {
+   718→      if (video && !video.paused && video.duration > 0) {
+   719→        fireProgress(video.currentTime, video.duration);
+   720→      }
+   721→    }, 5000);
+   722→
+   723→    return () => {
+   724→      video.removeEventListener('play', onPlay);
+   725→      video.removeEventListener('pause', onPause);
+   726→      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+   727→      video.removeEventListener('timeupdate', onTimeUpdate);
+   728→      video.removeEventListener('waiting', onWaiting);
+   729→      video.removeEventListener('canplay', onCanPlay);
+   730→      video.removeEventListener('ended', onEnded);
+   731→      video.removeEventListener('error', onError);
+   732→      video.removeEventListener('volumechange', onVolumeChange);
+   733→      video.removeEventListener('ratechange', onRateChange);
+   734→      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+   735→    };
+   736→  }, [type, initialTime, showControls, fireProgress, onComplete]);
+   737→
+   738→  // ===========================================
+   739→  // Sync playback speed to video element
+   740→  // ===========================================
+   741→  useEffect(() => {
+   742→    if (type === 'youtube') return;
+   743→    const video = videoRef.current;
+   744→    if (video && video.playbackRate !== playbackSpeed) {
+   745→      video.playbackRate = playbackSpeed;
+   746→    }
+   747→  }, [playbackSpeed, type]);
+   748→
+   749→  // ===========================================
+   750→  // Derived values
+   751→  // ===========================================
+   752→  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+   753→  const bufferedPercent = duration > 0 ? (buffered / duration) * 100 : 0;
+   754→  const effectiveVolume = isMuted ? 0 : volume;
+   755→  const VolumeIcon = effectiveVolume === 0 ? VolumeX : effectiveVolume < 50 ? Volume1 : Volume2;
+   756→
+   757→  // ===========================================
+   758→  // Render
+   759→  // ===========================================
+   760→  return (
+   761→    <div
+   762→      ref={containerRef}
+   763→      className="relative aspect-video bg-black flex items-center justify-center cursor-pointer select-none overflow-hidden"
+   764→      onMouseMove={showControls}
+   765→      onTouchStart={showControls}
+   766→      onClick={(e) => {
+   767→        const target = e.target as HTMLElement;
+   768→        if (!target.closest('[data-controls]')) {
+   769→          togglePlay();
+   770→        }
+   771→      }}
+   772→    >
+   773→      {/* Video element (HLS + Direct) */}
+   774→      {type !== 'youtube' && (
+   775→        <video
+   776→          ref={videoRef}
+   777→          className="w-full h-full object-contain"
+   778→          playsInline
+   779→          preload="metadata"
+   780→          style={{ backgroundColor: 'black' }}
+   781→        />
+   782→      )}
+   783→
+   784→      {/* YouTube container */}
+   785→      {type === 'youtube' && (
+   786→        <div
+   787→          ref={ytContainerRef}
+   788→          className="absolute inset-0"
+   789→        />
+   790→      )}
+   791→
+   792→      {/* Loading spinner */}
+   793→      <AnimatePresence>
+   794→        {isLoading && (
+   795→          <motion.div
+   796→            className="absolute inset-0 flex items-center justify-center z-10 bg-black/40"
+   797→            initial={{ opacity: 0 }}
+   798→            animate={{ opacity: 1 }}
+   799→            exit={{ opacity: 0 }}
+   800→          >
+   801→            <div className="flex flex-col items-center gap-3">
+   802→              <Loader2 className="w-10 h-10 text-white animate-spin" />
+   803→              <span className="text-white/80 text-xs font-semibold">Loading...</span>
+   804→            </div>
+   805→          </motion.div>
+   806→        )}
+   807→      </AnimatePresence>
+   808→
+   809→      {/* Error state */}
+   810→      <AnimatePresence>
+   811→        {error && !isLoading && (
+   812→          <motion.div
+   813→            data-controls
+   814→            className="absolute inset-0 flex items-center justify-center z-30 bg-black/60 backdrop-blur-sm"
+   815→            initial={{ opacity: 0 }}
+   816→            animate={{ opacity: 1 }}
+   817→            exit={{ opacity: 0 }}
+   818→          >
+   819→            <div className="flex flex-col items-center gap-4 max-w-xs mx-4 text-center">
+   820→              <AlertCircle className="w-12 h-12 text-red-400" />
+   821→              <p className="text-white text-sm font-semibold">{error}</p>
+   822→              <button
+   823→                className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-bold rounded-xl backdrop-blur-sm transition-colors"
+   824→                onClick={(e) => { e.stopPropagation(); handleRetry(); }}
+   825→              >
+   826→                <RefreshCw className="w-4 h-4" />
+   827→                Retry
+   828→              </button>
+   829→            </div>
+   830→          </motion.div>
+   831→        )}
+   832→      </AnimatePresence>
+   833→
+   834→      {/* Center play/pause overlay (when paused, no loading, no error) */}
+   835→      <AnimatePresence>
+   836→        {!isPlaying && !isLoading && !error && (
+   837→          <motion.div
+   838→            className="absolute inset-0 flex items-center justify-center z-10"
+   839→            initial={{ opacity: 0 }}
+   840→            animate={{ opacity: 1 }}
+   841→            exit={{ opacity: 0 }}
+   842→            transition={{ duration: 0.2 }}
+   843→          >
+   844→            <motion.div
+   845→              className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center"
+   846→              whileHover={{ scale: 1.1 }}
+   847→              whileTap={{ scale: 0.9 }}
+   848→            >
+   849→              <Play className="w-10 h-10 text-white ml-1" fill="currentColor" />
+   850→            </motion.div>
+   851→          </motion.div>
+   852→        )}
+   853→      </AnimatePresence>
+   854→
+   855→      {/* Controls overlay */}
+   856→      <AnimatePresence>
+   857→        {controlsVisible && (
+   858→          <motion.div
+   859→            data-controls
+   860→            className="absolute bottom-0 left-0 right-0 z-20"
+   861→            initial={{ opacity: 0, y: 10 }}
+   862→            animate={{ opacity: 1, y: 0 }}
+   863→            exit={{ opacity: 0, y: 10 }}
+   864→            transition={{ duration: 0.2 }}
+   865→          >
+   866→            {/* Gradient backdrop */}
+   867→            <div className="bg-gradient-to-t from-black/80 via-black/40 to-transparent pt-16 pb-3 px-3 sm:px-4">
+   868→              {/* Progress bar */}
+   869→              <div className="relative w-full mb-3 group/progress">
+   870→                <div
+   871→                  className="w-full h-1.5 group-hover/progress:h-2.5 transition-all bg-white/20 rounded-full cursor-pointer relative"
+   872→                  onClick={handleProgressClick}
+   873→                >
+   874→                  {/* Buffered */}
+   875→                  <div
+   876→                    className="absolute top-0 left-0 h-full bg-white/30 rounded-full transition-all"
+   877→                    style={{ width: `${bufferedPercent}%` }}
+   878→                  />
+   879→                  {/* Progress */}
+   880→                  <div
+   881→                    className="absolute top-0 left-0 h-full bg-sky-400 rounded-full"
+   882→                    style={{ width: `${progressPercent}%` }}
+   883→                  />
+   884→                  {/* Scrubber dot */}
+   885→                  <div
+   886→                    className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-sky-400 rounded-full shadow-lg shadow-sky-400/50 opacity-0 group-hover/progress:opacity-100 transition-opacity -translate-x-1/2"
+   887→                    style={{ left: `${progressPercent}%` }}
+   888→                  />
+   889→                </div>
+   890→              </div>
+   891→
+   892→              {/* Controls row */}
+   893→              <div className="flex items-center justify-between text-white">
+   894→                <div className="flex items-center gap-1.5 sm:gap-3">
+   895→                  {/* Skip back */}
+   896→                  <button
+   897→                    className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+   898→                    onClick={(e) => { e.stopPropagation(); seekRelative(-10); }}
+   899→                    title="Skip back 10s"
+   900→                  >
+   901→                    <SkipBack className="w-4 h-4" />
+   902→                  </button>
+   903→
+   904→                  {/* Play/Pause */}
+   905→                  <button
+   906→                    className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+   907→                    onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+   908→                    title={isPlaying ? 'Pause' : 'Play'}
+   909→                  >
+   910→                    {isPlaying ? (
+   911→                      <Pause className="w-5 h-5" fill="currentColor" />
+   912→                    ) : (
+   913→                      <Play className="w-5 h-5 ml-0.5" fill="currentColor" />
+   914→                    )}
+   915→                  </button>
+   916→
+   917→                  {/* Skip forward */}
+   918→                  <button
+   919→                    className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+   920→                    onClick={(e) => { e.stopPropagation(); seekRelative(10); }}
+   921→                    title="Skip forward 10s"
+   922→                  >
+   923→                    <SkipForward className="w-4 h-4" />
+   924→                  </button>
+   925→
+   926→                  {/* Volume */}
+   927→                  <div className="flex items-center gap-1 group/vol">
+   928→                    <button
+   929→                      className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+   930→                      onClick={(e) => { e.stopPropagation(); toggleMute(); }}
+   931→                      title={isMuted ? 'Unmute' : 'Mute'}
+   932→                    >
+   933→                      <VolumeIcon className="w-4 h-4" />
+   934→                    </button>
+   935→                    <div className="hidden sm:flex items-center w-0 group-hover/vol:w-20 transition-all overflow-hidden">
+   936→                      <input
+   937→                        type="range"
+   938→                        min={0}
+   939→                        max={100}
+   940→                        value={effectiveVolume}
+   941→                        onChange={(e) => {
+   942→                          const v = Number(e.target.value);
+   943→                          handleVolumeSlider(v);
+   944→                        }}
+   945→                        onClick={(e) => e.stopPropagation()}
+   946→                        className="w-full h-1 accent-sky-400 cursor-pointer"
+   947→                      />
+   948→                    </div>
+   949→                  </div>
+   950→
+   951→                  {/* Time display */}
+   952→                  <span className="text-xs font-mono ml-1">
+   953→                    {formatTime(currentTime)} / {formatTime(duration)}
+   954→                  </span>
+   955→                </div>
+   956→
+   957→                <div className="flex items-center gap-1 sm:gap-2">
+   958→                  {/* Playback speed */}
+   959→                  <Popover>
+   960→                    <PopoverTrigger asChild>
+   961→                      <button
+   962→                        className="px-2 py-1 text-xs font-bold rounded-lg hover:bg-white/10 transition-colors"
+   963→                        onClick={(e) => e.stopPropagation()}
+   964→                        title="Playback speed"
+   965→                      >
+   966→                        {playbackSpeed}x
+   967→                      </button>
+   968→                    </PopoverTrigger>
+   969→                    <PopoverContent className="w-36 p-1 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-white/40 dark:border-white/10">
+   970→                      {PLAYBACK_SPEEDS.map((speed) => (
+   971→                        <button
+   972→                          key={speed}
+   973→                          className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
+   974→                            playbackSpeed === speed
+   975→                              ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 font-bold'
+   976→                              : 'hover:bg-muted/50'
+   977→                          }`}
+   978→                          onClick={(e) => {
+   979→                            e.stopPropagation();
+   980→                            setPlaybackSpeed(speed);
+   981→                            if (type === 'youtube') {
+   982→                              ytPlayerRef.current?.setPlaybackRate(speed);
+   983→                            } else if (videoRef.current) {
+   984→                              videoRef.current.playbackRate = speed;
+   985→                            }
+   986→                          }}
+   987→                        >
+   988→                          {speed}x
+   989→                        </button>
+   990→                      ))}
+   991→                    </PopoverContent>
+   992→                  </Popover>
+   993→
+   994→                  {/* Fullscreen */}
+   995→                  <button
+   996→                    className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+   997→                    onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
+   998→                    title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+   999→                  >
+  1000→                    {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+  1001→                  </button>
+  1002→                </div>
+  1003→              </div>
+  1004→            </div>
+  1005→          </motion.div>
+  1006→        )}
+  1007→      </AnimatePresence>
+  1008→
+  1009→      {/* Keyboard shortcuts hint */}
+  1010→      <AnimatePresence>
+  1011→        {controlsVisible && !isPlaying && !error && (
+  1012→          <motion.div
+  1013→            className="absolute top-3 right-3 z-20 text-white/40 text-[10px] hidden sm:block"
+  1014→            initial={{ opacity: 0 }}
+  1015→            animate={{ opacity: 1 }}
+  1016→            exit={{ opacity: 0 }}
+  1017→          >
+  1018→            Space: Play/Pause | ←→: Seek | ↑↓: Vol | F: Fullscreen | M: Mute | [ ]: Speed
+  1019→          </motion.div>
+  1020→        )}
+  1021→      </AnimatePresence>
+  1022→    </div>
+  1023→  );
+  1024→}
+  1025→

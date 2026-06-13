@@ -1,0 +1,1370 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useRef, useCallback } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import {
+     6→  Play,
+     7→  Check,
+     8→  MessageSquare,
+     9→  BookOpen,
+    10→  ListVideo,
+    11→  Clock,
+    12→  ChevronLeft,
+    13→  Plus,
+    14→  Trash2,
+    15→  Reply,
+    16→  Send,
+    17→  X,
+    18→  Loader2,
+    19→  AlertCircle,
+    20→  SkipForward,
+    21→  ChevronUp,
+    22→} from 'lucide-react';
+    23→import { useNavigationStore, useWatchProgressStore } from '@/lib/store';
+    24→import { formatDuration } from '@/lib/mock-data';
+    25→import { courseApi, videoApi, instructorApi } from '@/lib/api-client';
+    26→import { GlassCard } from '../shared/GlassCard';
+    27→import { GradientButton } from '../shared/GradientButton';
+    28→import { ProgressBar } from '../shared/ProgressBar';
+    29→import { PlayerControls } from './PlayerControls';
+    30→import { EpisodePanel } from './EpisodePanel';
+    31→import { useOrientation } from '@/hooks/use-orientation';
+    32→import { usePIP } from '@/hooks/use-pip';
+    33→
+    34→// --- Types ---
+    35→interface VideoNote {
+    36→  id: string;
+    37→  timestamp: number;
+    38→  text: string;
+    39→}
+    40→
+    41→interface QAItem {
+    42→  id: string;
+    43→  author: string;
+    44→  avatar: string;
+    45→  question: string;
+    46→  timestamp: string;
+    47→  upvotes: number;
+    48→  replies: ReplyItem[];
+    49→  upvoted: boolean;
+    50→}
+    51→
+    52→interface ReplyItem {
+    53→  id: string;
+    54→  author: string;
+    55→  text: string;
+    56→  timestamp: string;
+    57→}
+    58→
+    59→interface ChapterMarker {
+    60→  time: number;
+    61→  label: string;
+    62→}
+    63→
+    64→interface InstructorData {
+    65→  id: string;
+    66→  name: string;
+    67→  title?: string;
+    68→  avatar_url?: string;
+    69→  [key: string]: unknown;
+    70→}
+    71→
+    72→// --- Helpers ---
+    73→function formatTime(seconds: number): string {
+    74→  const h = Math.floor(seconds / 3600);
+    75→  const m = Math.floor((seconds % 3600) / 60);
+    76→  const s = Math.floor(seconds % 60);
+    77→  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    78→  return `${m}:${s.toString().padStart(2, '0')}`;
+    79→}
+    80→
+    81→const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+    82→
+    83→// --- Mock Q&A Data ---
+    84→const MOCK_QA: QAItem[] = [
+    85→  {
+    86→    id: 'qa1',
+    87→    author: 'Tanvir Hasan',
+    88→    avatar: '',
+    89→    question: 'Can you explain the difference between let and var in JavaScript?',
+    90→    timestamp: '2h ago',
+    91→    upvotes: 12,
+    92→    upvoted: false,
+    93→    replies: [
+    94→      { id: 'r1', author: 'Engr. Karim Uddin', text: 'Great question! let is block-scoped while var is function-scoped. This means let variables are only accessible within the block they are declared in.', timestamp: '1h ago' },
+    95→    ],
+    96→  },
+    97→  {
+    98→    id: 'qa2',
+    99→    author: 'Nusrat Jahan',
+   100→    avatar: '',
+   101→    question: 'What is the best way to practice the concepts from this video?',
+   102→    timestamp: '5h ago',
+   103→    upvotes: 8,
+   104→    upvoted: false,
+   105→    replies: [],
+   106→  },
+   107→  {
+   108→    id: 'qa3',
+   109→    author: 'Rafi Ahmed',
+   110→    avatar: '',
+   111→    question: 'Is there a project assignment for this section?',
+   112→    timestamp: '1d ago',
+   113→    upvotes: 15,
+   114→    upvoted: true,
+   115→    replies: [
+   116→      { id: 'r2', author: 'Engr. Karim Uddin', text: 'Yes! Check the resources section for the mini-project assignment.', timestamp: '22h ago' },
+   117→      { id: 'r3', author: 'Sadia Islam', text: 'I completed it last week. Very helpful for understanding the concepts!', timestamp: '20h ago' },
+   118→    ],
+   119→  },
+   120→];
+   121→
+   122→export function VideoPlayerPage() {
+   123→  const { pageParams, navigate, goBack } = useNavigationStore();
+   124→  const { updateProgress, getProgress } = useWatchProgressStore();
+   125→  const { isLandscape, isPortrait, isMobile } = useOrientation();
+   126→
+   127→  // --- Route params ---
+   128→  const videoId = pageParams.videoId as string;
+   129→  const courseId = pageParams.courseId as string;
+   130→
+   131→  // --- API-fetched data ---
+   132→  const [course, setCourse] = useState<any>(null);
+   133→  const [videos, setVideos] = useState<any[]>([]);
+   134→  const [instructor, setInstructor] = useState<InstructorData | null>(null);
+   135→  const [dataLoading, setDataLoading] = useState(true);
+   136→  const [dataError, setDataError] = useState<string | null>(null);
+   137→
+   138→  // --- Stream URL ---
+   139→  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+   140→  const [streamLoading, setStreamLoading] = useState(false);
+   141→  const [streamError, setStreamError] = useState<string | null>(null);
+   142→
+   143→  // --- Derived data (depends on fetched videos/course) ---
+   144→  const currentVideo = videos.find((v) => v.id === videoId);
+   145→  const watchProgress = getProgress(videoId);
+   146→  const currentIndex = videos.findIndex((v) => v.id === videoId);
+   147→  const nextVideo = currentIndex < videos.length - 1 ? videos[currentIndex + 1] : null;
+   148→
+   149→  // --- Video State ---
+   150→  const videoDuration = currentVideo?.duration ?? 0;
+   151→  const initialPosition = (watchProgress?.lastPosition && watchProgress.lastPosition > 10 && !watchProgress.completed)
+   152→    ? watchProgress.lastPosition
+   153→    : 0;
+   154→
+   155→  const [isPlaying, setIsPlaying] = useState(false);
+   156→  const [currentTime, setCurrentTime] = useState(initialPosition);
+   157→  const [volume, setVolume] = useState(80);
+   158→  const [isMuted, setIsMuted] = useState(false);
+   159→  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+   160→  const [quality, setQuality] = useState<string>('Auto');
+   161→  const [isFullscreen, setIsFullscreen] = useState(false);
+   162→  const [buffered, setBuffered] = useState(Math.min(initialPosition + 30, videoDuration));
+   163→
+   164→  // --- Resume Dialog ---
+   165→  const [resumeDialogDismissed, setResumeDialogDismissed] = useState(false);
+   166→  const showResumeDialog = !resumeDialogDismissed && initialPosition > 10;
+   167→
+   168→  // --- Controls Visibility ---
+   169→  const [controlsVisible, setControlsVisible] = useState(true);
+   170→  const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   171→
+   172→  // --- Next Episode ---
+   173→  const [showNextEpisode, setShowNextEpisode] = useState(false);
+   174→  const [nextEpisodeCountdown, setNextEpisodeCountdown] = useState(5);
+   175→  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+   176→
+   177→  // --- Episode Panel ---
+   178→  const [episodePanelOpen, setEpisodePanelOpen] = useState(false);
+   179→
+   180→  // --- Tabs ---
+   181→  const [activeTab, setActiveTab] = useState<'upnext' | 'notes' | 'qa'>('upnext');
+   182→
+   183→  // --- Notes ---
+   184→  const [notes, setNotes] = useState<VideoNote[]>([]);
+   185→  const [newNoteText, setNewNoteText] = useState('');
+   186→
+   187→  // --- Q&A ---
+   188→  const [qaItems, setQaItems] = useState<QAItem[]>(MOCK_QA);
+   189→  const [newQuestion, setNewQuestion] = useState('');
+   190→  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+   191→  const [replyText, setReplyText] = useState('');
+   192→
+   193→  // --- Refs ---
+   194→  const playerRef = useRef<HTMLDivElement>(null);
+   195→  const videoRef = useRef<HTMLVideoElement | null>(null);
+   196→  const simulatedTimeRef = useRef(initialPosition);
+   197→
+   198→  // --- PIP hook ---
+   199→  const { isPIP, togglePIP, isPIPSupported } = usePIP(videoRef);
+   200→
+   201→  // --- Chapter markers ---
+   202→  const chapterMarkers: ChapterMarker[] = videoDuration > 0 ? [
+   203→    { time: 0, label: 'Introduction' },
+   204→    { time: videoDuration * 0.15, label: 'Core Concepts' },
+   205→    { time: videoDuration * 0.35, label: 'Deep Dive' },
+   206→    { time: videoDuration * 0.55, label: 'Practical Example' },
+   207→    { time: videoDuration * 0.75, label: 'Summary' },
+   208→  ] : [];
+   209→
+   210→  // --- Fetch course + videos + instructor on mount ---
+   211→  useEffect(() => {
+   212→    if (!courseId) {
+   213→      setDataError('No course ID provided.');
+   214→      setDataLoading(false);
+   215→      return;
+   216→    }
+   217→
+   218→    let cancelled = false;
+   219→
+   220→    async function fetchData() {
+   221→      setDataLoading(true);
+   222→      setDataError(null);
+   223→
+   224→      try {
+   225→        const [courseRes, videosRes] = await Promise.all([
+   226→          courseApi.get(courseId),
+   227→          courseApi.videos(courseId),
+   228→        ]);
+   229→
+   230→        if (cancelled) return;
+   231→
+   232→        const courseData = courseRes.course;
+   233→        const videoList = videosRes.videos || [];
+   234→
+   235→        setCourse(courseData);
+   236→        setVideos(videoList);
+   237→
+   238→        if (courseData?.instructorId) {
+   239→          try {
+   240→            const instructorRes = await instructorApi.get(courseData.instructorId);
+   241→            if (!cancelled && instructorRes.instructor) {
+   242→              setInstructor(instructorRes.instructor as InstructorData);
+   243→            }
+   244→          } catch {
+   245→            // Instructor fetch is non-critical; silently fail
+   246→          }
+   247→        }
+   248→      } catch (err: any) {
+   249→        if (!cancelled) {
+   250→          setDataError(err?.message || 'Failed to load course data. Please try again.');
+   251→        }
+   252→      } finally {
+   253→        if (!cancelled) {
+   254→          setDataLoading(false);
+   255→        }
+   256→      }
+   257→    }
+   258→
+   259→    fetchData();
+   260→    return () => { cancelled = true; };
+   261→  }, [courseId]);
+   262→
+   263→  // --- Fetch stream URL when play is pressed ---
+   264→  const fetchStreamUrl = useCallback(async (videoKey: string) => {
+   265→    if (streamUrl || streamLoading) return;
+   266→    setStreamLoading(true);
+   267→    setStreamError(null);
+   268→    try {
+   269→      const res = await videoApi.streamUrl(videoKey);
+   270→      setStreamUrl(res.url);
+   271→    } catch (err: any) {
+   272→      setStreamError(err?.message || 'Failed to load video stream.');
+   273→    } finally {
+   274→      setStreamLoading(false);
+   275→    }
+   276→  }, [streamUrl, streamLoading]);
+   277→
+   278→  // Keep simulatedTimeRef in sync with currentTime via effect
+   279→  useEffect(() => {
+   280→    simulatedTimeRef.current = currentTime;
+   281→  }, [currentTime]);
+   282→
+   283→  // --- Handlers ---
+   284→  const togglePlay = () => {
+   285→    if (!isPlaying && currentVideo?.videoKey && !streamUrl) {
+   286→      fetchStreamUrl(currentVideo.videoKey);
+   287→    }
+   288→    setIsPlaying((prev) => !prev);
+   289→  };
+   290→
+   291→  const skip = (seconds: number) => {
+   292→    const newTime = Math.max(0, Math.min(simulatedTimeRef.current + seconds, videoDuration));
+   293→    simulatedTimeRef.current = newTime;
+   294→    setCurrentTime(newTime);
+   295→  };
+   296→
+   297→  const changeSpeed = (direction: 1 | -1) => {
+   298→    setPlaybackSpeed((prev) => {
+   299→      const idx = PLAYBACK_SPEEDS.indexOf(prev as typeof PLAYBACK_SPEEDS[number]);
+   300→      const newIdx = Math.max(0, Math.min(idx + direction, PLAYBACK_SPEEDS.length - 1));
+   301→      return PLAYBACK_SPEEDS[newIdx];
+   302→    });
+   303→  };
+   304→
+   305→  const toggleFullscreen = () => {
+   306→    if (!playerRef.current) return;
+   307→    if (!document.fullscreenElement) {
+   308→      playerRef.current.requestFullscreen().catch(() => {});
+   309→    } else {
+   310→      document.exitFullscreen().catch(() => {});
+   311→    }
+   312→  };
+   313→
+   314→  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+   315→    const rect = e.currentTarget.getBoundingClientRect();
+   316→    const x = e.clientX - rect.left;
+   317→    const pct = x / rect.width;
+   318→    const newTime = pct * videoDuration;
+   319→    simulatedTimeRef.current = newTime;
+   320→    setCurrentTime(newTime);
+   321→  };
+   322→
+   323→  const handlePlayNext = () => {
+   324→    setIsPlaying(false);
+   325→    setShowNextEpisode(false);
+   326→    setStreamUrl(null);
+   327→    setStreamError(null);
+   328→    if (countdownRef.current) {
+   329→      clearInterval(countdownRef.current);
+   330→      countdownRef.current = null;
+   331→    }
+   332→    simulatedTimeRef.current = 0;
+   333→    setCurrentTime(0);
+   334→    if (nextVideo) {
+   335→      navigate('video-player', { videoId: nextVideo.id, courseId });
+   336→    }
+   337→  };
+   338→
+   339→  const handleMarkComplete = () => {
+   340→    updateProgress(videoId, {
+   341→      courseId,
+   342→      progress: 100,
+   343→      completed: true,
+   344→      lastPosition: currentVideo?.duration || 0,
+   345→    });
+   346→  };
+   347→
+   348→  const handleResume = () => {
+   349→    setResumeDialogDismissed(true);
+   350→    setIsPlaying(true);
+   351→    if (currentVideo?.videoKey && !streamUrl) {
+   352→      fetchStreamUrl(currentVideo.videoKey);
+   353→    }
+   354→  };
+   355→
+   356→  const handleStartOver = () => {
+   357→    simulatedTimeRef.current = 0;
+   358→    setCurrentTime(0);
+   359→    setResumeDialogDismissed(true);
+   360→    setIsPlaying(true);
+   361→    if (currentVideo?.videoKey && !streamUrl) {
+   362→      fetchStreamUrl(currentVideo.videoKey);
+   363→    }
+   364→  };
+   365→
+   366→  // --- Notes ---
+   367→  const addNote = () => {
+   368→    if (!newNoteText.trim()) return;
+   369→    const note: VideoNote = {
+   370→      id: `note-${Date.now()}`,
+   371→      timestamp: simulatedTimeRef.current,
+   372→      text: newNoteText.trim(),
+   373→    };
+   374→    setNotes((prev) => [...prev, note]);
+   375→    setNewNoteText('');
+   376→  };
+   377→
+   378→  const deleteNote = (id: string) => {
+   379→    setNotes((prev) => prev.filter((n) => n.id !== id));
+   380→  };
+   381→
+   382→  const jumpToNote = (timestamp: number) => {
+   383→    simulatedTimeRef.current = timestamp;
+   384→    setCurrentTime(timestamp);
+   385→  };
+   386→
+   387→  // --- Q&A ---
+   388→  const toggleUpvote = (id: string) => {
+   389→    setQaItems((prev) =>
+   390→      prev.map((item) =>
+   391→        item.id === id
+   392→          ? { ...item, upvoted: !item.upvoted, upvotes: item.upvoted ? item.upvotes - 1 : item.upvotes + 1 }
+   393→          : item
+   394→      )
+   395→    );
+   396→  };
+   397→
+   398→  const addQuestion = () => {
+   399→    if (!newQuestion.trim()) return;
+   400→    const item: QAItem = {
+   401→      id: `qa-${Date.now()}`,
+   402→      author: 'You',
+   403→      avatar: '',
+   404→      question: newQuestion.trim(),
+   405→      timestamp: 'Just now',
+   406→      upvotes: 0,
+   407→      upvoted: false,
+   408→      replies: [],
+   409→    };
+   410→    setQaItems((prev) => [item, ...prev]);
+   411→    setNewQuestion('');
+   412→  };
+   413→
+   414→  const addReply = (qaId: string) => {
+   415→    if (!replyText.trim()) return;
+   416→    const reply: ReplyItem = {
+   417→      id: `reply-${Date.now()}`,
+   418→      author: 'You',
+   419→      text: replyText.trim(),
+   420→      timestamp: 'Just now',
+   421→    };
+   422→    setQaItems((prev) =>
+   423→      prev.map((item) =>
+   424→        item.id === qaId ? { ...item, replies: [...item.replies, reply] } : item
+   425→      )
+   426→    );
+   427→    setReplyText('');
+   428→    setReplyingTo(null);
+   429→  };
+   430→
+   431→  const showControls = () => {
+   432→    setControlsVisible(true);
+   433→    if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+   434→    if (isPlaying) {
+   435→      controlsTimerRef.current = setTimeout(() => setControlsVisible(false), 3000);
+   436→    }
+   437→  };
+   438→
+   439→  // --- Simulated playback with auto-save and next episode detection ---
+   440→  useEffect(() => {
+   441→    if (!isPlaying || videoDuration <= 0) return;
+   442→
+   443→    const tickInterval = setInterval(() => {
+   444→      simulatedTimeRef.current = Math.min(simulatedTimeRef.current + playbackSpeed, videoDuration);
+   445→      const newTime = simulatedTimeRef.current;
+   446→      setCurrentTime(newTime);
+   447→      setBuffered(Math.min(newTime + 30, videoDuration));
+   448→
+   449→      // Auto-save progress every ~5 seconds
+   450→      if (Math.floor(newTime) % 5 === 0) {
+   451→        const progress = Math.min((newTime / videoDuration) * 100, 100);
+   452→        const isCompleted = progress >= 95;
+   453→        updateProgress(videoId, {
+   454→          courseId,
+   455→          progress: isCompleted ? 100 : Math.round(progress),
+   456→          completed: isCompleted,
+   457→          lastPosition: newTime,
+   458→        });
+   459→      }
+   460→
+   461→      // Next episode auto-play detection
+   462→      if (newTime >= videoDuration && nextVideo) {
+   463→        setShowNextEpisode(true);
+   464→        setNextEpisodeCountdown(5);
+   465→      }
+   466→    }, 1000);
+   467→
+   468→    return () => clearInterval(tickInterval);
+   469→  }, [isPlaying, videoDuration, playbackSpeed, videoId, courseId, updateProgress, nextVideo]);
+   470→
+   471→  // --- Next episode countdown timer ---
+   472→  useEffect(() => {
+   473→    if (!showNextEpisode) return;
+   474→
+   475→    countdownRef.current = setInterval(() => {
+   476→      setNextEpisodeCountdown((prev) => {
+   477→        if (prev <= 1) {
+   478→          if (countdownRef.current) clearInterval(countdownRef.current);
+   479→          queueMicrotask(() => handlePlayNext());
+   480→          return 0;
+   481→        }
+   482→        return prev - 1;
+   483→      });
+   484→    }, 1000);
+   485→
+   486→    return () => {
+   487→      if (countdownRef.current) {
+   488→        clearInterval(countdownRef.current);
+   489→        countdownRef.current = null;
+   490→      }
+   491→    };
+   492→  }, [showNextEpisode]);
+   493→
+   494→  // --- Keyboard shortcuts ---
+   495→  useEffect(() => {
+   496→    const handleKey = (e: KeyboardEvent) => {
+   497→      const target = e.target as HTMLElement;
+   498→      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+   499→
+   500→      switch (e.key) {
+   501→        case ' ':
+   502→          e.preventDefault();
+   503→          togglePlay();
+   504→          break;
+   505→        case 'ArrowLeft':
+   506→          e.preventDefault();
+   507→          simulatedTimeRef.current = Math.max(0, simulatedTimeRef.current - 10);
+   508→          setCurrentTime(simulatedTimeRef.current);
+   509→          break;
+   510→        case 'ArrowRight':
+   511→          e.preventDefault();
+   512→          simulatedTimeRef.current = Math.min(simulatedTimeRef.current + 10, videoDuration);
+   513→          setCurrentTime(simulatedTimeRef.current);
+   514→          break;
+   515→        case 'ArrowUp':
+   516→          e.preventDefault();
+   517→          setVolume((prev) => {
+   518→            const next = Math.min(prev + 10, 100);
+   519→            setIsMuted(next === 0);
+   520→            return next;
+   521→          });
+   522→          break;
+   523→        case 'ArrowDown':
+   524→          e.preventDefault();
+   525→          setVolume((prev) => {
+   526→            const next = Math.max(prev - 10, 0);
+   527→            setIsMuted(next === 0);
+   528→            return next;
+   529→          });
+   530→          break;
+   531→        case 'f':
+   532→        case 'F':
+   533→          e.preventDefault();
+   534→          if (playerRef.current) {
+   535→            if (!document.fullscreenElement) {
+   536→              playerRef.current.requestFullscreen().catch(() => {});
+   537→            } else {
+   538→              document.exitFullscreen().catch(() => {});
+   539→            }
+   540→          }
+   541→          break;
+   542→        case 'm':
+   543→        case 'M':
+   544→          e.preventDefault();
+   545→          setIsMuted((prev) => !prev);
+   546→          break;
+   547→        case '[':
+   548→          e.preventDefault();
+   549→          setPlaybackSpeed((prev) => {
+   550→            const idx = PLAYBACK_SPEEDS.indexOf(prev as typeof PLAYBACK_SPEEDS[number]);
+   551→            return PLAYBACK_SPEEDS[Math.max(0, idx - 1)];
+   552→          });
+   553→          break;
+   554→        case ']':
+   555→          e.preventDefault();
+   556→          setPlaybackSpeed((prev) => {
+   557→            const idx = PLAYBACK_SPEEDS.indexOf(prev as typeof PLAYBACK_SPEEDS[number]);
+   558→            return PLAYBACK_SPEEDS[Math.min(idx + 1, PLAYBACK_SPEEDS.length - 1)];
+   559→          });
+   560→          break;
+   561→      }
+   562→    };
+   563→    document.addEventListener('keydown', handleKey);
+   564→    return () => document.removeEventListener('keydown', handleKey);
+   565→  }, [videoDuration, streamUrl, streamLoading, currentVideo]);
+   566→
+   567→  // --- Fullscreen change listener ---
+   568→  useEffect(() => {
+   569→    const handleFsChange = () => {
+   570→      setIsFullscreen(!!document.fullscreenElement);
+   571→    };
+   572→    document.addEventListener('fullscreenchange', handleFsChange);
+   573→    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+   574→  }, []);
+   575→
+   576→  // --- PIP persistence: keep video element alive when navigating away ---
+   577→  useEffect(() => {
+   578→    return () => {
+   579→      // If PIP is active when the component unmounts, preserve the video element
+   580→      if (document.pictureInPictureElement && videoRef.current) {
+   581→        const video = videoRef.current;
+   582→        const container = document.createElement('div');
+   583→        container.id = 'pip-persistent-container';
+   584→        container.style.cssText = 'position:fixed;top:-9999px;width:1px;height:1px;overflow:hidden;';
+   585→        document.body.appendChild(container);
+   586→        container.appendChild(video);
+   587→      }
+   588→    };
+   589→  }, []);
+   590→
+   591→  // --- Derived values ---
+   592→  const currentProgress = watchProgress?.progress ?? 0;
+   593→
+   594→  // --- Loading state ---
+   595→  if (dataLoading) {
+   596→    return (
+   597→      <div className="flex flex-col items-center justify-center py-24 gap-4">
+   598→        <Loader2 className="w-10 h-10 text-sky-500 animate-spin" />
+   599→        <p className="text-sm text-muted-foreground font-semibold">Loading video...</p>
+   600→      </div>
+   601→    );
+   602→  }
+   603→
+   604→  // --- Error / not-found state ---
+   605→  if (dataError || !course || !currentVideo) {
+   606→    return (
+   607→      <div className="flex flex-col items-center justify-center py-16 gap-4">
+   608→        <AlertCircle className="w-12 h-12 text-red-400" />
+   609→        <p className="text-lg font-bold">
+   610→          {dataError || 'Video not found'}
+   611→        </p>
+   612→        <p className="text-sm text-muted-foreground">
+   613→          The course or video you are looking for could not be loaded.
+   614→        </p>
+   615→        <GradientButton onClick={goBack} className="mt-2">
+   616→          Go Back
+   617→        </GradientButton>
+   618→      </div>
+   619→    );
+   620→  }
+   621→
+   622→  const thumbnailColors = ['from-sky-400 to-blue-600', 'from-emerald-400 to-teal-600', 'from-purple-400 to-indigo-600'];
+   623→  const colorClass = thumbnailColors[currentIndex % thumbnailColors.length];
+   624→  const effectiveVolume = isMuted ? 0 : volume;
+   625→
+   626→  // --- Portrait fixed positioning logic ---
+   627→  const shouldFixPlayer = isMobile && isPortrait && !isFullscreen;
+   628→
+   629→  // Build tabs array depending on orientation
+   630→  const tabs: { key: 'upnext' | 'notes' | 'qa'; icon: typeof ListVideo; label: string }[] = [
+   631→    ...(isPortrait ? [{ key: 'upnext' as const, icon: ListVideo, label: 'Episodes' }] : []),
+   632→    { key: 'notes' as const, icon: BookOpen, label: 'Notes' },
+   633→    { key: 'qa' as const, icon: MessageSquare, label: 'Q&A' },
+   634→  ];
+   635→
+   636→  return (
+   637→    <div>
+   638→      {/* Fixed player spacer (to prevent content jump when player is fixed) */}
+   639→      {shouldFixPlayer && (
+   640→        <div className="aspect-video" />
+   641→      )}
+   642→
+   643→      {/* Player container - fixed on mobile portrait, normal flow otherwise */}
+   644→      <div className={shouldFixPlayer ? 'fixed top-0 left-0 right-0 z-50' : ''}>
+   645→        <div className="relative">
+   646→          {/* Video player with controls */}
+   647→          <GlassCard className="overflow-hidden p-0">
+   648→            <div
+   649→              ref={playerRef}
+   650→              className={`relative aspect-video ${streamUrl ? 'bg-black' : 'bg-gradient-to-br ' + colorClass} flex items-center justify-center cursor-pointer`}
+   651→              onMouseMove={showControls}
+   652→              onTouchStart={showControls}
+   653→              onClick={(e) => {
+   654→                const target = e.target as HTMLElement;
+   655→                if (!target.closest('[data-controls]')) {
+   656→                  togglePlay();
+   657→                }
+   658→              }}
+   659→            >
+   660→              {/* Real video element when stream URL is available */}
+   661→              {streamUrl && (
+   662→                <video
+   663→                  ref={(el) => {
+   664→                    videoRef.current = el;
+   665→                    if (el && streamUrl) {
+   666→                      el.src = streamUrl;
+   667→                      if (isPlaying) {
+   668→                        el.play().catch(() => {});
+   669→                      } else {
+   670→                        el.pause();
+   671→                      }
+   672→                      el.currentTime = currentTime;
+   673→                      el.volume = effectiveVolume / 100;
+   674→                      el.playbackRate = playbackSpeed;
+   675→                    }
+   676→                  }}
+   677→                  className="absolute inset-0 w-full h-full object-contain"
+   678→                  playsInline
+   679→                  disablePictureInPicture={false}
+   680→                  onTimeUpdate={(e) => {
+   681→                    const video = e.target as HTMLVideoElement;
+   682→                    setCurrentTime(video.currentTime);
+   683→                    setBuffered(Math.min(video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0, videoDuration));
+   684→                  }}
+   685→                  onEnded={() => {
+   686→                    if (nextVideo) {
+   687→                      setShowNextEpisode(true);
+   688→                      setNextEpisodeCountdown(5);
+   689→                    }
+   690→                  }}
+   691→                />
+   692→              )}
+   693→
+   694→              {/* Placeholder when no stream URL */}
+   695→              {!streamUrl && (
+   696→                <div className="absolute inset-0 flex items-center justify-center">
+   697→                  <Play className="w-16 h-16 text-white/20" />
+   698→                </div>
+   699→              )}
+   700→
+   701→              {/* Stream loading indicator */}
+   702→              {streamLoading && (
+   703→                <div className="absolute inset-0 flex items-center justify-center z-10 bg-black/30">
+   704→                  <div className="flex flex-col items-center gap-3">
+   705→                    <Loader2 className="w-8 h-8 text-white animate-spin" />
+   706→                    <span className="text-white/80 text-xs font-semibold">Loading stream...</span>
+   707→                  </div>
+   708→                </div>
+   709→              )}
+   710→
+   711→              {/* Stream error indicator */}
+   712→              {streamError && !streamLoading && (
+   713→                <div className="absolute top-3 left-3 z-30 bg-red-500/80 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-2">
+   714→                  <AlertCircle className="w-3.5 h-3.5" />
+   715→                  <span>{streamError}</span>
+   716→                  <button
+   717→                    className="ml-1 underline hover:no-underline"
+   718→                    onClick={(e) => {
+   719→                      e.stopPropagation();
+   720→                      setStreamError(null);
+   721→                      if (currentVideo?.videoKey) fetchStreamUrl(currentVideo.videoKey);
+   722→                    }}
+   723→                  >
+   724→                    Retry
+   725→                  </button>
+   726→                </div>
+   727→              )}
+   728→
+   729→              {/* Center play/pause overlay */}
+   730→              <AnimatePresence>
+   731→                {!isPlaying && !streamLoading && (
+   732→                  <motion.div
+   733→                    className="absolute inset-0 flex items-center justify-center z-10"
+   734→                    initial={{ opacity: 0 }}
+   735→                    animate={{ opacity: 1 }}
+   736→                    exit={{ opacity: 0 }}
+   737→                    transition={{ duration: 0.2 }}
+   738→                  >
+   739→                    <motion.div
+   740→                      className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center"
+   741→                      whileHover={{ scale: 1.1 }}
+   742→                      whileTap={{ scale: 0.9 }}
+   743→                    >
+   744→                      <Play className="w-10 h-10 text-white ml-1" fill="currentColor" />
+   745→                    </motion.div>
+   746→                  </motion.div>
+   747→                )}
+   748→              </AnimatePresence>
+   749→
+   750→              {/* Player Controls Overlay */}
+   751→              <PlayerControls
+   752→                isPlaying={isPlaying}
+   753→                currentTime={currentTime}
+   754→                videoDuration={videoDuration}
+   755→                volume={volume}
+   756→                isMuted={isMuted}
+   757→                playbackSpeed={playbackSpeed}
+   758→                quality={quality}
+   759→                isFullscreen={isFullscreen}
+   760→                buffered={buffered}
+   761→                isLandscape={isLandscape}
+   762→                isPIP={isPIP}
+   763→                isPIPSupported={isPIPSupported}
+   764→                chapterMarkers={chapterMarkers}
+   765→                controlsVisible={controlsVisible}
+   766→                togglePlay={togglePlay}
+   767→                skip={skip}
+   768→                setIsMuted={setIsMuted}
+   769→                setVolume={setVolume}
+   770→                setPlaybackSpeed={setPlaybackSpeed}
+   771→                setQuality={setQuality}
+   772→                toggleFullscreen={toggleFullscreen}
+   773→                togglePIP={togglePIP}
+   774→                showControls={showControls}
+   775→                handleProgressClick={handleProgressClick}
+   776→                onToggleEpisodePanel={() => setEpisodePanelOpen((prev) => !prev)}
+   777→              />
+   778→
+   779→              {/* Next Episode Overlay */}
+   780→              <AnimatePresence>
+   781→                {showNextEpisode && nextVideo && (
+   782→                  <motion.div
+   783→                    data-controls
+   784→                    className="absolute bottom-20 right-4 z-30 bg-black/80 backdrop-blur-xl border border-white/20 rounded-2xl p-4 min-w-[240px]"
+   785→                    initial={{ opacity: 0, y: 20, scale: 0.9 }}
+   786→                    animate={{ opacity: 1, y: 0, scale: 1 }}
+   787→                    exit={{ opacity: 0, y: 20, scale: 0.9 }}
+   788→                  >
+   789→                    <p className="text-white text-sm font-bold mb-1">Up Next</p>
+   790→                    <p className="text-white/80 text-xs mb-2 line-clamp-1">{nextVideo.title}</p>
+   791→                    <p className="text-sky-400 text-xs font-bold mb-3">
+   792→                      Playing in {nextEpisodeCountdown}s...
+   793→                    </p>
+   794→                    <div className="flex gap-2">
+   795→                      <button
+   796→                        className="px-3 py-1.5 bg-sky-500 text-white text-xs font-bold rounded-lg hover:bg-sky-400 transition-colors"
+   797→                        onClick={(e) => { e.stopPropagation(); handlePlayNext(); }}
+   798→                      >
+   799→                        Play Now
+   800→                      </button>
+   801→                      <button
+   802→                        className="px-3 py-1.5 bg-white/10 text-white text-xs font-bold rounded-lg hover:bg-white/20 transition-colors"
+   803→                        onClick={(e) => { e.stopPropagation(); setShowNextEpisode(false); }}
+   804→                      >
+   805→                        Cancel
+   806→                      </button>
+   807→                    </div>
+   808→                  </motion.div>
+   809→                )}
+   810→              </AnimatePresence>
+   811→
+   812→              {/* Resume Dialog */}
+   813→              <AnimatePresence>
+   814→                {showResumeDialog && (
+   815→                  <motion.div
+   816→                    data-controls
+   817→                    className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm flex items-center justify-center"
+   818→                    initial={{ opacity: 0 }}
+   819→                    animate={{ opacity: 1 }}
+   820→                    exit={{ opacity: 0 }}
+   821→                  >
+   822→                    <motion.div
+   823→                      className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-2xl p-6 max-w-sm mx-4"
+   824→                      initial={{ scale: 0.9, y: 20 }}
+   825→                      animate={{ scale: 1, y: 0 }}
+   826→                      exit={{ scale: 0.9, y: 20 }}
+   827→                    >
+   828→                      <h3 className="text-lg font-extrabold text-foreground mb-2">Resume Watching?</h3>
+   829→                      <p className="text-sm text-muted-foreground mb-4">
+   830→                        You left off at {formatTime(watchProgress?.lastPosition ?? 0)}
+   831→                      </p>
+   832→                      <div className="flex gap-3">
+   833→                        <GradientButton onClick={handleResume} size="sm">
+   834→                          Resume
+   835→                        </GradientButton>
+   836→                        <GradientButton
+   837→                          onClick={handleStartOver}
+   838→                          size="sm"
+   839→                          className="bg-muted/50 text-foreground hover:bg-muted/70 shadow-transparent"
+   840→                          variant="primary"
+   841→                        >
+   842→                          Start Over
+   843→                        </GradientButton>
+   844→                      </div>
+   845→                    </motion.div>
+   846→                  </motion.div>
+   847→                )}
+   848→              </AnimatePresence>
+   849→
+   850→              {/* Keyboard shortcuts hint */}
+   851→              <AnimatePresence>
+   852→                {controlsVisible && !isPlaying && (
+   853→                  <motion.div
+   854→                    className="absolute top-3 right-3 z-20 text-white/40 text-[10px] hidden sm:block"
+   855→                    initial={{ opacity: 0 }}
+   856→                    animate={{ opacity: 1 }}
+   857→                    exit={{ opacity: 0 }}
+   858→                  >
+   859→                    Space: Play/Pause | Arrows: Seek/Vol | F: Fullscreen | M: Mute | [ ]: Speed
+   860→                  </motion.div>
+   861→                )}
+   862→              </AnimatePresence>
+   863→            </div>
+   864→          </GlassCard>
+   865→
+   866→          {/* Episode side panel (landscape only, overlays video) */}
+   867→          {isLandscape && (
+   868→            <EpisodePanel
+   869→              videos={videos}
+   870→              currentVideoId={videoId}
+   871→              courseId={courseId}
+   872→              isOpen={episodePanelOpen}
+   873→              onClose={() => setEpisodePanelOpen(false)}
+   874→            />
+   875→          )}
+   876→        </div>
+   877→      </div>
+   878→
+   879→      {/* Video info (below player) - only show if not in fullscreen */}
+   880→      {!isFullscreen && (
+   881→        <div className={shouldFixPlayer ? 'pt-4' : 'pt-0'}>
+   882→          {/* Back button */}
+   883→          <motion.button
+   884→            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
+   885→            onClick={() => navigate('course-detail', { courseId })}
+   886→            initial={{ opacity: 0, x: -10 }}
+   887→            animate={{ opacity: 1, x: 0 }}
+   888→            whileHover={{ x: -3 }}
+   889→          >
+   890→            <ChevronLeft className="w-4 h-4" />
+   891→            Back to Course
+   892→          </motion.button>
+   893→
+   894→          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   895→            {/* Main content column */}
+   896→            <div className="lg:col-span-2">
+   897→              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+   898→                {/* Video info */}
+   899→                <div className="mb-4">
+   900→                  <h1 className="text-lg font-extrabold text-foreground mb-1">{currentVideo.title}</h1>
+   901→                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+   902→                    {instructor && <span>{instructor.name}</span>}
+   903→                    <span>&bull;</span>
+   904→                    <span>{course.title}</span>
+   905→                  </div>
+   906→                </div>
+   907→
+   908→                {/* Mark complete + Next Video */}
+   909→                <div className="flex items-center gap-3 mb-4">
+   910→                  <GradientButton
+   911→                    onClick={handleMarkComplete}
+   912→                    variant={(watchProgress?.completed || currentProgress >= 100) ? 'success' : 'primary'}
+   913→                    size="sm"
+   914→                  >
+   915→                    <Check className="w-4 h-4" />
+   916→                    {(watchProgress?.completed || currentProgress >= 100) ? 'Completed' : 'Mark as Complete'}
+   917→                  </GradientButton>
+   918→                  {nextVideo && (
+   919→                    <GradientButton
+   920→                      onClick={() => navigate('video-player', { videoId: nextVideo.id, courseId })}
+   921→                      size="sm"
+   922→                      className="bg-muted/50 text-foreground hover:bg-muted/70 shadow-transparent"
+   923→                      variant="primary"
+   924→                    >
+   925→                      <SkipForward className="w-4 h-4" />
+   926→                      Next Video
+   927→                    </GradientButton>
+   928→                  )}
+   929→                </div>
+   930→
+   931→                {/* Progress */}
+   932→                <GlassCard className="p-4 mb-4">
+   933→                  <div className="flex items-center justify-between mb-2">
+   934→                    <span className="text-sm font-semibold">Your Progress</span>
+   935→                    <span className="text-sm font-bold text-sky-500">{Math.round(currentProgress)}%</span>
+   936→                  </div>
+   937→                  <ProgressBar value={currentProgress} size="md" />
+   938→                </GlassCard>
+   939→
+   940→                {/* Mobile portrait: tabs below player including episodes */}
+   941→                {/* Desktop landscape: tabs in sidebar, no episodes tab here */}
+   942→                {(isPortrait || !isLandscape) && (
+   943→                  <GlassCard className="overflow-hidden">
+   944→                    {/* Tabs */}
+   945→                    <div className="flex border-b border-white/20 dark:border-white/5">
+   946→                      {tabs.map((tab) => (
+   947→                        <button
+   948→                          key={tab.key}
+   949→                          className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold transition-colors ${
+   950→                            activeTab === tab.key
+   951→                              ? 'text-sky-500 border-b-2 border-sky-500'
+   952→                              : 'text-muted-foreground'
+   953→                          }`}
+   954→                          onClick={() => setActiveTab(tab.key)}
+   955→                        >
+   956→                          <tab.icon className="w-3.5 h-3.5" />
+   957→                          {tab.label}
+   958→                        </button>
+   959→                      ))}
+   960→                    </div>
+   961→
+   962→                    <div className="max-h-96 overflow-y-auto">
+   963→                      {/* Episodes Tab (portrait only) */}
+   964→                      {activeTab === 'upnext' && (
+   965→                        <div className="p-2">
+   966→                          {videos.map((video, i) => {
+   967→                            const isActive = video.id === videoId;
+   968→                            const vProgress = getProgress(video.id);
+   969→                            return (
+   970→                              <motion.div
+   971→                                key={video.id}
+   972→                                className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${
+   973→                                  isActive ? 'bg-sky-50 dark:bg-sky-900/20' : 'hover:bg-muted/30'
+   974→                                }`}
+   975→                                onClick={() => navigate('video-player', { videoId: video.id, courseId })}
+   976→                                initial={{ opacity: 0, x: 10 }}
+   977→                                animate={{ opacity: 1, x: 0 }}
+   978→                                transition={{ delay: i * 0.02 }}
+   979→                              >
+   980→                                <div
+   981→                                  className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+   982→                                    isActive
+   983→                                      ? 'bg-sky-500 text-white'
+   984→                                      : vProgress?.completed
+   985→                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-500'
+   986→                                        : 'bg-muted text-muted-foreground'
+   987→                                  }`}
+   988→                                >
+   989→                                  {vProgress?.completed ? <Check className="w-4 h-4" /> : i + 1}
+   990→                                </div>
+   991→                                <div className="flex-1 min-w-0">
+   992→                                  <p
+   993→                                    className={`text-sm font-semibold line-clamp-1 ${
+   994→                                      isActive ? 'text-sky-600 dark:text-sky-400' : 'text-foreground'
+   995→                                    }`}
+   996→                                  >
+   997→                                    {video.title}
+   998→                                  </p>
+   999→                                  <div className="flex items-center gap-2 mt-0.5">
+  1000→                                    <Clock className="w-3 h-3 text-muted-foreground" />
+  1001→                                    <span className="text-xs text-muted-foreground">{formatDuration(video.duration)}</span>
+  1002→                                  </div>
+  1003→                                </div>
+  1004→                                {isActive && (
+  1005→                                  <div className="w-2 h-2 rounded-full bg-sky-500 animate-pulse flex-shrink-0" />
+  1006→                                )}
+  1007→                              </motion.div>
+  1008→                            );
+  1009→                          })}
+  1010→                        </div>
+  1011→                      )}
+  1012→
+  1013→                      {/* Notes Tab */}
+  1014→                      {activeTab === 'notes' && (
+  1015→                        <div className="p-4">
+  1016→                          <div className="flex gap-2 mb-4">
+  1017→                            <input
+  1018→                              type="text"
+  1019→                              placeholder="Add a note at current time..."
+  1020→                              value={newNoteText}
+  1021→                              onChange={(e) => setNewNoteText(e.target.value)}
+  1022→                              onKeyDown={(e) => { if (e.key === 'Enter') addNote(); }}
+  1023→                              className="flex-1 px-3 py-2 text-sm rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+  1024→                            />
+  1025→                            <button
+  1026→                              className="p-2 rounded-xl bg-sky-500 text-white hover:bg-sky-400 transition-colors flex-shrink-0"
+  1027→                              onClick={addNote}
+  1028→                              title="Add note"
+  1029→                            >
+  1030→                              <Plus className="w-4 h-4" />
+  1031→                            </button>
+  1032→                          </div>
+  1033→
+  1034→                          {notes.length === 0 ? (
+  1035→                            <div className="text-center text-sm text-muted-foreground py-6">
+  1036→                              <BookOpen className="w-8 h-8 mx-auto mb-2 text-muted-foreground/50" />
+  1037→                              <p>No notes yet</p>
+  1038→                              <p className="text-xs">Take notes while watching the video</p>
+  1039→                            </div>
+  1040→                          ) : (
+  1041→                            <div className="space-y-2">
+  1042→                              {notes.map((note) => (
+  1043→                                <motion.div
+  1044→                                  key={note.id}
+  1045→                                  className="flex items-start gap-2 p-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10"
+  1046→                                  initial={{ opacity: 0, y: 5 }}
+  1047→                                  animate={{ opacity: 1, y: 0 }}
+  1048→                                >
+  1049→                                  <button
+  1050→                                    className="text-xs font-mono text-sky-500 font-bold whitespace-nowrap mt-0.5 hover:underline flex-shrink-0"
+  1051→                                    onClick={() => jumpToNote(note.timestamp)}
+  1052→                                  >
+  1053→                                    {formatTime(note.timestamp)}
+  1054→                                  </button>
+  1055→                                  <p className="text-sm text-foreground flex-1 min-w-0">{note.text}</p>
+  1056→                                  <button
+  1057→                                    className="p-1 text-muted-foreground hover:text-red-500 transition-colors flex-shrink-0"
+  1058→                                    onClick={() => deleteNote(note.id)}
+  1059→                                  >
+  1060→                                    <Trash2 className="w-3.5 h-3.5" />
+  1061→                                  </button>
+  1062→                                </motion.div>
+  1063→                              ))}
+  1064→                            </div>
+  1065→                          )}
+  1066→                        </div>
+  1067→                      )}
+  1068→
+  1069→                      {/* Q&A Tab */}
+  1070→                      {activeTab === 'qa' && (
+  1071→                        <div className="p-4">
+  1072→                          <div className="flex gap-2 mb-4">
+  1073→                            <input
+  1074→                              type="text"
+  1075→                              placeholder="Ask a question..."
+  1076→                              value={newQuestion}
+  1077→                              onChange={(e) => setNewQuestion(e.target.value)}
+  1078→                              onKeyDown={(e) => { if (e.key === 'Enter') addQuestion(); }}
+  1079→                              className="flex-1 px-3 py-2 text-sm rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+  1080→                            />
+  1081→                            <button
+  1082→                              className="p-2 rounded-xl bg-sky-500 text-white hover:bg-sky-400 transition-colors flex-shrink-0"
+  1083→                              onClick={addQuestion}
+  1084→                              title="Post question"
+  1085→                            >
+  1086→                              <Send className="w-4 h-4" />
+  1087→                            </button>
+  1088→                          </div>
+  1089→
+  1090→                          <div className="space-y-3">
+  1091→                            {qaItems.map((item) => (
+  1092→                              <motion.div
+  1093→                                key={item.id}
+  1094→                                className="p-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10"
+  1095→                                initial={{ opacity: 0, y: 5 }}
+  1096→                                animate={{ opacity: 1, y: 0 }}
+  1097→                              >
+  1098→                                <div className="flex items-start gap-2">
+  1099→                                  <div className="flex flex-col items-center flex-shrink-0">
+  1100→                                    <button
+  1101→                                      className={`p-0.5 rounded hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors ${
+  1102→                                        item.upvoted ? 'text-sky-500' : 'text-muted-foreground'
+  1103→                                      }`}
+  1104→                                      onClick={() => toggleUpvote(item.id)}
+  1105→                                    >
+  1106→                                      <ChevronUp className="w-4 h-4" />
+  1107→                                    </button>
+  1108→                                    <span className="text-xs font-bold text-muted-foreground">{item.upvotes}</span>
+  1109→                                  </div>
+  1110→
+  1111→                                  <div className="flex-1 min-w-0">
+  1112→                                    <div className="flex items-center gap-2 mb-1">
+  1113→                                      <span className="text-xs font-bold text-foreground">{item.author}</span>
+  1114→                                      <span className="text-[10px] text-muted-foreground">{item.timestamp}</span>
+  1115→                                    </div>
+  1116→                                    <p className="text-sm text-foreground">{item.question}</p>
+  1117→
+  1118→                                    {item.replies.length > 0 && (
+  1119→                                      <div className="mt-2 ml-2 space-y-2 border-l-2 border-white/30 dark:border-white/10 pl-3">
+  1120→                                        {item.replies.map((reply) => (
+  1121→                                          <div key={reply.id}>
+  1122→                                            <div className="flex items-center gap-2 mb-0.5">
+  1123→                                              <span className="text-xs font-bold text-foreground">{reply.author}</span>
+  1124→                                              <span className="text-[10px] text-muted-foreground">{reply.timestamp}</span>
+  1125→                                            </div>
+  1126→                                            <p className="text-xs text-muted-foreground">{reply.text}</p>
+  1127→                                          </div>
+  1128→                                        ))}
+  1129→                                      </div>
+  1130→                                    )}
+  1131→
+  1132→                                    {replyingTo === item.id ? (
+  1133→                                      <div className="flex gap-2 mt-2">
+  1134→                                        <input
+  1135→                                          type="text"
+  1136→                                          placeholder="Write a reply..."
+  1137→                                          value={replyText}
+  1138→                                          onChange={(e) => setReplyText(e.target.value)}
+  1139→                                          onKeyDown={(e) => { if (e.key === 'Enter') addReply(item.id); }}
+  1140→                                          className="flex-1 px-2 py-1 text-xs rounded-lg bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+  1141→                                          autoFocus
+  1142→                                        />
+  1143→                                        <button
+  1144→                                          className="p-1 text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20 rounded-lg"
+  1145→                                          onClick={() => addReply(item.id)}
+  1146→                                        >
+  1147→                                          <Send className="w-3 h-3" />
+  1148→                                        </button>
+  1149→                                        <button
+  1150→                                          className="p-1 text-muted-foreground hover:bg-muted/30 rounded-lg"
+  1151→                                          onClick={() => { setReplyingTo(null); setReplyText(''); }}
+  1152→                                        >
+  1153→                                          <X className="w-3 h-3" />
+  1154→                                        </button>
+  1155→                                      </div>
+  1156→                                    ) : (
+  1157→                                      <button
+  1158→                                        className="flex items-center gap-1 mt-2 text-xs text-muted-foreground hover:text-sky-500 transition-colors"
+  1159→                                        onClick={() => setReplyingTo(item.id)}
+  1160→                                      >
+  1161→                                        <Reply className="w-3 h-3" />
+  1162→                                        Reply
+  1163→                                      </button>
+  1164→                                    )}
+  1165→                                  </div>
+  1166→                                </div>
+  1167→                              </motion.div>
+  1168→                            ))}
+  1169→                          </div>
+  1170→                        </div>
+  1171→                      )}
+  1172→                    </div>
+  1173→                  </GlassCard>
+  1174→                )}
+  1175→              </motion.div>
+  1176→            </div>
+  1177→
+  1178→            {/* Sidebar for landscape (Notes + Q&A only) */}
+  1179→            {isLandscape && (
+  1180→              <div>
+  1181→                <GlassCard className="overflow-hidden">
+  1182→                  {/* Tabs */}
+  1183→                  <div className="flex border-b border-white/20 dark:border-white/5">
+  1184→                    {tabs.map((tab) => (
+  1185→                      <button
+  1186→                        key={tab.key}
+  1187→                        className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold transition-colors ${
+  1188→                          activeTab === tab.key
+  1189→                            ? 'text-sky-500 border-b-2 border-sky-500'
+  1190→                            : 'text-muted-foreground'
+  1191→                        }`}
+  1192→                        onClick={() => setActiveTab(tab.key)}
+  1193→                      >
+  1194→                        <tab.icon className="w-3.5 h-3.5" />
+  1195→                        {tab.label}
+  1196→                      </button>
+  1197→                    ))}
+  1198→                  </div>
+  1199→
+  1200→                  <div className="max-h-[500px] overflow-y-auto">
+  1201→                    {/* Notes Tab */}
+  1202→                    {activeTab === 'notes' && (
+  1203→                      <div className="p-4">
+  1204→                        <div className="flex gap-2 mb-4">
+  1205→                          <input
+  1206→                            type="text"
+  1207→                            placeholder="Add a note at current time..."
+  1208→                            value={newNoteText}
+  1209→                            onChange={(e) => setNewNoteText(e.target.value)}
+  1210→                            onKeyDown={(e) => { if (e.key === 'Enter') addNote(); }}
+  1211→                            className="flex-1 px-3 py-2 text-sm rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+  1212→                          />
+  1213→                          <button
+  1214→                            className="p-2 rounded-xl bg-sky-500 text-white hover:bg-sky-400 transition-colors flex-shrink-0"
+  1215→                            onClick={addNote}
+  1216→                            title="Add note"
+  1217→                          >
+  1218→                            <Plus className="w-4 h-4" />
+  1219→                          </button>
+  1220→                        </div>
+  1221→
+  1222→                        {notes.length === 0 ? (
+  1223→                          <div className="text-center text-sm text-muted-foreground py-6">
+  1224→                            <BookOpen className="w-8 h-8 mx-auto mb-2 text-muted-foreground/50" />
+  1225→                            <p>No notes yet</p>
+  1226→                            <p className="text-xs">Take notes while watching the video</p>
+  1227→                          </div>
+  1228→                        ) : (
+  1229→                          <div className="space-y-2">
+  1230→                            {notes.map((note) => (
+  1231→                              <motion.div
+  1232→                                key={note.id}
+  1233→                                className="flex items-start gap-2 p-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10"
+  1234→                                initial={{ opacity: 0, y: 5 }}
+  1235→                                animate={{ opacity: 1, y: 0 }}
+  1236→                              >
+  1237→                                <button
+  1238→                                  className="text-xs font-mono text-sky-500 font-bold whitespace-nowrap mt-0.5 hover:underline flex-shrink-0"
+  1239→                                  onClick={() => jumpToNote(note.timestamp)}
+  1240→                                >
+  1241→                                  {formatTime(note.timestamp)}
+  1242→                                </button>
+  1243→                                <p className="text-sm text-foreground flex-1 min-w-0">{note.text}</p>
+  1244→                                <button
+  1245→                                  className="p-1 text-muted-foreground hover:text-red-500 transition-colors flex-shrink-0"
+  1246→                                  onClick={() => deleteNote(note.id)}
+  1247→                                >
+  1248→                                  <Trash2 className="w-3.5 h-3.5" />
+  1249→                                </button>
+  1250→                              </motion.div>
+  1251→                            ))}
+  1252→                          </div>
+  1253→                        )}
+  1254→                      </div>
+  1255→                    )}
+  1256→
+  1257→                    {/* Q&A Tab */}
+  1258→                    {activeTab === 'qa' && (
+  1259→                      <div className="p-4">
+  1260→                        <div className="flex gap-2 mb-4">
+  1261→                          <input
+  1262→                            type="text"
+  1263→                            placeholder="Ask a question..."
+  1264→                            value={newQuestion}
+  1265→                            onChange={(e) => setNewQuestion(e.target.value)}
+  1266→                            onKeyDown={(e) => { if (e.key === 'Enter') addQuestion(); }}
+  1267→                            className="flex-1 px-3 py-2 text-sm rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+  1268→                          />
+  1269→                          <button
+  1270→                            className="p-2 rounded-xl bg-sky-500 text-white hover:bg-sky-400 transition-colors flex-shrink-0"
+  1271→                            onClick={addQuestion}
+  1272→                            title="Post question"
+  1273→                          >
+  1274→                            <Send className="w-4 h-4" />
+  1275→                          </button>
+  1276→                        </div>
+  1277→
+  1278→                        <div className="space-y-3">
+  1279→                          {qaItems.map((item) => (
+  1280→                            <motion.div
+  1281→                              key={item.id}
+  1282→                              className="p-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10"
+  1283→                              initial={{ opacity: 0, y: 5 }}
+  1284→                              animate={{ opacity: 1, y: 0 }}
+  1285→                            >
+  1286→                              <div className="flex items-start gap-2">
+  1287→                                <div className="flex flex-col items-center flex-shrink-0">
+  1288→                                  <button
+  1289→                                    className={`p-0.5 rounded hover:bg-sky-50 dark:hover:bg-sky-900/20 transition-colors ${
+  1290→                                      item.upvoted ? 'text-sky-500' : 'text-muted-foreground'
+  1291→                                    }`}
+  1292→                                    onClick={() => toggleUpvote(item.id)}
+  1293→                                  >
+  1294→                                    <ChevronUp className="w-4 h-4" />
+  1295→                                  </button>
+  1296→                                  <span className="text-xs font-bold text-muted-foreground">{item.upvotes}</span>
+  1297→                                </div>
+  1298→
+  1299→                                <div className="flex-1 min-w-0">
+  1300→                                  <div className="flex items-center gap-2 mb-1">
+  1301→                                    <span className="text-xs font-bold text-foreground">{item.author}</span>
+  1302→                                    <span className="text-[10px] text-muted-foreground">{item.timestamp}</span>
+  1303→                                  </div>
+  1304→                                  <p className="text-sm text-foreground">{item.question}</p>
+  1305→
+  1306→                                  {item.replies.length > 0 && (
+  1307→                                    <div className="mt-2 ml-2 space-y-2 border-l-2 border-white/30 dark:border-white/10 pl-3">
+  1308→                                      {item.replies.map((reply) => (
+  1309→                                        <div key={reply.id}>
+  1310→                                          <div className="flex items-center gap-2 mb-0.5">
+  1311→                                            <span className="text-xs font-bold text-foreground">{reply.author}</span>
+  1312→                                            <span className="text-[10px] text-muted-foreground">{reply.timestamp}</span>
+  1313→                                          </div>
+  1314→                                          <p className="text-xs text-muted-foreground">{reply.text}</p>
+  1315→                                        </div>
+  1316→                                      ))}
+  1317→                                    </div>
+  1318→                                  )}
+  1319→
+  1320→                                  {replyingTo === item.id ? (
+  1321→                                    <div className="flex gap-2 mt-2">
+  1322→                                      <input
+  1323→                                        type="text"
+  1324→                                        placeholder="Write a reply..."
+  1325→                                        value={replyText}
+  1326→                                        onChange={(e) => setReplyText(e.target.value)}
+  1327→                                        onKeyDown={(e) => { if (e.key === 'Enter') addReply(item.id); }}
+  1328→                                        className="flex-1 px-2 py-1 text-xs rounded-lg bg-white/50 dark:bg-slate-800/50 border border-white/30 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-sky-400/50"
+  1329→                                        autoFocus
+  1330→                                      />
+  1331→                                      <button
+  1332→                                        className="p-1 text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20 rounded-lg"
+  1333→                                        onClick={() => addReply(item.id)}
+  1334→                                      >
+  1335→                                        <Send className="w-3 h-3" />
+  1336→                                      </button>
+  1337→                                      <button
+  1338→                                        className="p-1 text-muted-foreground hover:bg-muted/30 rounded-lg"
+  1339→                                        onClick={() => { setReplyingTo(null); setReplyText(''); }}
+  1340→                                      >
+  1341→                                        <X className="w-3 h-3" />
+  1342→                                      </button>
+  1343→                                    </div>
+  1344→                                  ) : (
+  1345→                                    <button
+  1346→                                      className="flex items-center gap-1 mt-2 text-xs text-muted-foreground hover:text-sky-500 transition-colors"
+  1347→                                      onClick={() => setReplyingTo(item.id)}
+  1348→                                    >
+  1349→                                      <Reply className="w-3 h-3" />
+  1350→                                      Reply
+  1351→                                    </button>
+  1352→                                  )}
+  1353→                                </div>
+  1354→                              </div>
+  1355→                            </motion.div>
+  1356→                          ))}
+  1357→                        </div>
+  1358→                      </div>
+  1359→                    )}
+  1360→                  </div>
+  1361→                </GlassCard>
+  1362→              </div>
+  1363→            )}
+  1364→          </div>
+  1365→        </div>
+  1366→      )}
+  1367→    </div>
+  1368→  );
+  1369→}
+  1370→

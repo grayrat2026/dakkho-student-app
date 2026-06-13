@@ -1,0 +1,748 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useState, useEffect, useCallback, useMemo } from 'react';
+     4→     4→import { apiGet, apiPost, apiPut, apiDelete, apiUpload } from './api-client';
+     5→     5→import { useAuthStore } from './store';
+     6→     6→
+     7→     7→// ==================== Generic API Data Hook ====================
+     8→     8→function useApiData<T>(path: string, defaultValue: T, deps: any[] = []) {
+     9→     9→  const [data, setData] = useState<T>(defaultValue);
+    10→    10→  const [loading, setLoading] = useState(true);
+    11→    11→  const [error, setError] = useState<string | null>(null);
+    12→    12→  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+    13→    13→
+    14→    14→  const fetch = useCallback(async () => {
+    15→    15→    if (!isAuthenticated) { setLoading(false); return; }
+    16→    16→    if (!path) { setLoading(false); return; } // Skip when path is empty
+    17→    17→    setLoading(true);
+    18→    18→    setError(null);
+    19→    19→    try {
+    20→    20→      const result = await apiGet(path);
+    21→    21→      setData(result);
+    22→    22→    } catch (err: any) {
+    23→    23→      setError(err.message || 'Failed to fetch data');
+    24→    24→    } finally {
+    25→    25→      setLoading(false);
+    26→    26→    }
+    27→    27→  }, [path, isAuthenticated, ...deps]);
+    28→    28→
+    29→    29→  useEffect(() => { fetch(); }, [fetch]);
+    30→    30→
+    31→    31→  return { data, loading, error, refetch: fetch, setData };
+    32→    32→}
+    33→    33→
+    34→    34→// ==================== Generic Mutation Hook ====================
+    35→    35→function useApiMutation<TInput, TOutput = any>(
+    36→    36→  method: 'POST' | 'PUT' | 'DELETE',
+    37→    37→  pathFn: (input: TInput) => string,
+    38→    38→  bodyFn?: (input: TInput) => any,
+    39→    39→) {
+    40→    40→  const [loading, setLoading] = useState(false);
+    41→    41→  const [error, setError] = useState<string | null>(null);
+    42→    42→
+    43→    43→  const mutate = useCallback(async (input: TInput): Promise<TOutput | null> => {
+    44→    44→    setLoading(true);
+    45→    45→    setError(null);
+    46→    46→    try {
+    47→    47→      const path = pathFn(input);
+    48→    48→      const body = bodyFn ? bodyFn(input) : input;
+    49→    49→      let result: any;
+    50→    50→      if (method === 'POST') {
+    51→    51→        result = await apiPost(path, body);
+    52→    52→      } else if (method === 'PUT') {
+    53→    53→        result = await apiPut(path, body);
+    54→    54→      } else {
+    55→    55→        result = await apiDelete(path);
+    56→    56→      }
+    57→    57→      setLoading(false);
+    58→    58→      return result as TOutput;
+    59→    59→    } catch (err: any) {
+    60→    60→      setError(err.message || 'Operation failed');
+    61→    61→      setLoading(false);
+    62→    62→      return null;
+    63→    63→    }
+    64→    64→  }, [method, pathFn, bodyFn]);
+    65→    65→
+    66→    66→  return { mutate, loading, error, setError };
+    67→    67→}
+    68→    68→
+    69→    69→// ==================== Dashboard ====================
+    70→    70→export function useDashboard() {
+    71→    71→  return useApiData('/dashboard', { success: true, dashboard: { courseCount: 0, totalStudents: 0, totalRevenue: 0, avgRating: 0, upcomingClasses: 0, totalReviews: 0 } });
+    72→    72→}
+    73→    73→
+    74→    74→// ==================== Technologies & Subjects ====================
+    75→    75→export function useTechnologies() {
+    76→    76→  return useApiData('/technologies', { technologies: [] });
+    77→    77→}
+    78→    78→
+    79→    79→export function useSubjects(technologyId?: number) {
+    80→    80→  const path = technologyId ? `/subjects?technology_id=${technologyId}` : '/subjects';
+    81→    81→  return useApiData(path, { subjects: [] }, [technologyId]);
+    82→    82→}
+    83→    83→
+    84→    84→export function useCourseSubjects(courseId: string) {
+    85→    85→  return useApiData(`/courses/${courseId}/subjects`, { subjects: [] }, [courseId]);
+    86→    86→}
+    87→    87→
+    88→    88→export function useAddSubjectToCourse(courseId: string) {
+    89→    89→  return useApiMutation<{ subjectId: number; sortOrder?: number }, any>(
+    90→    90→    'POST',
+    91→    91→    () => `/courses/${courseId}/subjects`,
+    92→    92→    (input) => ({ subject_id: input.subjectId, sort_order: input.sortOrder }),
+    93→    93→  );
+    94→    94→}
+    95→    95→
+    96→    96→export function useRemoveSubjectFromCourse(courseId: string) {
+    97→    97→  return useApiMutation<{ subjectId: number }, any>(
+    98→    98→    'DELETE',
+    99→    99→    (input) => `/courses/${courseId}/subjects/${input.subjectId}`,
+   100→   100→  );
+   101→   101→}
+   102→   102→
+   103→   103→// ==================== Courses ====================
+   104→   104→export function useCourses() {
+   105→   105→  return useApiData('/courses', { courses: [], total: 0 });
+   106→   106→}
+   107→   107→
+   108→   108→export function useCourse(id: string) {
+   109→   109→  return useApiData(`/courses/${id}`, { success: true, course: null, studentCount: 0 }, [id]);
+   110→   110→}
+   111→   111→
+   112→   112→export function useCreateCourse() {
+   113→   113→  return useApiMutation<{ title: string; description?: string; technologyId?: number; level?: string; price?: number; semester?: string; whatYouLearn?: string; tags?: string; language?: string }, any>(
+   114→   114→    'POST',
+   115→   115→    () => '/courses',
+   116→   116→    (input) => input,
+   117→   117→  );
+   118→   118→}
+   119→   119→
+   120→   120→export function useUpdateCourse(courseId: string) {
+   121→   121→  return useApiMutation<{ title?: string; description?: string; technologyId?: number; level?: string; price?: number; semester?: string; whatYouLearn?: string; tags?: string; language?: string; isPublished?: boolean }, any>(
+   122→   122→    'PUT',
+   123→   123→    () => `/courses/${courseId}`,
+   124→   124→    (input) => input,
+   125→   125→  );
+   126→   126→}
+   127→   127→
+   128→   128→export function useDeleteCourse() {
+   129→   129→  return useApiMutation<{ courseId: string }, any>(
+   130→   130→    'DELETE',
+   131→   131→    (input) => `/courses/${input.courseId}`,
+   132→   132→  );
+   133→   133→}
+   134→   134→
+   135→   135→export function useUploadThumbnail(courseId: string) {
+   136→   136→  const [uploadProgress, setUploadProgress] = useState(0);
+   137→   137→  const [loading, setLoading] = useState(false);
+   138→   138→  const [error, setError] = useState<string | null>(null);
+   139→   139→
+   140→   140→  const upload = useCallback(async (file: File) => {
+   141→   141→    setLoading(true);
+   142→   142→    setError(null);
+   143→   143→    setUploadProgress(0);
+   144→   144→    try {
+   145→   145→      const fd = new FormData();
+   146→   146→      fd.append('thumbnail', file);
+   147→   147→      const result = await apiUpload(`/courses/${courseId}/thumbnail`, fd, (percent) => {
+   148→   148→        setUploadProgress(percent);
+   149→   149→      });
+   150→   150→      setLoading(false);
+   151→   151→      return result;
+   152→   152→    } catch (err: any) {
+   153→   153→      setError(err.message || 'Thumbnail upload failed');
+   154→   154→      setLoading(false);
+   155→   155→      return null;
+   156→   156→    }
+   157→   157→  }, [courseId]);
+   158→   158→
+   159→   159→  return { upload, uploadProgress, loading, error };
+   160→   160→}
+   161→   161→
+   162→   162→// ==================== Curriculum ====================
+   163→   163→export function useCurriculum(courseId: string) {
+   164→   164→  const result = useApiData(`/courses/${courseId}/curriculum`, { success: true, curriculum: { subjects: [], chapters: [], lessons: [], resources: [] } }, [courseId]);
+   165→   165→
+   166→   166→  // The API returns { success, course, chapters, resources } at the top level,
+   167→   167→  // but consumers expect data nested under .curriculum with a flat .lessons array.
+   168→   168→  // Transform the response to match the expected shape.
+   169→   169→  const transformedData = useMemo(() => {
+   170→   170→    const raw = result.data as any;
+   171→   171→    if (!raw) return result.data;
+   172→   172→
+   173→   173→    // If the API already nests under .curriculum, use as-is
+   174→   174→    if (raw.curriculum) return raw;
+   175→   175→
+   176→   176→    // Otherwise, restructure: chapters contain nested lessons that need to be flattened
+   177→   177→    const chapters = raw.chapters || [];
+   178→   178→    const allLessons: any[] = [];
+   179→   179→    const chaptersWithLessons = chapters.map((ch: any) => {
+   180→   180→      const lessons = ch.lessons || [];
+   181→   181→      allLessons.push(...lessons);
+   182→   182→      return { ...ch, lessons };
+   183→   183→    });
+   184→   184→
+   185→   185→    return {
+   186→   186→      ...raw,
+   187→   187→      curriculum: {
+   188→   188→        subjects: raw.subjects || [],
+   189→   189→        chapters: chaptersWithLessons,
+   190→   190→        lessons: allLessons,
+   191→   191→        resources: raw.resources || [],
+   192→   192→      },
+   193→   193→    };
+   194→   194→  }, [result.data]);
+   195→   195→
+   196→   196→  return { ...result, data: transformedData as any };
+   197→   197→}
+   198→   198→
+   199→   199→// ==================== Chapters ====================
+   200→   200→export function useChapters(courseId: string) {
+   201→   201→  return useApiData(`/courses/${courseId}/chapters`, { chapters: [], total: 0 }, [courseId]);
+   202→   202→}
+   203→   203→
+   204→   204→export function useCreateChapter(courseId: string) {
+   205→   205→  return useApiMutation<{ title: string; subjectId?: string | number; description?: string; sortOrder?: number }, any>(
+   206→   206→    'POST',
+   207→   207→    () => `/courses/${courseId}/chapters`,
+   208→   208→    (input) => ({ title: input.title, subject_id: input.subjectId, description: input.description, sort_order: input.sortOrder }),
+   209→   209→  );
+   210→   210→}
+   211→   211→
+   212→   212→export function useUpdateChapter(courseId: string) {
+   213→   213→  return useApiMutation<{ chapterId: string; title?: string; description?: string; sortOrder?: number; subjectId?: string | number }, any>(
+   214→   214→    'PUT',
+   215→   215→    (input) => `/courses/${courseId}/chapters/${input.chapterId}`,
+   216→   216→    (input) => ({ title: input.title, description: input.description, sort_order: input.sortOrder, subject_id: input.subjectId }),
+   217→   217→  );
+   218→   218→}
+   219→   219→
+   220→   220→export function useDeleteChapter(courseId: string) {
+   221→   221→  return useApiMutation<{ chapterId: string }, any>(
+   222→   222→    'DELETE',
+   223→   223→    (input) => `/courses/${courseId}/chapters/${input.chapterId}`,
+   224→   224→  );
+   225→   225→}
+   226→   226→
+   227→   227→// ==================== Lessons ====================
+   228→   228→export function useLessons(courseId: string) {
+   229→   229→  return useApiData(`/courses/${courseId}/lessons`, { lessons: [], total: 0 }, [courseId]);
+   230→   230→}
+   231→   231→
+   232→   232→export function useCreateLesson(courseId: string) {
+   233→   233→  return useApiMutation<{ title: string; chapterId?: string; subjectId?: number; lessonType?: string; sortOrder?: number; duration?: number; videoUrl?: string; thumbnailUrl?: string; isPreview?: boolean; description?: string; documentUrl?: string }, any>(
+   234→   234→    'POST',
+   235→   235→    () => `/courses/${courseId}/lessons`,
+   236→   236→    (input) => ({
+   237→   237→      title: input.title,
+   238→   238→      chapter_id: input.chapterId,
+   239→   239→      subject_id: input.subjectId,
+   240→   240→      lesson_type: input.lessonType,
+   241→   241→      sort_order: input.sortOrder,
+   242→   242→      duration: input.duration,
+   243→   243→      video_url: input.videoUrl,
+   244→   244→      thumbnail_url: input.thumbnailUrl,
+   245→   245→      is_preview: input.isPreview,
+   246→   246→      description: input.description,
+   247→   247→      document_url: input.documentUrl,
+   248→   248→    }),
+   249→   249→  );
+   250→   250→}
+   251→   251→
+   252→   252→export function useUpdateLesson(courseId: string) {
+   253→   253→  return useApiMutation<{ lessonId: string; title?: string; description?: string; sortOrder?: number; videoUrl?: string; duration?: number; lessonType?: string; isPreview?: boolean; documentUrl?: string }, any>(
+   254→   254→    'PUT',
+   255→   255→    (input) => `/courses/${courseId}/lessons/${input.lessonId}`,
+   256→   256→    (input) => ({
+   257→   257→      title: input.title,
+   258→   258→      description: input.description,
+   259→   259→      sort_order: input.sortOrder,
+   260→   260→      video_url: input.videoUrl,
+   261→   261→      duration: input.duration,
+   262→   262→      lesson_type: input.lessonType,
+   263→   263→      is_preview: input.isPreview,
+   264→   264→      document_url: input.documentUrl,
+   265→   265→    }),
+   266→   266→  );
+   267→   267→}
+   268→   268→
+   269→   269→export function useDeleteLesson(courseId: string) {
+   270→   270→  return useApiMutation<{ lessonId: string }, any>(
+   271→   271→    'DELETE',
+   272→   272→    (input) => `/courses/${courseId}/lessons/${input.lessonId}`,
+   273→   273→  );
+   274→   274→}
+   275→   275→
+   276→   276→// ==================== Videos ====================
+   277→   277→export function useCourseVideos(courseId: string) {
+   278→   278→  return useApiData(`/courses/${courseId}/videos`, { videos: [], total: 0 }, [courseId]);
+   279→   279→}
+   280→   280→
+   281→   281→export function useCreateVideo(courseId: string) {
+   282→   282→  return useApiMutation<{ title: string; lessonType?: string; videoUrl?: string; duration?: number; isPreview?: boolean; sortOrder?: number; description?: string }, any>(
+   283→   283→    'POST',
+   284→   284→    () => `/courses/${courseId}/videos`,
+   285→   285→    (input) => ({
+   286→   286→      title: input.title,
+   287→   287→      lesson_type: input.lessonType,
+   288→   288→      video_url: input.videoUrl,
+   289→   289→      duration: input.duration,
+   290→   290→      is_preview: input.isPreview,
+   291→   291→      sort_order: input.sortOrder,
+   292→   292→      description: input.description,
+   293→   293→    }),
+   294→   294→  );
+   295→   295→}
+   296→   296→
+   297→   297→export function useUploadVideo(courseId: string) {
+   298→   298→  const [uploadProgress, setUploadProgress] = useState(0);
+   299→   299→  const [loading, setLoading] = useState(false);
+   300→   300→  const [error, setError] = useState<string | null>(null);
+   301→   301→
+   302→   302→  const upload = useCallback(async (formData: FormData) => {
+   303→   303→    setLoading(true);
+   304→   304→    setError(null);
+   305→   305→    setUploadProgress(0);
+   306→   306→    try {
+   307→   307→      const result = await apiUpload(`/courses/${courseId}/videos/upload`, formData, (percent) => {
+   308→   308→        setUploadProgress(percent);
+   309→   309→      });
+   310→   310→      setLoading(false);
+   311→   311→      return result;
+   312→   312→    } catch (err: any) {
+   313→   313→      setError(err.message || 'Upload failed');
+   314→   314→      setLoading(false);
+   315→   315→      return null;
+   316→   316→    }
+   317→   317→  }, [courseId]);
+   318→   318→
+   319→   319→  return { upload, uploadProgress, loading, error };
+   320→   320→}
+   321→   321→
+   322→   322→export function useUpdateVideo(courseId: string) {
+   323→   323→  return useApiMutation<{ videoId: string; title?: string; description?: string; subjectId?: string | number; chapterId?: string; lessonType?: string; videoUrl?: string; thumbnailUrl?: string; duration?: number; isPreview?: boolean; sortOrder?: number }, any>(
+   324→   324→    'PUT',
+   325→   325→    (input) => `/courses/${courseId}/videos/${input.videoId}`,
+   326→   326→    (input) => ({
+   327→   327→      title: input.title,
+   328→   328→      description: input.description,
+   329→   329→      subject_id: input.subjectId,
+   330→   330→      chapter_id: input.chapterId,
+   331→   331→      lesson_type: input.lessonType,
+   332→   332→      video_url: input.videoUrl,
+   333→   333→      thumbnail_url: input.thumbnailUrl,
+   334→   334→      duration: input.duration,
+   335→   335→      is_preview: input.isPreview,
+   336→   336→      sort_order: input.sortOrder,
+   337→   337→    }),
+   338→   338→  );
+   339→   339→}
+   340→   340→
+   341→   341→export function useDeleteVideo(courseId?: string) {
+   342→   342→  return useApiMutation<{ courseId?: string; videoId: string }, any>(
+   343→   343→    'DELETE',
+   344→   344→    (input) => `/courses/${input.courseId || courseId}/videos/${input.videoId}`,
+   345→   345→  );
+   346→   346→}
+   347→   347→
+   348→   348→// ==================== Resources ====================
+   349→   349→export function useResources(courseId: string) {
+   350→   350→  return useApiData(`/courses/${courseId}/resources`, { resources: [], total: 0 }, [courseId]);
+   351→   351→}
+   352→   352→
+   353→   353→export function useUploadResource(courseId: string) {
+   354→   354→  const [uploadProgress, setUploadProgress] = useState(0);
+   355→   355→  const [loading, setLoading] = useState(false);
+   356→   356→  const [error, setError] = useState<string | null>(null);
+   357→   357→
+   358→   358→  const upload = useCallback(async (formData: FormData) => {
+   359→   359→    setLoading(true);
+   360→   360→    setError(null);
+   361→   361→    setUploadProgress(0);
+   362→   362→    try {
+   363→   363→      const result = await apiUpload(`/courses/${courseId}/resources`, formData, (percent) => {
+   364→   364→        setUploadProgress(percent);
+   365→   365→      });
+   366→   366→      setLoading(false);
+   367→   367→      return result;
+   368→   368→    } catch (err: any) {
+   369→   369→      setError(err.message || 'Upload failed');
+   370→   370→      setLoading(false);
+   371→   371→      return null;
+   372→   372→    }
+   373→   373→  }, [courseId]);
+   374→   374→
+   375→   375→  return { upload, uploadProgress, loading, error };
+   376→   376→}
+   377→   377→
+   378→   378→export function useDeleteResource(courseId: string) {
+   379→   379→  return useApiMutation<{ resourceId: string }, any>(
+   380→   380→    'DELETE',
+   381→   381→    (input) => `/courses/${courseId}/resources/${input.resourceId}`,
+   382→   382→  );
+   383→   383→}
+   384→   384→
+   385→   385→// ==================== Schedule ====================
+   386→   386→export function useSchedule() {
+   387→   387→  return useApiData('/schedule', { success: true, schedule: [] });
+   388→   388→}
+   389→   389→
+   390→   390→export function useCreateLiveClass() {
+   391→   391→  return useApiMutation<{ title: string; courseId?: string; scheduledAt: string; durationMinutes?: number; platform?: string; meetingUrl?: string; description?: string }, any>(
+   392→   392→    'POST',
+   393→   393→    () => '/schedule',
+   394→   394→    (input) => ({
+   395→   395→      title: input.title,
+   396→   396→      course_id: input.courseId,
+   397→   397→      scheduled_at: input.scheduledAt,
+   398→   398→      duration_minutes: input.durationMinutes,
+   399→   399→      platform: input.platform,
+   400→   400→      meeting_url: input.meetingUrl,
+   401→   401→      description: input.description,
+   402→   402→    }),
+   403→   403→  );
+   404→   404→}
+   405→   405→
+   406→   406→// ==================== LiveKit ====================
+   407→   407→export function useLiveKitConfig() {
+   408→   408→  return useApiData('/livekit/config', { configured: false, url: null });
+   409→   409→}
+   410→   410→
+   411→   411→export function useLiveKitToken() {
+   412→   412→  const [loading, setLoading] = useState(false);
+   413→   413→  const [error, setError] = useState<string | null>(null);
+   414→   414→
+   415→   415→  const fetchToken = useCallback(async (room: string, identity?: string, name?: string) => {
+   416→   416→    setLoading(true);
+   417→   417→    setError(null);
+   418→   418→    try {
+   419→   419→      const params = new URLSearchParams({ room });
+   420→   420→      if (identity) params.set('identity', identity);
+   421→   421→      if (name) params.set('name', name);
+   422→   422→      const result = await apiGet(`/livekit/token?${params.toString()}`);
+   423→   423→      setLoading(false);
+   424→   424→      return result;
+   425→   425→    } catch (err: any) {
+   426→   426→      setError(err.message || 'Failed to get LiveKit token');
+   427→   427→      setLoading(false);
+   428→   428→      return null;
+   429→   429→    }
+   430→   430→  }, []);
+   431→   431→
+   432→   432→  return { fetchToken, loading, error };
+   433→   433→}
+   434→   434→
+   435→   435→// ==================== LiveKit Token with Role ====================
+   436→   436→export function useLiveKitRoleToken() {
+   437→   437→  const [loading, setLoading] = useState(false);
+   438→   438→  const [error, setError] = useState<string | null>(null);
+   439→   439→
+   440→   440→  const fetchToken = useCallback(async (
+   441→   441→    room: string,
+   442→   442→    role: 'host' | 'presenter' | 'guest' | 'viewer' | 'student' = 'host',
+   443→   443→    roomType: 'video' | 'voice' | 'classroom' | 'webinar' = 'video',
+   444→   444→    identity?: string,
+   445→   445→    name?: string,
+   446→   446→    ttl?: number,
+   447→   447→  ) => {
+   448→   448→    setLoading(true);
+   449→   449→    setError(null);
+   450→   450→    try {
+   451→   451→      const result = await apiPost('/livekit/token-role', {
+   452→   452→        room,
+   453→   453→        role,
+   454→   454→        room_type: roomType,
+   455→   455→        identity: identity || '',
+   456→   456→        name: name || '',
+   457→   457→        ttl: ttl || 6 * 60 * 60,
+   458→   458→      });
+   459→   459→      setLoading(false);
+   460→   460→      return result;
+   461→   461→    } catch (err: any) {
+   462→   462→      setError(err.message || 'Failed to get LiveKit token');
+   463→   463→      setLoading(false);
+   464→   464→      return null;
+   465→   465→    }
+   466→   466→  }, []);
+   467→   467→
+   468→   468→  return { fetchToken, loading, error };
+   469→   469→}
+   470→   470→
+   471→   471→// ==================== LiveKit Room Management ====================
+   472→   472→export function useLiveKitRooms() {
+   473→   473→  return useApiData('/livekit/rooms', { success: true, rooms: [], activeRooms: [] });
+   474→   474→}
+   475→   475→
+   476→   476→export function useCreateLiveKitRoom() {
+   477→   477→  return useApiMutation<{
+   478→   478→    title: string; course_id?: string; scheduled_at: string; duration_minutes: number;
+   479→   479→    description?: string; max_participants?: number; auto_recording?: boolean;
+   480→   480→    room_type?: 'video' | 'voice' | 'classroom' | 'webinar';
+   481→   481→  }, any>(
+   482→   482→    'POST',
+   483→   483→    () => '/livekit/rooms',
+   484→   484→    (input) => input,
+   485→   485→  );
+   486→   486→}
+   487→   487→
+   488→   488→export function useCloseRoom() {
+   489→   489→  return useApiMutation<{ roomName: string }, any>(
+   490→   490→    'DELETE',
+   491→   491→    (input) => `/livekit/rooms/${input.roomName}`,
+   492→   492→  );
+   493→   493→}
+   494→   494→
+   495→   495→// ==================== LiveKit Recordings ====================
+   496→   496→export function useLiveKitRecordings() {
+   497→   497→  return useApiData('/livekit/recordings', { success: true, recordings: [] });
+   498→   498→}
+   499→   499→
+   500→   500→// ==================== LiveKit Attendance ====================
+   501→   501→export function useLiveKitAttendance(roomName: string) {
+   502→   502→  return useApiData(`/livekit/attendance/${roomName}`, { success: true, attendance: [], total: 0 }, [roomName]);
+   503→   503→}
+   504→   504→
+   505→   505→// ==================== LiveKit Health (LiveKit + Calls + Realtime) ====================
+   506→   506→export function useLiveKitHealth() {
+   507→   507→  return useApiData('/livekit/health', {
+   508→   508→    success: true,
+   509→   509→    livekit: { status: 'not_configured', url: null },
+   510→   510→    cloudflareCalls: { status: 'not_configured' },
+   511→   511→    realtime: { status: 'not_configured' },
+   512→   512→    fallback: 'unavailable',
+   513→   513→  });
+   514→   514→}
+   515→   515→
+   516→   516→// ==================== Cloudflare Calls Fallback ====================
+   517→   517→export function useCallsFallback() {
+   518→   518→  const [loading, setLoading] = useState(false);
+   519→   519→  const [error, setError] = useState<string | null>(null);
+   520→   520→
+   521→   521→  const createSession = useCallback(async (room: string) => {
+   522→   522→    setLoading(true);
+   523→   523→    setError(null);
+   524→   524→    try {
+   525→   525→      const result = await apiPost('/livekit/calls-session', { room });
+   526→   526→      setLoading(false);
+   527→   527→      return result;
+   528→   528→    } catch (err: any) {
+   529→   529→      setError(err.message || 'Failed to create Cloudflare Calls session');
+   530→   530→      setLoading(false);
+   531→   531→      return null;
+   532→   532→    }
+   533→   533→  }, []);
+   534→   534→
+   535→   535→  return { createSession, loading, error };
+   536→   536→}
+   537→   537→
+   538→   538→export function useCallsStatus() {
+   539→   539→  return useApiData('/livekit/calls-status', { available: false });
+   540→   540→}
+   541→   541→
+   542→   542→// ==================== Dakkho Realtime (Cloudflare Calls "Dakkho Realtime" App) ====================
+   543→   543→export function useRealtimeSession() {
+   544→   544→  const [loading, setLoading] = useState(false);
+   545→   545→  const [error, setError] = useState<string | null>(null);
+   546→   546→
+   547→   547→  const createSession = useCallback(async (room: string, options?: { ttl?: number; maxParticipants?: number }) => {
+   548→   548→    setLoading(true);
+   549→   549→    setError(null);
+   550→   550→    try {
+   551→   551→      const result = await apiPost('/realtime/session', { room, ...options });
+   552→   552→      setLoading(false);
+   553→   553→      return result;
+   554→   554→    } catch (err: any) {
+   555→   555→      setError(err.message || 'Failed to create Dakkho Realtime session');
+   556→   556→      setLoading(false);
+   557→   557→      return null;
+   558→   558→    }
+   559→   559→  }, []);
+   560→   560→
+   561→   561→  return { createSession, loading, error };
+   562→   562→}
+   563→   563→
+   564→   564→export function useRealtimeConfig() {
+   565→   565→  return useApiData('/realtime/config', { configured: false, appId: null });
+   566→   566→}
+   567→   567→
+   568→   568→export function useRealtimeStatus() {
+   569→   569→  return useApiData('/realtime/status', { available: false });
+   570→   570→}
+   571→   571→
+   572→   572→// ==================== Reviews ====================
+   573→   573→export function useReviews(page = 1) {
+   574→   574→  return useApiData(`/reviews?page=${page}`, { success: true, reviews: [], stats: {}, page, limit: 10 }, [page]);
+   575→   575→}
+   576→   576→
+   577→   577→export function useReplyReview() {
+   578→   578→  return useApiMutation<{ reviewId: number | string; replyText: string }, any>(
+   579→   579→    'PUT',
+   580→   580→    (input) => `/reviews/${input.reviewId}/reply`,
+   581→   581→    (input) => ({ reply_text: input.replyText }),
+   582→   582→  );
+   583→   583→}
+   584→   584→
+   585→   585→// ==================== Notifications ====================
+   586→   586→export function useNotifications() {
+   587→   587→  return useApiData('/notifications', { success: true, notifications: [], total: 0 });
+   588→   588→}
+   589→   589→
+   590→   590→// ==================== Profile ====================
+   591→   591→export function useProfile() {
+   592→   592→  return useApiData('/profile', { success: true, profile: null });
+   593→   593→}
+   594→   594→
+   595→   595→// ==================== Support ====================
+   596→   596→export function useSupportTickets() {
+   597→   597→  return useApiData('/support/tickets', { success: true, tickets: [] });
+   598→   598→}
+   599→   599→
+   600→   600→export function useCreateSupportTicket() {
+   601→   601→  return useApiMutation<{ category?: string; subject: string; description: string; priority?: string }, any>(
+   602→   602→    'POST',
+   603→   603→    () => '/support/tickets',
+   604→   604→    (input) => input,
+   605→   605→  );
+   606→   606→}
+   607→   607→
+   608→   608→export function useSendSupportMessage() {
+   609→   609→  return useApiMutation<{ ticketId: number | string; message: string }, any>(
+   610→   610→    'POST',
+   611→   611→    (input) => `/support/tickets/${input.ticketId}/messages`,
+   612→   612→    (input) => ({ message: input.message }),
+   613→   613→  );
+   614→   614→}
+   615→   615→
+   616→   616→// ==================== Course Students ====================
+   617→   617→export function useCourseStudents(courseId: string) {
+   618→   618→  return useApiData(courseId ? `/courses/${courseId}/students` : '', { students: [], total: 0 }, [courseId]);
+   619→   619→}
+   620→   620→
+   621→   621→// ==================== Course Progress ====================
+   622→   622→export function useCourseProgress(courseId: string) {
+   623→   623→  return useApiData(courseId ? `/courses/${courseId}/progress` : '', { success: true, progress: [] }, [courseId]);
+   624→   624→}
+   625→   625→
+   626→   626→// ==================== Course Analytics ====================
+   627→   627→export function useCourseAnalytics(courseId: string) {
+   628→   628→  return useApiData(courseId ? `/courses/${courseId}/analytics` : '', { success: true, analytics: {} }, [courseId]);
+   629→   629→}
+   630→   630→
+   631→   631→// ==================== Upload thumbnail via R2 direct ====================
+   632→   632→export function useUploadCourseThumbnail(courseId: string) {
+   633→   633→  const [uploadProgress, setUploadProgress] = useState(0);
+   634→   634→  const [loading, setLoading] = useState(false);
+   635→   635→  const [error, setError] = useState<string | null>(null);
+   636→   636→
+   637→   637→  const upload = useCallback(async (file: File) => {
+   638→   638→    setLoading(true);
+   639→   639→    setError(null);
+   640→   640→    setUploadProgress(0);
+   641→   641→    try {
+   642→   642→      const fd = new FormData();
+   643→   643→      fd.append('thumbnail', file);
+   644→   644→      const result = await apiUpload(`/courses/${courseId}/thumbnail`, fd, (percent) => {
+   645→   645→        setUploadProgress(percent);
+   646→   646→      });
+   647→   647→      setLoading(false);
+   648→   648→      return result;
+   649→   649→    } catch (err: any) {
+   650→   650→      setError(err.message || 'Thumbnail upload failed');
+   651→   651→      setLoading(false);
+   652→   652→      return null;
+   653→   653→    }
+   654→   654→  }, [courseId]);
+   655→   655→
+   656→   656→  return { upload, uploadProgress, loading, error };
+   657→   657→}
+   658→   658→
+   659→   659→// ==================== Upload lesson video via R2 ====================
+   660→   660→export function useUploadLessonVideo(courseId: string) {
+   661→   661→  const [uploadProgress, setUploadProgress] = useState(0);
+   662→   662→  const [loading, setLoading] = useState(false);
+   663→   663→  const [error, setError] = useState<string | null>(null);
+   664→   664→
+   665→   665→  const upload = useCallback(async (formData: FormData) => {
+   666→   666→    setLoading(true);
+   667→   667→    setError(null);
+   668→   668→    setUploadProgress(0);
+   669→   669→    try {
+   670→   670→      const result = await apiUpload(`/courses/${courseId}/videos/upload`, formData, (percent) => {
+   671→   671→        setUploadProgress(percent);
+   672→   672→      });
+   673→   673→      setLoading(false);
+   674→   674→      return result;
+   675→   675→    } catch (err: any) {
+   676→   676→      setError(err.message || 'Video upload failed');
+   677→   677→      setLoading(false);
+   678→   678→      return null;
+   679→   679→    }
+   680→   680→  }, [courseId]);
+   681→   681→
+   682→   682→  return { upload, uploadProgress, loading, error };
+   683→   683→}
+   684→   684→
+   685→   685→// ==================== Subject-specific chapters ====================
+   686→   686→export function useSubjectChapters(courseId: string, subjectId: number | string) {
+   687→   687→  return useApiData(
+   688→   688→    `/courses/${courseId}/subjects/${subjectId}/chapters`,
+   689→   689→    { chapters: [], total: 0 },
+   690→   690→    [courseId, subjectId]
+   691→   691→  );
+   692→   692→}
+   693→   693→
+   694→   694→// ==================== Course Instructors ====================
+   695→   695→export function useCourseInstructors(courseId: string) {
+   696→   696→  return useApiData(`/courses/${courseId}/instructors`, { instructors: [], total: 0 }, [courseId]);
+   697→   697→}
+   698→   698→
+   699→   699→export function useAddCourseInstructor(courseId: string) {
+   700→   700→  return useApiMutation<{ instructorId: string; subjectIds: number[] }, any>(
+   701→   701→    'POST',
+   702→   702→    () => `/courses/${courseId}/instructors`,
+   703→   703→    (input) => ({ instructor_id: input.instructorId, subject_ids: input.subjectIds }),
+   704→   704→  );
+   705→   705→}
+   706→   706→
+   707→   707→export function useRemoveCourseInstructor(courseId: string) {
+   708→   708→  return useApiMutation<{ instructorId: string }, any>(
+   709→   709→    'DELETE',
+   710→   710→    (input) => `/courses/${courseId}/instructors/${input.instructorId}`,
+   711→   711→  );
+   712→   712→}
+   713→   713→
+   714→   714→// ==================== Search Instructors ====================
+   715→   715→export function useSearchInstructors(query: string) {
+   716→   716→  return useApiData(`/instructors/search?q=${encodeURIComponent(query)}`, { instructors: [] }, [query]);
+   717→   717→}
+   718→   718→
+   719→   719→// ==================== Video by ID ====================
+   720→   720→export function useVideo(courseId: string, videoId: string) {
+   721→   721→  return useApiData(`/courses/${courseId}/videos/${videoId}`, { success: true, video: null }, [courseId, videoId]);
+   722→   722→}
+   723→   723→
+   724→   724→// ==================== Search Instructor Videos ====================
+   725→   725→export function useSearchInstructorVideos() {
+   726→   726→  const [loading, setLoading] = useState(false);
+   727→   727→  const [error, setError] = useState<string | null>(null);
+   728→   728→
+   729→   729→  const search = useCallback(async (query: string, courseId?: string) => {
+   730→   730→    if (!query.trim()) return { videos: [], total: 0 };
+   731→   731→    setLoading(true);
+   732→   732→    setError(null);
+   733→   733→    try {
+   734→   734→      const params = new URLSearchParams({ q: query, limit: '20' });
+   735→   735→      if (courseId) params.set('courseId', courseId);
+   736→   736→      const result = await apiGet(`/videos/search?${params.toString()}`);
+   737→   737→      setLoading(false);
+   738→   738→      return result as { videos: any[]; total: number };
+   739→   739→    } catch (err: any) {
+   740→   740→      setError(err.message || 'Search failed');
+   741→   741→      setLoading(false);
+   742→   742→      return { videos: [], total: 0 };
+   743→   743→    }
+   744→   744→  }, []);
+   745→   745→
+   746→   746→  return { search, loading, error };
+   747→   747→}
+   748→   748→
