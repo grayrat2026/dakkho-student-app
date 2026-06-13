@@ -71,6 +71,7 @@ export default function AdminClientPage({ currentPage: initialPage }: { currentP
   const { adminUser, setAdminUser, sidebarCollapsed } = useAdminStore();
   const [checking, setChecking] = useState(true);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const getPageFromPath = useCallback((pathname: string): string => {
     const clean = pathname.replace(/^\/+|\/+$/g, '');
@@ -81,8 +82,7 @@ export default function AdminClientPage({ currentPage: initialPage }: { currentP
     return validPages.includes(firstSegment) ? firstSegment : 'dashboard';
   }, []);
 
-  // Always use URL as source of truth for initial page state
-  // This fixes direct page loads where RSC data may not match the URL
+  // Track the real current page from URL (source of truth)
   const [currentPage, setCurrentPage] = useState(() => {
     if (typeof window !== 'undefined') {
       return getPageFromPath(window.location.pathname);
@@ -95,9 +95,15 @@ export default function AdminClientPage({ currentPage: initialPage }: { currentP
     setCurrentPage(getPageFromPath(window.location.pathname));
   }, [getPageFromPath]);
 
+  // Mark as mounted (client-side only)
   useEffect(() => {
-    // Sync from URL on mount and whenever the page prop changes
-    // URL is always the source of truth
+    setMounted(true);
+    // Immediately sync from URL on mount - URL is ALWAYS the source of truth
+    syncPageFromUrl();
+  }, [syncPageFromUrl]);
+
+  // Also sync whenever the initialPage prop changes
+  useEffect(() => {
     syncPageFromUrl();
   }, [initialPage, syncPageFromUrl]);
 
