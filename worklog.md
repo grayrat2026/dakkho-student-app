@@ -26,3 +26,24 @@ Stage Summary:
 - Admin deployment repo: grayrat2026/dakkho-admin-web
 - Instructor deployment repo: grayrat2026/dakkho-instructor-web
 - Cloudflare Pages projects need manual reconfiguration to use new deployment repos
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix instructor site 404 on refresh + admin panel routing + admin pages
+
+Work Log:
+- Analyzed the root cause of 404 on refresh: Cloudflare Pages _worker.js was always serving root index.html instead of route-specific HTML
+- Updated _worker.js in both admin and instructor apps to try serving route-specific HTML first (e.g., /courses/index.html for /courses), then fall back to root index.html
+- Fixed admin AdminClientPage component to use URL pathname as source of truth instead of RSC data
+- Added useState initialization from window.location.pathname and useEffect sync on mount
+- Deployed both apps via wrangler pages deploy --branch=main for production deployment
+- Tested all 26 admin pages with direct page loads - all working
+- Tested all instructor pages with direct page loads - all working
+- Updated GitHub repos with latest code
+
+Stage Summary:
+- Instructor site: All pages load correctly on refresh, no more 404s
+- Admin panel: All 26 pages (dashboard, users, courses, videos, instructors, categories, subjects, technologies, institutes, institute-requests, coupons, discounts, payments, packages, enrollments, events, live-classes, support, achievements, push, notifications, config, email, analytics, settings, about) load correctly on direct page load
+- Routing fix: _worker.js updated to serve route-specific HTML + client-side URL-based page detection
+- Both apps deployed to production on Cloudflare Pages
