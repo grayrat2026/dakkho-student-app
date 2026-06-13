@@ -6,7 +6,7 @@ import { Star, Users, Clock, BookOpen, Play, ChevronLeft, Heart, Share2, Award, 
 import { useNavigationStore, useBookmarkStore, useAuthStore } from '@/lib/store';
 import { useCourse, useCategories, useCourseVideos, useCourses } from '@/lib/data-hooks';
 import { formatDuration, getLevelColor } from '@/lib/mock-data';
-import { packageApi, paymentApi, couponApi, userLookupApi } from '@/lib/api-client';
+import { packageApi, paymentApi, couponApi, userLookupApi, enrollmentApi } from '@/lib/api-client';
 import type { CoursePackage, PaymentConfig } from '@/lib/api-client';
 import { GlassCard } from '../shared/GlassCard';
 import { GradientButton } from '../shared/GradientButton';
@@ -66,6 +66,8 @@ export function CourseDetailPage() {
   const [duoLookupLoading, setDuoLookupLoading] = useState(false);
   const [duoLookupError, setDuoLookupError] = useState('');
   const [enrollmentStep, setEnrollmentStep] = useState<'package' | 'details' | 'payment'>('package');
+  const [isEnrolled, setIsEnrolled] = useState(false);
+  const [enrollmentChecked, setEnrollmentChecked] = useState(false);
 
   const courseId = pageParams.courseId as string;
   const { data: course, instructors: courseInstructors, loading: courseLoading, error: courseError } = useCourse(courseId);
@@ -73,6 +75,20 @@ export function CourseDetailPage() {
   const { data: videos = [] } = useCourseVideos(courseId);
   const { data: allCourses = [] } = useCourses();
   const bookmarked = course ? isBookmarked(course.id) : false;
+
+  // Check enrollment status when course is loaded
+  useEffect(() => {
+    if (course && isAuthenticated && !enrollmentChecked) {
+      enrollmentApi.check(course.id).then((res) => {
+        setIsEnrolled(res.enrolled);
+        setEnrollmentChecked(true);
+      }).catch(() => {
+        setEnrollmentChecked(true);
+      });
+    } else if (!isAuthenticated) {
+      setEnrollmentChecked(true);
+    }
+  }, [course, isAuthenticated, enrollmentChecked]);
 
   // Category from categories list
   const category = course ? categories.find((c) => c.id === course.categoryId) : undefined;
@@ -609,7 +625,9 @@ export function CourseDetailPage() {
         <div>
           <GlassCard className="p-6 sticky top-20 space-y-4">
             <div className="flex items-center justify-between">
-              {course.price > 0 ? (
+              {isEnrolled ? (
+                <span className="text-lg font-extrabold text-emerald-500">Enrolled ✓</span>
+              ) : course.price > 0 ? (
                 <span className="text-2xl font-extrabold text-foreground">&#2547;{course.price}</span>
               ) : (
                 <span className="text-2xl font-extrabold text-emerald-500">Free</span>
@@ -632,14 +650,16 @@ export function CourseDetailPage() {
             </div>
 
             <GradientButton className="w-full" size="lg" onClick={() => {
-              if (course.price > 0) {
+              if (isEnrolled) {
+                navigate('video-player', { videoId: videos[0]?.id, courseId: course.id });
+              } else if (course.price > 0) {
                 handleEnrollClick();
               } else {
                 navigate('video-player', { videoId: videos[0]?.id, courseId: course.id });
               }
             }}>
               <Play className="w-4 h-4" />
-              {course.price > 0 ? `Enroll Now — ৳${course.price}` : 'Start Learning'}
+              {isEnrolled ? 'Continue Learning' : (course.price > 0 ? `Enroll Now — ৳${course.price}` : 'Start Learning')}
             </GradientButton>
 
             <div className="space-y-3 text-sm pt-2">
@@ -682,7 +702,9 @@ export function CourseDetailPage() {
           className="w-full"
           size="lg"
           onClick={() => {
-            if (course.price > 0) {
+            if (isEnrolled) {
+              navigate('video-player', { videoId: videos[0]?.id, courseId: course.id });
+            } else if (course.price > 0) {
               handleEnrollClick();
             } else {
               navigate('video-player', { videoId: videos[0]?.id, courseId: course.id });
@@ -690,7 +712,7 @@ export function CourseDetailPage() {
           }}
         >
           <Play className="w-4 h-4" />
-          {course.price > 0 ? `Enroll Now — ৳${course.price}` : 'Continue Learning'}
+          {isEnrolled ? 'Continue Learning' : (course.price > 0 ? `Enroll Now — ৳${course.price}` : 'Start Learning')}
         </GradientButton>
       </div>
 
