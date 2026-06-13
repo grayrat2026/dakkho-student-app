@@ -1,0 +1,986 @@
+     1→-- DAKKHO Admin API - D1 Database Schema (Complete)
+     2→-- Last updated: 2025-03-04
+     3→-- Migrated: All Appwrite collections replaced with D1 tables
+     4→
+     5→-- ============================================================
+     6→-- CORE TABLES
+     7→-- ============================================================
+     8→
+     9→CREATE TABLE IF NOT EXISTS admin_sessions (
+    10→  id TEXT PRIMARY KEY,
+    11→  user_id TEXT NOT NULL,
+    12→  email TEXT NOT NULL,
+    13→  name TEXT,
+    14→  role TEXT DEFAULT 'admin',
+    15→  ip_address TEXT,
+    16→  user_agent TEXT,
+    17→  created_at TEXT DEFAULT (datetime('now')),
+    18→  expires_at TEXT NOT NULL,
+    19→  is_active INTEGER DEFAULT 1
+    20→);
+    21→
+    22→CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_user_id ON admin_sessions(user_id);
+    23→CREATE INDEX IF NOT EXISTS idx_sessions_expires ON admin_sessions(expires_at);
+    24→
+    25→CREATE TABLE IF NOT EXISTS app_config (
+    26→  key TEXT PRIMARY KEY,
+    27→  value TEXT NOT NULL DEFAULT '{}',
+    28→  description TEXT,
+    29→  updated_by TEXT,
+    30→  updated_at TEXT DEFAULT (datetime('now')),
+    31→  created_at TEXT DEFAULT (datetime('now'))
+    32→);
+    33→
+    34→CREATE INDEX IF NOT EXISTS idx_config_key ON app_config(key);
+    35→
+    36→CREATE TABLE IF NOT EXISTS audit_logs (
+    37→  id TEXT PRIMARY KEY,
+    38→  action TEXT NOT NULL,
+    39→  resource_type TEXT NOT NULL,
+    40→  resource_id TEXT,
+    41→  user_id TEXT,
+    42→  user_email TEXT,
+    43→  details TEXT DEFAULT '{}',
+    44→  ip_address TEXT,
+    45→  created_at TEXT DEFAULT (datetime('now'))
+    46→);
+    47→
+    48→CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);
+    49→CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_logs(resource_type, resource_id);
+    50→CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
+    51→
+    52→-- ============================================================
+    53→-- USERS TABLE (replaces Appwrite users collection)
+    54→-- ============================================================
+    55→
+    56→CREATE TABLE IF NOT EXISTS users (
+    57→  id TEXT PRIMARY KEY,
+    58→  email TEXT NOT NULL UNIQUE,
+    59→  full_name TEXT NOT NULL,
+    60→  phone TEXT,
+    61→  bio TEXT,
+    62→  institute_id INTEGER,
+    63→  technology TEXT,
+    64→  semester INTEGER DEFAULT 1,
+    65→  avatar_url TEXT,
+    66→  role TEXT DEFAULT 'student',
+    67→  email_verified INTEGER DEFAULT 0,
+    68→  is_active INTEGER DEFAULT 1,
+    69→  enrolled_course_ids TEXT DEFAULT '[]',
+    70→  password_hash TEXT NOT NULL,
+    71→  created_at TEXT DEFAULT (datetime('now')),
+    72→  updated_at TEXT DEFAULT (datetime('now'))
+    73→);
+    74→CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    75→CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+    76→CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active);
+    77→
+    78→-- ============================================================
+    79→-- COURSES TABLE (replaces Appwrite courses collection)
+    80→-- ============================================================
+    81→
+    82→CREATE TABLE IF NOT EXISTS courses (
+    83→  id TEXT PRIMARY KEY,
+    84→  title TEXT NOT NULL,
+    85→  slug TEXT NOT NULL UNIQUE,
+    86→  description TEXT,
+    87→  thumbnail_url TEXT,
+    88→  preview_video_url TEXT,
+    89→  category_id TEXT,
+    90→  instructor_id TEXT,
+    91→  technology_id INTEGER,
+    92→  level TEXT DEFAULT 'beginner',
+    93→  language TEXT DEFAULT 'bangla',
+    94→  duration INTEGER DEFAULT 0,
+    95→  total_videos INTEGER DEFAULT 0,
+    96→  rating REAL DEFAULT 0,
+    97→  total_reviews INTEGER DEFAULT 0,
+    98→  total_students INTEGER DEFAULT 0,
+    99→  price REAL DEFAULT 0,
+   100→  is_featured INTEGER DEFAULT 0,
+   101→  is_published INTEGER DEFAULT 0,
+   102→  tags TEXT,
+   103→  semester TEXT,
+   104→  what_you_learn TEXT,
+   105→  created_at TEXT DEFAULT (datetime('now')),
+   106→  updated_at TEXT DEFAULT (datetime('now'))
+   107→);
+   108→CREATE INDEX IF NOT EXISTS idx_courses_slug ON courses(slug);
+   109→CREATE INDEX IF NOT EXISTS idx_courses_instructor ON courses(instructor_id);
+   110→CREATE INDEX IF NOT EXISTS idx_courses_published ON courses(is_published);
+   111→CREATE INDEX IF NOT EXISTS idx_courses_technology ON courses(technology_id);
+   112→
+   113→-- ============================================================
+   114→-- VIDEOS TABLE (replaces Appwrite videos collection)
+   115→-- ============================================================
+   116→
+   117→CREATE TABLE IF NOT EXISTS videos (
+   118→  id TEXT PRIMARY KEY,
+   119→  title TEXT NOT NULL,
+   120→  slug TEXT NOT NULL,
+   121→  description TEXT,
+   122→  course_id TEXT NOT NULL,
+   123→  video_url TEXT,
+   124→  thumbnail_url TEXT,
+   125→  duration INTEGER DEFAULT 0,
+   126→  sort_order INTEGER DEFAULT 0,
+   127→  lesson_id TEXT,
+   128→  lesson_type TEXT,
+   129→  chapter_id TEXT,
+   130→  subject_id TEXT,
+   131→  is_preview INTEGER DEFAULT 0,
+   132→  is_published INTEGER DEFAULT 0,
+   133→  created_at TEXT DEFAULT (datetime('now')),
+   134→  updated_at TEXT DEFAULT (datetime('now'))
+   135→);
+   136→CREATE INDEX IF NOT EXISTS idx_videos_course ON videos(course_id);
+   137→CREATE INDEX IF NOT EXISTS idx_videos_order ON videos(course_id, sort_order);
+   138→
+   139→-- ============================================================
+   140→-- INSTRUCTORS TABLE (replaces Appwrite instructors collection)
+   141→-- ============================================================
+   142→
+   143→CREATE TABLE IF NOT EXISTS instructors (
+   144→  id TEXT PRIMARY KEY,
+   145→  name TEXT NOT NULL,
+   146→  email TEXT,
+   147→  bio TEXT,
+   148→  avatar_url TEXT,
+   149→  cover_url TEXT,
+   150→  specialization TEXT,
+   151→  rating REAL DEFAULT 0,
+   152→  total_students INTEGER DEFAULT 0,
+   153→  total_courses INTEGER DEFAULT 0,
+   154→  social_links TEXT DEFAULT '{}',
+   155→  is_active INTEGER DEFAULT 1,
+   156→  created_at TEXT DEFAULT (datetime('now')),
+   157→  updated_at TEXT DEFAULT (datetime('now'))
+   158→);
+   159→CREATE INDEX IF NOT EXISTS idx_instructors_active ON instructors(is_active);
+   160→
+   161→-- ============================================================
+   162→-- CATEGORIES TABLE (replaces Appwrite categories collection)
+   163→-- ============================================================
+   164→
+   165→CREATE TABLE IF NOT EXISTS categories (
+   166→  id TEXT PRIMARY KEY,
+   167→  name TEXT NOT NULL,
+   168→  slug TEXT NOT NULL UNIQUE,
+   169→  icon TEXT,
+   170→  color TEXT,
+   171→  parent_id TEXT,
+   172→  sort_order INTEGER DEFAULT 0,
+   173→  course_count INTEGER DEFAULT 0,
+   174→  created_at TEXT DEFAULT (datetime('now')),
+   175→  updated_at TEXT DEFAULT (datetime('now'))
+   176→);
+   177→CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_slug ON categories(slug);
+   178→
+   179→-- ============================================================
+   180→-- ENROLLMENTS TABLE (replaces Appwrite enrollments collection)
+   181→-- ============================================================
+   182→
+   183→CREATE TABLE IF NOT EXISTS enrollments (
+   184→  id TEXT PRIMARY KEY,
+   185→  user_id TEXT NOT NULL,
+   186→  course_id TEXT NOT NULL,
+   187→  progress REAL DEFAULT 0,
+   188→  completed INTEGER DEFAULT 0,
+   189→  created_at TEXT DEFAULT (datetime('now')),
+   190→  updated_at TEXT DEFAULT (datetime('now')),
+   191→  UNIQUE(user_id, course_id)
+   192→);
+   193→CREATE INDEX IF NOT EXISTS idx_enrollments_user ON enrollments(user_id);
+   194→CREATE INDEX IF NOT EXISTS idx_enrollments_course ON enrollments(course_id);
+   195→
+   196→-- ============================================================
+   197→-- NOTIFICATIONS TABLE (replaces Appwrite notifications collection)
+   198→-- ============================================================
+   199→
+   200→CREATE TABLE IF NOT EXISTS notifications (
+   201→  id TEXT PRIMARY KEY,
+   202→  user_id TEXT,
+   203→  title TEXT NOT NULL,
+   204→  message TEXT NOT NULL,
+   205→  type TEXT DEFAULT 'info',
+   206→  category TEXT DEFAULT '',
+   207→  read INTEGER DEFAULT 0,
+   208→  action_url TEXT,
+   209→  created_at TEXT DEFAULT (datetime('now')),
+   210→  updated_at TEXT DEFAULT (datetime('now'))
+   211→);
+   212→CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+   213→CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, read);
+   214→
+   215→-- ============================================================
+   216→-- INSTITUTES TABLE
+   217→-- ============================================================
+   218→
+   219→CREATE TABLE IF NOT EXISTS institutes (
+   220→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   221→  name TEXT NOT NULL,
+   222→  name_bn TEXT,
+   223→  division TEXT,
+   224→  district TEXT,
+   225→  eiin_number TEXT,
+   226→  type TEXT DEFAULT 'polytechnic',
+   227→  is_requested INTEGER DEFAULT 0,
+   228→  requested_by TEXT,
+   229→  approved_by TEXT,
+   230→  approved_at TEXT,
+   231→  is_active INTEGER DEFAULT 1,
+   232→  created_at TEXT DEFAULT (datetime('now')),
+   233→  updated_at TEXT DEFAULT (datetime('now'))
+   234→);
+   235→CREATE INDEX IF NOT EXISTS idx_institutes_type ON institutes(type);
+   236→CREATE INDEX IF NOT EXISTS idx_institutes_division ON institutes(division);
+   237→CREATE INDEX IF NOT EXISTS idx_institutes_is_requested ON institutes(is_requested);
+   238→CREATE INDEX IF NOT EXISTS idx_institutes_name ON institutes(name);
+   239→
+   240→-- ============================================================
+   241→-- TECHNOLOGIES TABLE
+   242→-- ============================================================
+   243→
+   244→CREATE TABLE IF NOT EXISTS technologies (
+   245→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   246→  name TEXT NOT NULL,
+   247→  name_bn TEXT,
+   248→  short_code TEXT,
+   249→  description TEXT,
+   250→  is_active INTEGER DEFAULT 1,
+   251→  created_at TEXT DEFAULT (datetime('now')),
+   252→  updated_at TEXT DEFAULT (datetime('now'))
+   253→);
+   254→CREATE UNIQUE INDEX IF NOT EXISTS idx_technologies_short_code ON technologies(short_code);
+   255→
+   256→-- ============================================================
+   257→-- SUBJECTS TABLE
+   258→-- ============================================================
+   259→
+   260→CREATE TABLE IF NOT EXISTS subjects (
+   261→  id TEXT PRIMARY KEY,
+   262→  name TEXT NOT NULL,
+   263→  slug TEXT NOT NULL UNIQUE,
+   264→  description TEXT,
+   265→  icon TEXT,
+   266→  color TEXT,
+   267→  technology_id INTEGER,
+   268→  sort_order INTEGER DEFAULT 0,
+   269→  course_count INTEGER DEFAULT 0,
+   270→  is_active INTEGER DEFAULT 1,
+   271→  created_at TEXT DEFAULT (datetime('now')),
+   272→  updated_at TEXT DEFAULT (datetime('now'))
+   273→);
+   274→CREATE UNIQUE INDEX IF NOT EXISTS idx_subjects_slug ON subjects(slug);
+   275→CREATE INDEX IF NOT EXISTS idx_subjects_technology ON subjects(technology_id);
+   276→CREATE INDEX IF NOT EXISTS idx_subjects_active ON subjects(is_active);
+   277→
+   278→-- ============================================================
+   279→-- COURSE JUNCTION TABLES (many-to-many)
+   280→-- ============================================================
+   281→
+   282→CREATE TABLE IF NOT EXISTS course_subjects (
+   283→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   284→  course_id TEXT NOT NULL,
+   285→  subject_id TEXT NOT NULL,
+   286→  sort_order INTEGER DEFAULT 0,
+   287→  created_at TEXT DEFAULT (datetime('now')),
+   288→  UNIQUE(course_id, subject_id)
+   289→);
+   290→CREATE INDEX IF NOT EXISTS idx_course_subjects_course ON course_subjects(course_id);
+   291→CREATE INDEX IF NOT EXISTS idx_course_subjects_subject ON course_subjects(subject_id);
+   292→
+   293→CREATE TABLE IF NOT EXISTS course_categories (
+   294→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   295→  course_id TEXT NOT NULL,
+   296→  category_id TEXT NOT NULL,
+   297→  sort_order INTEGER DEFAULT 0,
+   298→  created_at TEXT DEFAULT (datetime('now')),
+   299→  UNIQUE(course_id, category_id)
+   300→);
+   301→CREATE INDEX IF NOT EXISTS idx_course_categories_course ON course_categories(course_id);
+   302→CREATE INDEX IF NOT EXISTS idx_course_categories_category ON course_categories(category_id);
+   303→
+   304→CREATE TABLE IF NOT EXISTS course_instructors (
+   305→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   306→  course_id TEXT NOT NULL,
+   307→  instructor_id TEXT NOT NULL,
+   308→  sort_order INTEGER DEFAULT 0,
+   309→  created_at TEXT DEFAULT (datetime('now')),
+   310→  UNIQUE(course_id, instructor_id)
+   311→);
+   312→CREATE INDEX IF NOT EXISTS idx_course_instructors_course ON course_instructors(course_id);
+   313→CREATE INDEX IF NOT EXISTS idx_course_instructors_instructor ON course_instructors(instructor_id);
+   314→
+   315→-- ============================================================
+   316→-- CHAPTERS TABLE (curriculum structure: Subject → Chapter)
+   317→-- ============================================================
+   318→
+   319→CREATE TABLE IF NOT EXISTS chapters (
+   320→  id TEXT PRIMARY KEY,
+   321→  course_id TEXT NOT NULL,
+   322→  subject_id TEXT,
+   323→  title TEXT NOT NULL,
+   324→  slug TEXT NOT NULL,
+   325→  description TEXT,
+   326→  sort_order INTEGER DEFAULT 0,
+   327→  created_at TEXT DEFAULT (datetime('now')),
+   328→  updated_at TEXT DEFAULT (datetime('now'))
+   329→);
+   330→CREATE INDEX IF NOT EXISTS idx_chapters_course ON chapters(course_id);
+   331→CREATE INDEX IF NOT EXISTS idx_chapters_subject ON chapters(subject_id);
+   332→CREATE INDEX IF NOT EXISTS idx_chapters_order ON chapters(course_id, subject_id, sort_order);
+   333→
+   334→-- ============================================================
+   335→-- LESSONS TABLE (curriculum structure: Chapter → Lesson)
+   336→-- ============================================================
+   337→
+   338→CREATE TABLE IF NOT EXISTS lessons (
+   339→  id TEXT PRIMARY KEY,
+   340→  chapter_id TEXT NOT NULL,
+   341→  course_id TEXT NOT NULL,
+   342→  subject_id TEXT,
+   343→  title TEXT NOT NULL,
+   344→  slug TEXT NOT NULL,
+   345→  description TEXT,
+   346→  lesson_type TEXT DEFAULT 'video',
+   347→  sort_order INTEGER DEFAULT 0,
+   348→  is_preview INTEGER DEFAULT 0,
+   349→  duration INTEGER DEFAULT 0,
+   350→  video_url TEXT,
+   351→  thumbnail_url TEXT,
+   352→  document_url TEXT,
+   353→  created_at TEXT DEFAULT (datetime('now')),
+   354→  updated_at TEXT DEFAULT (datetime('now'))
+   355→);
+   356→CREATE INDEX IF NOT EXISTS idx_lessons_chapter ON lessons(chapter_id);
+   357→CREATE INDEX IF NOT EXISTS idx_lessons_course ON lessons(course_id);
+   358→CREATE INDEX IF NOT EXISTS idx_lessons_subject ON lessons(subject_id);
+   359→CREATE INDEX IF NOT EXISTS idx_lessons_order ON lessons(chapter_id, sort_order);
+   360→
+   361→-- ============================================================
+   362→-- COURSE_LEARNING_POINTS TABLE
+   363→-- ============================================================
+   364→
+   365→CREATE TABLE IF NOT EXISTS course_learning_points (
+   366→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   367→  course_id TEXT NOT NULL,
+   368→  point_text TEXT NOT NULL,
+   369→  sort_order INTEGER DEFAULT 0,
+   370→  created_at TEXT DEFAULT (datetime('now')),
+   371→  updated_at TEXT DEFAULT (datetime('now'))
+   372→);
+   373→CREATE INDEX IF NOT EXISTS idx_learning_points_course ON course_learning_points(course_id);
+   374→
+   375→-- ============================================================
+   376→-- INSTITUTE_REQUESTS TABLE
+   377→-- ============================================================
+   378→
+   379→CREATE TABLE IF NOT EXISTS institute_requests (
+   380→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   381→  user_id TEXT NOT NULL,
+   382→  user_email TEXT,
+   383→  user_name TEXT,
+   384→  institute_name TEXT NOT NULL,
+   385→  institute_name_bn TEXT,
+   386→  division TEXT,
+   387→  district TEXT,
+   388→  status TEXT DEFAULT 'pending',
+   389→  admin_note TEXT,
+   390→  reviewed_by TEXT,
+   391→  reviewed_at TEXT,
+   392→  created_at TEXT DEFAULT (datetime('now')),
+   393→  updated_at TEXT DEFAULT (datetime('now'))
+   394→);
+   395→CREATE INDEX IF NOT EXISTS idx_institute_requests_status ON institute_requests(status);
+   396→CREATE INDEX IF NOT EXISTS idx_institute_requests_user ON institute_requests(user_id);
+   397→
+   398→-- ============================================================
+   399→-- COURSE_PACKAGES TABLE
+   400→-- ============================================================
+   401→
+   402→CREATE TABLE IF NOT EXISTS course_packages (
+   403→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   404→  course_id TEXT NOT NULL,
+   405→  package_type TEXT NOT NULL,
+   406→  display_name TEXT,
+   407→  description TEXT,
+   408→  price REAL NOT NULL,
+   409→  duration_months INTEGER DEFAULT 6,
+   410→  max_users INTEGER DEFAULT 1,
+   411→  is_auto_assign INTEGER DEFAULT 1,
+   412→  is_active INTEGER DEFAULT 1,
+   413→  created_by TEXT,
+   414→  created_at TEXT DEFAULT (datetime('now')),
+   415→  updated_at TEXT DEFAULT (datetime('now'))
+   416→);
+   417→CREATE INDEX IF NOT EXISTS idx_course_packages_course ON course_packages(course_id);
+   418→CREATE INDEX IF NOT EXISTS idx_course_packages_type ON course_packages(package_type);
+   419→CREATE INDEX IF NOT EXISTS idx_course_packages_active ON course_packages(is_active);
+   420→
+   421→-- ============================================================
+   422→-- USER_PACKAGES TABLE
+   423→-- ============================================================
+   424→
+   425→CREATE TABLE IF NOT EXISTS user_packages (
+   426→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   427→  user_id TEXT NOT NULL,
+   428→  package_id INTEGER NOT NULL,
+   429→  course_id TEXT NOT NULL,
+   430→  package_type TEXT NOT NULL,
+   431→  activated_at TEXT NOT NULL,
+   432→  expires_at TEXT NOT NULL,
+   433→  shared_with TEXT,
+   434→  status TEXT DEFAULT 'active',
+   435→  created_at TEXT DEFAULT (datetime('now'))
+   436→);
+   437→CREATE INDEX IF NOT EXISTS idx_user_packages_user ON user_packages(user_id);
+   438→CREATE INDEX IF NOT EXISTS idx_user_packages_status ON user_packages(status);
+   439→CREATE INDEX IF NOT EXISTS idx_user_packages_expires ON user_packages(expires_at);
+   440→
+   441→-- ============================================================
+   442→-- COUPONS TABLE
+   443→-- ============================================================
+   444→
+   445→CREATE TABLE IF NOT EXISTS coupons (
+   446→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   447→  code TEXT NOT NULL UNIQUE,
+   448→  discount_type TEXT NOT NULL,
+   449→  discount_value REAL NOT NULL,
+   450→  max_discount REAL,
+   451→  min_purchase REAL DEFAULT 0,
+   452→  usage_limit INTEGER,
+   453→  usage_count INTEGER DEFAULT 0,
+   454→  per_user_limit INTEGER DEFAULT 1,
+   455→  valid_from TEXT NOT NULL,
+   456→  valid_until TEXT NOT NULL,
+   457→  applicable_courses TEXT,
+   458→  applicable_technologies TEXT,
+   459→  is_active INTEGER DEFAULT 1,
+   460→  created_by TEXT,
+   461→  created_at TEXT DEFAULT (datetime('now')),
+   462→  updated_at TEXT DEFAULT (datetime('now'))
+   463→);
+   464→CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code);
+   465→CREATE INDEX IF NOT EXISTS idx_coupons_active ON coupons(is_active);
+   466→CREATE INDEX IF NOT EXISTS idx_coupons_valid ON coupons(valid_from, valid_until);
+   467→
+   468→-- ============================================================
+   469→-- DISCOUNTS TABLE
+   470→-- ============================================================
+   471→
+   472→CREATE TABLE IF NOT EXISTS discounts (
+   473→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   474→  name TEXT NOT NULL,
+   475→  name_bn TEXT,
+   476→  description TEXT,
+   477→  discount_type TEXT NOT NULL,
+   478→  discount_value REAL NOT NULL,
+   479→  applicable_type TEXT NOT NULL,
+   480→  applicable_ids TEXT,
+   481→  valid_from TEXT NOT NULL,
+   482→  valid_until TEXT NOT NULL,
+   483→  is_auto_apply INTEGER DEFAULT 0,
+   484→  is_active INTEGER DEFAULT 1,
+   485→  created_by TEXT,
+   486→  created_at TEXT DEFAULT (datetime('now')),
+   487→  updated_at TEXT DEFAULT (datetime('now'))
+   488→);
+   489→CREATE INDEX IF NOT EXISTS idx_discounts_active ON discounts(is_active);
+   490→CREATE INDEX IF NOT EXISTS idx_discounts_valid ON discounts(valid_from, valid_until);
+   491→
+   492→-- ============================================================
+   493→-- EVENTS TABLE
+   494→-- ============================================================
+   495→
+   496→CREATE TABLE IF NOT EXISTS events (
+   497→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   498→  title TEXT NOT NULL,
+   499→  title_bn TEXT,
+   500→  description TEXT,
+   501→  description_bn TEXT,
+   502→  event_type TEXT NOT NULL,
+   503→  banner_url TEXT,
+   504→  start_date TEXT NOT NULL,
+   505→  end_date TEXT,
+   506→  is_featured INTEGER DEFAULT 0,
+   507→  metadata TEXT DEFAULT '{}',
+   508→  is_active INTEGER DEFAULT 1,
+   509→  created_by TEXT,
+   510→  created_at TEXT DEFAULT (datetime('now')),
+   511→  updated_at TEXT DEFAULT (datetime('now'))
+   512→);
+   513→CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+   514→CREATE INDEX IF NOT EXISTS idx_events_active ON events(is_active);
+   515→CREATE INDEX IF NOT EXISTS idx_events_featured ON events(is_featured);
+   516→CREATE INDEX IF NOT EXISTS idx_events_dates ON events(start_date, end_date);
+   517→
+   518→-- ============================================================
+   519→-- LIVE_CLASS_SCHEDULES TABLE
+   520→-- ============================================================
+   521→
+   522→CREATE TABLE IF NOT EXISTS live_class_schedules (
+   523→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   524→  course_id TEXT,
+   525→  title TEXT NOT NULL,
+   526→  title_bn TEXT,
+   527→  description TEXT,
+   528→  instructor_id TEXT,
+   529→  technology_id INTEGER,
+   530→  scheduled_at TEXT NOT NULL,
+   531→  duration_minutes INTEGER DEFAULT 60,
+   532→  meeting_url TEXT,
+   533→  platform TEXT DEFAULT 'jitsi',
+   534→  status TEXT DEFAULT 'scheduled',
+   535→  recording_url TEXT,
+   536→  is_active INTEGER DEFAULT 1,
+   537→  created_by TEXT,
+   538→  created_at TEXT DEFAULT (datetime('now')),
+   539→  updated_at TEXT DEFAULT (datetime('now'))
+   540→);
+   541→CREATE INDEX IF NOT EXISTS idx_live_classes_status ON live_class_schedules(status);
+   542→CREATE INDEX IF NOT EXISTS idx_live_classes_scheduled ON live_class_schedules(scheduled_at);
+   543→CREATE INDEX IF NOT EXISTS idx_live_classes_course ON live_class_schedules(course_id);
+   544→
+   545→-- ============================================================
+   546→-- NOTIFICATION_LOGS TABLE
+   547→-- ============================================================
+   548→
+   549→CREATE TABLE IF NOT EXISTS notification_logs (
+   550→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   551→  type TEXT NOT NULL,
+   552→  category TEXT NOT NULL,
+   553→  title TEXT,
+   554→  message TEXT,
+   555→  target_type TEXT,
+   556→  target_id TEXT,
+   557→  sent_count INTEGER DEFAULT 0,
+   558→  failed_count INTEGER DEFAULT 0,
+   559→  metadata TEXT DEFAULT '{}',
+   560→  created_by TEXT,
+   561→  created_at TEXT DEFAULT (datetime('now'))
+   562→);
+   563→CREATE INDEX IF NOT EXISTS idx_notif_logs_type ON notification_logs(type);
+   564→CREATE INDEX IF NOT EXISTS idx_notif_logs_category ON notification_logs(category);
+   565→CREATE INDEX IF NOT EXISTS idx_notif_logs_created ON notification_logs(created_at DESC);
+   566→
+   567→-- ============================================================
+   568→-- USER_PUSH_TOKENS TABLE
+   569→-- ============================================================
+   570→
+   571→CREATE TABLE IF NOT EXISTS user_push_tokens (
+   572→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   573→  user_id TEXT NOT NULL,
+   574→  push_token TEXT NOT NULL,
+   575→  device_type TEXT,
+   576→  device_info TEXT,
+   577→  is_active INTEGER DEFAULT 1,
+   578→  created_at TEXT DEFAULT (datetime('now')),
+   579→  updated_at TEXT DEFAULT (datetime('now'))
+   580→);
+   581→CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON user_push_tokens(user_id);
+   582→CREATE UNIQUE INDEX IF NOT EXISTS idx_push_tokens_token ON user_push_tokens(push_token);
+   583→
+   584→-- ============================================================
+   585→-- STUDENT_SESSIONS TABLE
+   586→-- ============================================================
+   587→
+   588→CREATE TABLE IF NOT EXISTS student_sessions (
+   589→  id TEXT PRIMARY KEY,
+   590→  user_id TEXT NOT NULL UNIQUE,
+   591→  email TEXT NOT NULL,
+   592→  name TEXT,
+   593→  device_info TEXT,
+   594→  ip_address TEXT,
+   595→  created_at TEXT DEFAULT (datetime('now')),
+   596→  expires_at TEXT NOT NULL,
+   597→  is_active INTEGER DEFAULT 1
+   598→);
+   599→CREATE UNIQUE INDEX IF NOT EXISTS idx_student_sessions_user ON student_sessions(user_id);
+   600→CREATE INDEX IF NOT EXISTS idx_student_sessions_expires ON student_sessions(expires_at);
+   601→
+   602→-- ============================================================
+   603→-- USER_2FA TABLE
+   604→-- ============================================================
+   605→
+   606→CREATE TABLE IF NOT EXISTS user_2fa (
+   607→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   608→  user_id TEXT NOT NULL UNIQUE,
+   609→  method TEXT DEFAULT 'email',
+   610→  totp_secret TEXT,
+   611→  totp_verified INTEGER DEFAULT 0,
+   612→  backup_codes TEXT,
+   613→  is_enabled INTEGER DEFAULT 0,
+   614→  created_at TEXT DEFAULT (datetime('now')),
+   615→  updated_at TEXT DEFAULT (datetime('now'))
+   616→);
+   617→CREATE INDEX IF NOT EXISTS idx_user_2fa_user ON user_2fa(user_id);
+   618→
+   619→-- ============================================================
+   620→-- PAYMENT_CONFIG TABLE
+   621→-- ============================================================
+   622→
+   623→CREATE TABLE IF NOT EXISTS payment_config (
+   624→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   625→  gateway TEXT NOT NULL,
+   626→  is_active INTEGER DEFAULT 0,
+   627→  config TEXT DEFAULT '{}',
+   628→  sandbox_mode INTEGER DEFAULT 1,
+   629→  instructions TEXT,
+   630→  instructions_bn TEXT,
+   631→  created_at TEXT DEFAULT (datetime('now')),
+   632→  updated_at TEXT DEFAULT (datetime('now'))
+   633→);
+   634→
+   635→-- ============================================================
+   636→-- PAYMENTS TABLE
+   637→-- ============================================================
+   638→
+   639→CREATE TABLE IF NOT EXISTS payments (
+   640→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   641→  user_id TEXT NOT NULL,
+   642→  package_id INTEGER,
+   643→  course_id TEXT,
+   644→  amount REAL NOT NULL,
+   645→  currency TEXT DEFAULT 'BDT',
+   646→  gateway TEXT NOT NULL,
+   647→  gateway_trx_id TEXT,
+   648→  gateway_payment_id TEXT,
+   649→  status TEXT DEFAULT 'pending',
+   650→  proof_url TEXT,
+   651→  trx_id_submitted TEXT,
+   652→  phone_submitted TEXT,
+   653→  verified_by TEXT,
+   654→  verified_at TEXT,
+   655→  metadata TEXT DEFAULT '{}',
+   656→  created_at TEXT DEFAULT (datetime('now')),
+   657→  updated_at TEXT DEFAULT (datetime('now'))
+   658→);
+   659→CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id);
+   660→CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+   661→CREATE INDEX IF NOT EXISTS idx_payments_gateway ON payments(gateway);
+   662→CREATE INDEX IF NOT EXISTS idx_payments_created ON payments(created_at DESC);
+   663→
+   664→-- ============================================================
+   665→-- STUDENT FEATURE TABLES
+   666→-- ============================================================
+   667→
+   668→CREATE TABLE IF NOT EXISTS notification_preferences (
+   669→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   670→  user_id TEXT NOT NULL UNIQUE,
+   671→  push_enabled INTEGER DEFAULT 1,
+   672→  email_enabled INTEGER DEFAULT 1,
+   673→  sms_enabled INTEGER DEFAULT 0,
+   674→  quiet_hours_enabled INTEGER DEFAULT 0,
+   675→  quiet_hours_start TEXT DEFAULT '22:00',
+   676→  quiet_hours_end TEXT DEFAULT '08:00',
+   677→  course_updates_push INTEGER DEFAULT 1,
+   678→  course_updates_email INTEGER DEFAULT 1,
+   679→  grades_push INTEGER DEFAULT 1,
+   680→  grades_email INTEGER DEFAULT 1,
+   681→  schedule_push INTEGER DEFAULT 1,
+   682→  schedule_email INTEGER DEFAULT 1,
+   683→  payment_push INTEGER DEFAULT 1,
+   684→  payment_email INTEGER DEFAULT 1,
+   685→  promotions_push INTEGER DEFAULT 0,
+   686→  promotions_email INTEGER DEFAULT 0,
+   687→  social_push INTEGER DEFAULT 1,
+   688→  social_email INTEGER DEFAULT 0,
+   689→  system_push INTEGER DEFAULT 1,
+   690→  system_email INTEGER DEFAULT 1,
+   691→  updated_at TEXT DEFAULT (datetime('now')),
+   692→  created_at TEXT DEFAULT (datetime('now'))
+   693→);
+   694→CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_prefs_user ON notification_preferences(user_id);
+   695→
+   696→CREATE TABLE IF NOT EXISTS student_activity (
+   697→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   698→  user_id TEXT NOT NULL,
+   699→  activity_type TEXT NOT NULL,
+   700→  resource_type TEXT NOT NULL,
+   701→  resource_id TEXT,
+   702→  title TEXT NOT NULL,
+   703→  description TEXT,
+   704→  metadata TEXT DEFAULT '{}',
+   705→  created_at TEXT DEFAULT (datetime('now'))
+   706→);
+   707→CREATE INDEX IF NOT EXISTS idx_student_activity_user ON student_activity(user_id);
+   708→CREATE INDEX IF NOT EXISTS idx_student_activity_type ON student_activity(activity_type);
+   709→CREATE INDEX IF NOT EXISTS idx_student_activity_created ON student_activity(created_at DESC);
+   710→
+   711→CREATE TABLE IF NOT EXISTS achievement_definitions (
+   712→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   713→  slug TEXT NOT NULL UNIQUE,
+   714→  name TEXT NOT NULL,
+   715→  name_bn TEXT,
+   716→  description TEXT NOT NULL,
+   717→  description_bn TEXT,
+   718→  category TEXT NOT NULL,
+   719→  icon TEXT DEFAULT 'trophy',
+   720→  xp INTEGER DEFAULT 0,
+   721→  condition_type TEXT NOT NULL,
+   722→  condition_value TEXT NOT NULL,
+   723→  is_active INTEGER DEFAULT 1,
+   724→  created_at TEXT DEFAULT (datetime('now'))
+   725→);
+   726→CREATE UNIQUE INDEX IF NOT EXISTS idx_achievements_slug ON achievement_definitions(slug);
+   727→CREATE INDEX IF NOT EXISTS idx_achievements_category ON achievement_definitions(category);
+   728→CREATE INDEX IF NOT EXISTS idx_achievements_active ON achievement_definitions(is_active);
+   729→
+   730→CREATE TABLE IF NOT EXISTS student_achievements (
+   731→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   732→  user_id TEXT NOT NULL,
+   733→  achievement_id INTEGER NOT NULL,
+   734→  unlocked_at TEXT DEFAULT (datetime('now')),
+   735→  FOREIGN KEY (achievement_id) REFERENCES achievement_definitions(id),
+   736→  UNIQUE(user_id, achievement_id)
+   737→);
+   738→CREATE INDEX IF NOT EXISTS idx_student_achievements_user ON student_achievements(user_id);
+   739→CREATE INDEX IF NOT EXISTS idx_student_achievements_achievement ON student_achievements(achievement_id);
+   740→
+   741→CREATE TABLE IF NOT EXISTS notification_sounds (
+   742→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   743→  name TEXT NOT NULL,
+   744→  file_url TEXT NOT NULL,
+   745→  is_default INTEGER DEFAULT 0,
+   746→  is_active INTEGER DEFAULT 1,
+   747→  created_at TEXT DEFAULT (datetime('now'))
+   748→);
+   749→
+   750→-- ============================================================
+   751→-- USER PREFERENCES TABLE (theme, privacy, appearance, etc.)
+   752→-- ============================================================
+   753→
+   754→CREATE TABLE IF NOT EXISTS user_preferences (
+   755→  user_id TEXT NOT NULL PRIMARY KEY,
+   756→  -- Theme preferences
+   757→  theme_mode TEXT DEFAULT 'system',
+   758→  accent_color TEXT DEFAULT '#0ea5e9',
+   759→  font_size INTEGER DEFAULT 16,
+   760→  border_radius INTEGER DEFAULT 16,
+   761→  compact_mode INTEGER DEFAULT 0,
+   762→  -- Privacy preferences
+   763→  profile_visibility TEXT DEFAULT 'Friends',
+   764→  search_visible INTEGER DEFAULT 1,
+   765→  show_email INTEGER DEFAULT 0,
+   766→  show_phone INTEGER DEFAULT 0,
+   767→  show_progress INTEGER DEFAULT 1,
+   768→  activity_status INTEGER DEFAULT 1,
+   769→  read_receipts INTEGER DEFAULT 1,
+   770→  data_sharing INTEGER DEFAULT 0,
+   771→  analytics_opt_out INTEGER DEFAULT 0,
+   772→  personalized_recommendations INTEGER DEFAULT 1,
+   773→  cookie_consent TEXT DEFAULT 'essential',
+   774→  -- Content protection
+   775→  content_protection_enabled INTEGER DEFAULT 1,
+   776→  no_copy INTEGER DEFAULT 1,
+   777→  no_right_click INTEGER DEFAULT 1,
+   778→  no_screenshot INTEGER DEFAULT 0,
+   779→  -- Download preferences
+   780→  download_quality TEXT DEFAULT '720p',
+   781→  wifi_only INTEGER DEFAULT 0,
+   782→  -- Misc
+   783→  language TEXT DEFAULT 'bn',
+   784→  created_at TEXT DEFAULT (datetime('now')),
+   785→  updated_at TEXT DEFAULT (datetime('now'))
+   786→);
+   787→CREATE UNIQUE INDEX IF NOT EXISTS idx_user_prefs_user ON user_preferences(user_id);
+   788→
+   789→-- ============================================================
+   790→-- PASSWORD_RESET_OTPS TABLE
+   791→-- ============================================================
+   792→
+   793→CREATE TABLE IF NOT EXISTS password_reset_otps (
+   794→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   795→  email TEXT NOT NULL,
+   796→  otp TEXT NOT NULL,
+   797→  purpose TEXT DEFAULT 'password_reset',
+   798→  expires_at TEXT NOT NULL,
+   799→  used INTEGER DEFAULT 0,
+   800→  created_at TEXT DEFAULT (datetime('now'))
+   801→);
+   802→CREATE INDEX IF NOT EXISTS idx_password_reset_otps_email ON password_reset_otps(email);
+   803→CREATE INDEX IF NOT EXISTS idx_password_reset_otps_expires ON password_reset_otps(expires_at);
+   804→CREATE INDEX IF NOT EXISTS idx_password_reset_otps_purpose ON password_reset_otps(purpose);
+   805→
+   806→-- ============================================================
+   807→-- SEED DATA
+   808→-- ============================================================
+   809→
+   810→-- Seed default config
+   811→INSERT OR IGNORE INTO app_config (key, value, description) VALUES
+   812→  ('app_settings', '{"appName":"DAKKHO","maintenanceMode":false,"maxUploadSize":500,"defaultLanguage":"bn"}', 'General app settings'),
+   813→  ('streaming', '{"defaultQuality":"720p","maxConcurrentStreams":3,"enableDVR":true,"enableChat":true}', 'Streaming config'),
+   814→  ('notifications', '{"pushEnabled":true,"emailEnabled":true,"smsEnabled":false}', 'Notification settings'),
+   815→  ('features', '{"enableCourses":true,"enableLiveClasses":true,"enableQuizzes":true,"enableCertificates":true,"enableLeaderboard":true}', 'Feature flags');
+   816→
+   817→-- Seed payment config (manual as default)
+   818→INSERT OR IGNORE INTO payment_config (gateway, is_active, config, sandbox_mode, instructions, instructions_bn) VALUES
+   819→  ('manual', 1, '{}', 0, 'Send payment via bKash/Nagad to 01XXXXXXXXX and submit your Transaction ID below.', 'bKash/Nagad এ 01XXXXXXXXX নম্বরে পেমেন্ট পাঠিয়ে আপনার Transaction ID নিচে জমা দিন।'),
+   820→  ('sslcommerz', 0, '{}', 1, NULL, NULL),
+   821→  ('bkash', 0, '{}', 1, NULL, NULL),
+   822→  ('piprapay', 0, '{}', 0, 'Pay securely via bKash, Nagad, or Rocket through our payment gateway.', 'bKash, Nagad, বা Rocket এর মাধ্যমে নিরাপদে পেমেন্ট করুন।');
+   823→
+   824→-- Seed technologies
+   825→INSERT OR IGNORE INTO technologies (name, name_bn, short_code, description, is_active) VALUES
+   826→  ('Civil Technology', 'সিভিল টেকনোলজি', 'CT', 'Civil Engineering Technology', 1),
+   827→  ('Computer Science & Technology', 'কম্পিউটার সায়েন্স অ্যান্ড টেকনোলজি', 'CST', 'Computer Science and Technology', 1),
+   828→  ('Electrical Technology', 'ইলেকট্রিক্যাল টেকনোলজি', 'ET', 'Electrical Engineering Technology', 1),
+   829→  ('Electro Medical Technology', 'ইলেক্ট্রো মেডিক্যাল টেকনোলজি', 'EMT', 'Electro Medical Technology', 1),
+   830→  ('Electronics Technology', 'ইলেকট্রনিক্স টেকনোলজি', 'EnT', 'Electronics Engineering Technology', 1),
+   831→  ('Mechanical Technology', 'মেকানিক্যাল টেকনোলজি', 'MT', 'Mechanical Engineering Technology', 1),
+   832→  ('Power Technology', 'পাওয়ার টেকনোলজি', 'PT', 'Power Engineering Technology', 1);
+   833→
+   834→-- Seed achievement definitions
+   835→INSERT OR IGNORE INTO achievement_definitions (slug, name, name_bn, description, description_bn, category, icon, xp, condition_type, condition_value) VALUES
+   836→  ('first-course', 'First Course', 'প্রথম কোর্স', 'Enroll in your first course', 'প্রথম কোর্সে ভর্তি হন', 'learning', 'book-open', 50, 'enrollment_count', '1'),
+   837→  ('quick-learner', 'Quick Learner', 'দ্রুত শিক্ষার্থী', 'Complete 3 courses', '৩টি কোর্স সম্পন্ন করুন', 'learning', 'zap', 150, 'completion_count', '3'),
+   838→  ('top-student', 'Top Student', 'শীর্ষ শিক্ষার্থী', 'Appear in top 10 leaderboard', 'লিডারবোর্ডে শীর্ষ ১০-এ উপস্থিত হন', 'learning', 'crown', 300, 'leaderboard_rank', '10'),
+   839→  ('week-streak', 'Week Warrior', 'সপ্তাহ যোদ্ধা', '7-day learning streak', '৭ দিনের লার্নিং স্ট্রিক', 'streaks', 'flame', 100, 'streak_days', '7'),
+   840→  ('month-streak', 'Monthly Master', 'মাসিক মাস্টার', '30-day learning streak', '৩০ দিনের লার্নিং স্ট্রিক', 'streaks', 'flame', 500, 'streak_days', '30'),
+   841→  ('social-butterfly', 'Social Butterfly', 'সামাজিক প্রজাপতি', 'Join 3 study groups', '৩টি স্টাডি গ্রুপে যোগ দিন', 'social', 'users', 75, 'group_count', '3'),
+   842→  ('helper', 'Helpful Hand', 'সাহায্যকারী', 'Answer 10 questions', '১০টি প্রশ্নের উত্তর দিন', 'social', 'heart', 200, 'answer_count', '10'),
+   843→  ('early-bird', 'Early Bird', 'প্রাথমিক পাখি', 'Join DAKKHO in first month', 'প্রথম মাসে DAKKHO-তে যোগ দিন', 'special', 'sunrise', 25, 'early_joiner', '1'),
+   844→  ('certified', 'Certified Learner', 'প্রত্যয়িত শিক্ষার্থী', 'Earn your first certificate', 'প্রথম সার্টিফিকেট অর্জন করুন', 'learning', 'award', 100, 'certificate_count', '1');
+   845→
+   846→-- ============================================================
+   847→-- ABOUT PAGE TABLES (Admin-managed content)
+   848→-- ============================================================
+   849→
+   850→CREATE TABLE IF NOT EXISTS about_stats (
+   851→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   852→  label TEXT NOT NULL,
+   853→  value TEXT NOT NULL,
+   854→  icon TEXT DEFAULT 'book-open',
+   855→  sort_order INTEGER DEFAULT 0,
+   856→  is_active INTEGER DEFAULT 1,
+   857→  created_at TEXT DEFAULT (datetime('now')),
+   858→  updated_at TEXT DEFAULT (datetime('now'))
+   859→);
+   860→CREATE INDEX IF NOT EXISTS idx_about_stats_active ON about_stats(is_active);
+   861→CREATE INDEX IF NOT EXISTS idx_about_stats_order ON about_stats(sort_order);
+   862→
+   863→CREATE TABLE IF NOT EXISTS about_team (
+   864→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   865→  name TEXT NOT NULL,
+   866→  role TEXT NOT NULL,
+   867→  avatar_url TEXT,
+   868→  icon TEXT DEFAULT 'users',
+   869→  sort_order INTEGER DEFAULT 0,
+   870→  is_active INTEGER DEFAULT 1,
+   871→  created_at TEXT DEFAULT (datetime('now')),
+   872→  updated_at TEXT DEFAULT (datetime('now'))
+   873→);
+   874→CREATE INDEX IF NOT EXISTS idx_about_team_active ON about_team(is_active);
+   875→CREATE INDEX IF NOT EXISTS idx_about_team_order ON about_team(sort_order);
+   876→
+   877→CREATE TABLE IF NOT EXISTS about_faq (
+   878→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   879→  question TEXT NOT NULL,
+   880→  answer TEXT NOT NULL,
+   881→  sort_order INTEGER DEFAULT 0,
+   882→  is_active INTEGER DEFAULT 1,
+   883→  created_at TEXT DEFAULT (datetime('now')),
+   884→  updated_at TEXT DEFAULT (datetime('now'))
+   885→);
+   886→CREATE INDEX IF NOT EXISTS idx_about_faq_active ON about_faq(is_active);
+   887→CREATE INDEX IF NOT EXISTS idx_about_faq_order ON about_faq(sort_order);
+   888→
+   889→-- Seed default admin users
+   890→-- Hash computed with SHA-256
+   891→INSERT OR IGNORE INTO users (id, email, full_name, role, password_hash, is_active, email_verified) VALUES
+   892→  ('admin-001', 'admin@dakkho.pro.bd', 'DAKKHO Admin', 'admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 1, 1),
+   893→  ('admin-002', 'himadrient@proton.me', 'DAKKHO Super Admin', 'super_admin', '1e93e5062e163f49c088f163cf93b702948533c8f905c8dcf24bf9156c0dfe03', 1, 1);
+   894→
+   895→-- ============================================================
+   896→-- ABOUT PAGE SEED DATA
+   897→-- ============================================================
+   898→
+   899→-- Seed about content (text, mission, contact)
+   900→INSERT OR IGNORE INTO app_config (key, value, description) VALUES
+   901→  ('about_content', '{"aboutText":"DAKKHO is Bangladesh''s premier online learning platform built exclusively for polytechnic students. We provide high-quality video courses aligned with the BTEB curriculum, covering all major technologies from Web Development and Electronics to Civil Engineering and Architecture. Our platform connects students with expert instructors from across the country, making quality technical education accessible regardless of location or financial background.","missionText":"To democratize technical education in Bangladesh by providing world-class learning experiences to every polytechnic student. We believe that geographical boundaries or financial constraints should never be barriers to quality education. Through technology, community, and dedicated instructors, we are building the future skilled workforce of Bangladesh.","contactEmail":"support@dakkho.com.bd","contactPhone1":"+8809638113227","contactPhone2":"+8801632373707","contactAddress":"Radhaballav Road near DPHE, Rangpur","missionValues":["Accessible Education","Quality Content","Student First","Innovation"]}', 'About page content (text, mission, contact)');
+   902→
+   903→-- Seed about stats
+   904→INSERT OR IGNORE INTO about_stats (label, value, icon, sort_order, is_active) VALUES
+   905→  ('Courses', '50+', 'book-open', 1, 1),
+   906→  ('Students', '10K+', 'graduation-cap', 2, 1),
+   907→  ('Instructors', '50+', 'users', 3, 1),
+   908→  ('Institutes', '58', 'building-2', 4, 1);
+   909→
+   910→-- Seed about team
+   911→INSERT OR IGNORE INTO about_team (name, role, icon, sort_order, is_active) VALUES
+   912→  ('Engr. Aminul Islam', 'Founder & CEO', 'graduation-cap', 1, 1),
+   913→  ('Dr. Nadia Rahman', 'Chief Academic Officer', 'book-open', 2, 1),
+   914→  ('Fahim Shahriar', 'Lead Developer', 'globe', 3, 1),
+   915→  ('Sumaiya Khan', 'Head of Content', 'sparkles', 4, 1);
+   916→
+   917→-- Seed about FAQ
+   918→INSERT OR IGNORE INTO about_faq (question, answer, sort_order, is_active) VALUES
+   919→  ('What is DAKKHO?', 'DAKKHO is a comprehensive online learning platform designed specifically for polytechnic students in Bangladesh. We offer video courses, live sessions, assignments, and certifications aligned with the BTEB curriculum.', 1, 1),
+   920→  ('Is DAKKHO free to use?', 'Many courses on DAKKHO are completely free. Premium courses are available at affordable prices with financial aid options for deserving students. We believe quality education should be accessible to everyone.', 2, 1),
+   921→  ('How do I earn certificates?', 'Complete a course and pass all assignments with the required grade to earn a certificate. Certificates are digital and can be downloaded or shared directly from your profile.', 3, 1),
+   922→  ('Can I access courses offline?', 'Yes! You can download courses for offline viewing through our Downloads feature. Downloaded content is available without an internet connection for up to 30 days.', 4, 1),
+   923→  ('Who are the instructors?', 'Our instructors are experienced educators and industry professionals from polytechnic institutes across Bangladesh. They are vetted and trained to deliver high-quality, engaging content.', 5, 1),
+   924→  ('How do I get help if I am stuck?', 'Use the Discussion section to ask questions, join live Q&A sessions with instructors, or reach out to our support team via email or phone. We are here to help you succeed.', 6, 1);
+   925→
+   926→-- ============================================================
+   927→-- SUPPORT TICKETS TABLES
+   928→-- ============================================================
+   929→
+   930→CREATE TABLE IF NOT EXISTS support_tickets (
+   931→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   932→  ticket_id TEXT UNIQUE NOT NULL,
+   933→  user_id TEXT,
+   934→  name TEXT NOT NULL,
+   935→  email TEXT NOT NULL,
+   936→  category TEXT NOT NULL,
+   937→  sub_category TEXT,
+   938→  priority TEXT DEFAULT 'medium',
+   939→  subject TEXT NOT NULL,
+   940→  description TEXT NOT NULL,
+   941→  attachments TEXT,
+   942→  detected_issue TEXT,
+   943→  status TEXT DEFAULT 'open',
+   944→  assigned_to TEXT,
+   945→  resolved_content TEXT,
+   946→  resolved_at TEXT,
+   947→  resolved_by TEXT,
+   948→  created_at TEXT DEFAULT (datetime('now')),
+   949→  updated_at TEXT DEFAULT (datetime('now'))
+   950→);
+   951→CREATE INDEX IF NOT EXISTS idx_support_tickets_ticket_id ON support_tickets(ticket_id);
+   952→CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);
+   953→CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);
+   954→CREATE INDEX IF NOT EXISTS idx_support_tickets_created ON support_tickets(created_at DESC);
+   955→
+   956→CREATE TABLE IF NOT EXISTS support_messages (
+   957→  id INTEGER PRIMARY KEY AUTOINCREMENT,
+   958→  ticket_id TEXT NOT NULL,
+   959→  sender_type TEXT NOT NULL,
+   960→  sender_id TEXT,
+   961→  sender_name TEXT,
+   962→  message TEXT NOT NULL,
+   963→  attachments TEXT,
+   964→  source TEXT DEFAULT 'app',
+   965→  created_at TEXT DEFAULT (datetime('now'))
+   966→);
+   967→CREATE INDEX IF NOT EXISTS idx_support_messages_ticket_id ON support_messages(ticket_id);
+   968→CREATE INDEX IF NOT EXISTS idx_support_messages_created ON support_messages(created_at ASC);
+   969→
+   970→-- Seed support config
+   971→INSERT OR IGNORE INTO app_config (key, value, description) VALUES
+   972→  ('telegram_bot_token', 'SET_VIA_CLOUDFLARE_SECRET_OR_D1', 'Telegram bot token for support notifications'),
+   973→  ('telegram_chat_ids', '[]', 'Telegram chat IDs for support notifications (set via Admin Panel)'),
+   974→  ('support_email', 'support@dakkho.pro.bd', 'Support email address');
+   975→
+   976→-- ============================================================
+   977→-- PERFORMANCE INDEXES FOR COMMON QUERIES
+   978→-- ============================================================
+   979→
+   980→CREATE INDEX IF NOT EXISTS idx_enrollments_course_user ON enrollments(course_id, user_id);
+   981→CREATE INDEX IF NOT EXISTS idx_payments_course_status ON payments(course_id, status);
+   982→CREATE INDEX IF NOT EXISTS idx_payments_user_status ON payments(user_id, status);
+   983→CREATE INDEX IF NOT EXISTS idx_user_packages_user_active ON user_packages(user_id, status);
+   984→CREATE INDEX IF NOT EXISTS idx_videos_course_processing ON videos(course_id, processing_status);
+   985→CREATE INDEX IF NOT EXISTS idx_watch_history_user_course ON watch_history(user_id, course_id);
+   986→
