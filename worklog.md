@@ -190,3 +190,32 @@ Work Log:
 Stage Summary:
 - Admin source code now available at github:grayrat2026/dakkho-admin-src
 - Bug fixes can now be made with actual source code
+
+---
+Task ID: 12
+Agent: Subagent (full-stack-developer)
+Task: Video Player Redesign
+
+Work Log:
+- Created use-orientation.ts hook — landscape/portrait/mobile detection
+- Created use-pip.ts hook — HTML5 Picture-in-Picture API wrapper
+- Created EpisodePanel.tsx — right-side sliding panel in landscape mode
+  - Dark themed, backdrop blur, spring animation
+  - Episode list with completion status, active highlight
+  - Auto-close on episode selection
+- Created PlayerControls.tsx — extracted controls overlay
+  - Episode List button (landscape only)
+  - PIP button (when supported)
+  - All existing controls preserved
+- Rewrote VideoPlayerPage.tsx:
+  - Portrait mobile: fixed position player at top (position: fixed; z-index: 50)
+  - Landscape: episode list button → side panel overlay
+  - PIP persistence: video element moved to hidden container on unmount
+  - Tabs: portrait shows Episodes+Notes+Q&A, landscape only Notes+Q&A
+  - Spacer div prevents content jump when player is fixed
+- Built and deployed to Cloudflare Pages
+
+Stage Summary:
+- Student app deployed: https://dakkho-student.pages.dev
+- Video player now has landscape episode panel, portrait fixed position, PIP persistence
+- 5 new files created, VideoPlayerPage.tsx rewritten
