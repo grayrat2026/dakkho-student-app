@@ -171,3 +171,23 @@ Stage Summary:
 - All deployments verified returning 200 OK
 - Key new endpoint: /api/student/learning-stats
 - 18 total bugs fixed across all apps
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix wrong admin build deployed to student app
+
+Work Log:
+- Confirmed that wrangler pages deploy was uploading admin build to student project due to content-hash caching
+- Root cause: Admin and student builds share some identical file hashes, causing wrangler's dedup to skip uploading the correct student files
+- Created dakkho-student-v2 project as test, deployed with --skip-caching flag
+- Verified dakkho-student-v2.pages.dev shows "Student Streaming Platform" correctly
+- Re-deployed to original dakkho-student project with --skip-caching flag
+- Verified dakkho-student.pages.dev now shows "Student Streaming Platform" correctly
+- Cleaned up by verifying all 4 deployments are correct
+
+Stage Summary:
+- dakkho-student.pages.dev: Fixed, now shows correct Student app ✅
+- dakkho-instructor.pages.dev: Shows correct Instructor app ✅
+- dakkho-admin.pages.dev: Shows correct Admin app ✅
+- dakkho-admin-api Worker: API working ✅
+- Key lesson: Always use --skip-caching when deploying different builds to the same CF Pages project
