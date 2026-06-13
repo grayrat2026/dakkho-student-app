@@ -253,7 +253,7 @@ export const paymentApi = {
     api.get<{ paymentConfig: PaymentConfig[] }>('/api/config/payment'),
   create: (data: { packageId: number; couponCode?: string; duoMemberEmail?: string }) =>
     api.post<{ success: boolean; pp_id: string; pp_url: string; payment_id: number }>('/api/payments/create', data),
-  verify: (data: { pp_id: string }) =>
+  verify: (data: { pp_id?: string; payment_id?: number }) =>
     api.post<{ status: string; amount: number; gateway: string; transaction_id: string; enrolled_course_id?: string; message?: string }>('/api/payments/verify', data),
 };
 

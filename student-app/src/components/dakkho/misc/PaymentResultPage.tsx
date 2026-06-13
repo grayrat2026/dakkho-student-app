@@ -29,26 +29,33 @@ export function PaymentResultPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const ppId = params.get('pp_id');
+    const paymentId = params.get('payment_id');
+    const ppStatus = params.get('pp_status');
 
-    if (!ppId) {
+    // Check PipraPay direct status from URL params for instant feedback
+    if (ppStatus === 'completed') {
+      // Payment completed on PipraPay side — still verify with server
+    }
+
+    if (!ppId && !paymentId) {
       setStatus('error');
       return;
     }
 
-    verifyPayment(ppId);
+    verifyPayment(ppId, paymentId ? Number(paymentId) : undefined);
   }, []);
 
-  const verifyPayment = async (ppId: string) => {
+  const verifyPayment = async (ppId?: string | null, paymentId?: number) => {
     setVerifying(true);
     try {
-      const result = await paymentApi.verify({ pp_id: ppId });
+      const result = await paymentApi.verify({ pp_id: ppId || undefined, payment_id: paymentId });
       const mappedStatus = mapStatus(result.status);
       setStatus(mappedStatus);
       setPaymentInfo({
         status: result.status,
         amount: Number(result.amount) || 0,
         gateway: result.gateway || 'piprapay',
-        transaction_id: result.transaction_id || ppId,
+        transaction_id: result.transaction_id || ppId || '',
         enrolled_course_id: result.enrolled_course_id,
         message: result.message,
       });
@@ -80,9 +87,10 @@ export function PaymentResultPage() {
   const handleRetry = () => {
     const params = new URLSearchParams(window.location.search);
     const ppId = params.get('pp_id');
-    if (ppId) {
+    const paymentId = params.get('payment_id');
+    if (ppId || paymentId) {
       setStatus('loading');
-      verifyPayment(ppId);
+      verifyPayment(ppId, paymentId ? Number(paymentId) : undefined);
     }
   };
 
