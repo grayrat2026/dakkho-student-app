@@ -131,14 +131,22 @@ export function VideoPlayerPage() {
   const { updateProgress, getProgress } = useWatchProgressStore();
 
   // --- Route params (fallback to URL path when store is empty after refresh) ---
-  const urlVideoId = typeof window !== 'undefined'
-    ? window.location.pathname.split('/').pop() || undefined
-    : undefined;
-  const urlCourseId = typeof window !== 'undefined'
-    ? window.location.pathname.split('/')[3] || undefined
-    : undefined;
-  const videoId = (pageParams.videoId as string) || urlVideoId || '';
-  const courseId = (pageParams.courseId as string) || urlCourseId || '';
+  const [resolvedIds, setResolvedIds] = useState<{ videoId: string; courseId: string }>({ videoId: '', courseId: '' });
+
+  useEffect(() => {
+    const parts = window.location.pathname.split('/'); // ['', 'video', 'play', courseId, videoId]
+    const fromUrl = {
+      courseId: parts[3] || '',
+      videoId: parts[4] || '',
+    };
+    setResolvedIds({
+      videoId: (pageParams.videoId as string) || fromUrl.videoId || '',
+      courseId: (pageParams.courseId as string) || fromUrl.courseId || '',
+    });
+  }, [pageParams.videoId, pageParams.courseId]);
+
+  const videoId = resolvedIds.videoId;
+  const courseId = resolvedIds.courseId;
 
   // --- API-fetched data ---
   const [course, setCourse] = useState<any>(null);
@@ -215,8 +223,7 @@ export function VideoPlayerPage() {
   // --- Fetch course + videos + instructor on mount ---
   useEffect(() => {
     if (!courseId) {
-      setDataError('No course ID provided.');
-      setDataLoading(false);
+      // Still resolving from URL — keep loading, don't error yet
       return;
     }
 
