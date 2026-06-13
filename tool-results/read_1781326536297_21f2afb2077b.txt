@@ -1,0 +1,2002 @@
+     1→     1→/**
+     2→     2→ * Student-facing API routes
+     3→     3→ * D1-only: All Appwrite dependencies removed
+     4→     4→ * Public: config, institutes, technologies, events, course catalog, instructors
+     5→     5→ * Auth: signup, login, logout, me, verify-otp, forgot-password
+     6→     6→ * Authenticated: institute requests, push tokens, packages, payments
+     7→     7→ */
+     8→     8→
+     9→     9→import { Hono } from 'hono';
+    10→    10→import type { Env } from '../env';
+    11→    11→import { validateStudentSession, createStudentSession, deleteStudentSession } from '../lib/student-auth';
+    12→    12→import { studentAuthMiddleware, type StudentAuthVariables } from '../lib/student-auth-middleware';
+    13→    13→import { registerPushToken, unregisterPushToken } from '../lib/onesignal';
+    14→    14→import { DEFAULT_CONFIG, type ServerConfig } from '../lib/types';
+    15→    15→import { getBucketForType, getPublicUrl } from '../lib/r2';
+    16→    16→import { getErrorMessage, generateId, getSessionExpiry } from '../lib/utils';
+    17→    17→import { hashPassword, verifyPassword } from '../lib/auth-password';
+    18→    18→
+    19→    19→const studentApiRoutes = new Hono<{ Bindings: Env; Variables: StudentAuthVariables }>();
+    20→    20→
+    21→    21→// ─── Helper: Get student auth from header ───
+    22→    22→async function getStudentAuth(c: any): Promise<{ authorized: boolean; userId?: string; email?: string; name?: string; emailVerified?: boolean }> {
+    23→    23→  const authHeader = c.req.header('Authorization');
+    24→    24→  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    25→    25→    return { authorized: false };
+    26→    26→  }
+    27→    27→  const token = authHeader.substring(7);
+    28→    28→  const result = await validateStudentSession(c.env, token);
+    29→    29→  return result;
+    30→    30→}
+    31→    31→
+    32→    32→// ─── Helper: Get student user from D1 ───
+    33→    33→async function getStudentUserDoc(env: Env, userId: string): Promise<Record<string, unknown> | null> {
+    34→    34→  try {
+    35→    35→    const user = await env.DB.prepare(
+    36→    36→      'SELECT * FROM users WHERE id = ?'
+    37→    37→    ).bind(userId).first();
+    38→    38→    return user as Record<string, unknown> | null;
+    39→    39→  } catch {
+    40→    40→    return null;
+    41→    41→  }
+    42→    42→}
+    43→    43→
+    44→    44→// ─── Helper: Look up institute name by ID ───
+    45→    45→async function getInstituteName(env: Env, instituteId: number | null): Promise<string | null> {
+    46→    46→  if (!instituteId) return null;
+    47→    47→  try {
+    48→    48→    const inst = await env.DB.prepare(
+    49→    49→      'SELECT name FROM institutes WHERE id = ?'
+    50→    50→    ).bind(instituteId).first<{ name: string }>();
+    51→    51→    return inst?.name || null;
+    52→    52→  } catch {
+    53→    53→    return null;
+    54→    54→  }
+    55→    55→}
+    56→    56→
+    57→    57→// ─── Helper: Look up technology name by short_code ───
+    58→    58→async function getTechnologyName(env: Env, shortCode: string | null): Promise<string | null> {
+    59→    59→  if (!shortCode) return null;
+    60→    60→  try {
+    61→    61→    const tech = await env.DB.prepare(
+    62→    62→      'SELECT name FROM technologies WHERE short_code = ?'
+    63→    63→    ).bind(shortCode).first<{ name: string }>();
+    64→    64→    return tech?.name || null;
+    65→    65→  } catch {
+    66→    66→    return null;
+    67→    67→  }
+    68→    68→}
+    69→    69→
+    70→    70→// ─── Helper: Transform Worker ServerConfig → Student-friendly format ───
+    71→    71→function transformConfigForStudent(config: ServerConfig) {
+    72→    72→  return {
+    73→    73→    contentProtection: config.contentProtection,
+    74→    74→    features: config.featureToggles,
+    75→    75→    ui: {
+    76→    76→      homeSections: config.homePageSections.sections,
+    77→    77→      sidebarSections: config.sidebarVisibility,
+    78→    78→      bottomNavTabs: config.bottomNavTabs.tabs
+    79→    79→        .filter((t) => t.enabled)
+    80→    80→        .sort((a, b) => a.order - b.order)
+    81→    81→        .map((t) => t.id),
+    82→    82→      topBarElements: config.topBarElements,
+    83→    83→      cardStyle: config.cardStyle,
+    84→    84→    },
+    85→    85→  };
+    86→    86→}
+    87→    87→
+    88→    88→// ═══════════════════════════════════════════════════
+    89→    89→// PUBLIC ROUTES (no auth required)
+    90→    90→// ═══════════════════════════════════════════════════
+    91→    91→
+    92→    92→// ─── Config ───
+    93→    93→
+    94→    94→// GET /config — Get server config for student app (public)
+    95→    95→studentApiRoutes.get('/config', async (c) => {
+    96→    96→  try {
+    97→    97→    const cachedConfig = await c.env.KV_CONFIG.get('server_config', 'json');
+    98→    98→    if (cachedConfig) {
+    99→    99→      const config = cachedConfig as ServerConfig;
+   100→   100→      return c.json({ config: transformConfigForStudent(config) });
+   101→   101→    }
+   102→   102→
+   103→   103→    const { results } = await c.env.DB.prepare(
+   104→   104→      'SELECT key, value FROM app_config'
+   105→   105→    ).all<{ key: string; value: string }>();
+   106→   106→
+   107→   107→    const configMap: Record<string, unknown> = {};
+   108→   108→    for (const row of results) {
+   109→   109→      try {
+   110→   110→        configMap[row.key] = JSON.parse(row.value);
+   111→   111→      } catch {
+   112→   112→        configMap[row.key] = row.value;
+   113→   113→      }
+   114→   114→    }
+   115→   115→
+   116→   116→    const config: ServerConfig = {
+   117→   117→      featureToggles: { ...DEFAULT_CONFIG.featureToggles, ...(configMap.featureToggles as Partial<ServerConfig['featureToggles']>) },
+   118→   118→      homePageSections: (configMap.homePageSections as ServerConfig['homePageSections']) || DEFAULT_CONFIG.homePageSections,
+   119→   119→      sidebarVisibility: { ...DEFAULT_CONFIG.sidebarVisibility, ...(configMap.sidebarVisibility as Partial<ServerConfig['sidebarVisibility']>) },
+   120→   120→      bottomNavTabs: (configMap.bottomNavTabs as ServerConfig['bottomNavTabs']) || DEFAULT_CONFIG.bottomNavTabs,
+   121→   121→      topBarElements: { ...DEFAULT_CONFIG.topBarElements, ...(configMap.topBarElements as Partial<ServerConfig['topBarElements']>) },
+   122→   122→      cardStyle: (configMap.cardStyle as ServerConfig['cardStyle']) || DEFAULT_CONFIG.cardStyle,
+   123→   123→      contentProtection: { ...DEFAULT_CONFIG.contentProtection, ...(configMap.contentProtection as Partial<ServerConfig['contentProtection']>) },
+   124→   124→    };
+   125→   125→
+   126→   126→    await c.env.KV_CONFIG.put('server_config', JSON.stringify(config), { expirationTtl: 300 });
+   127→   127→
+   128→   128→    return c.json({ config: transformConfigForStudent(config) });
+   129→   129→  } catch (error) {
+   130→   130→    return c.json({ config: transformConfigForStudent(DEFAULT_CONFIG) });
+   131→   131→  }
+   132→   132→});
+   133→   133→
+   134→   134→// GET /config/payment — Get active payment gateway config (public)
+   135→   135→studentApiRoutes.get('/config/payment', async (c) => {
+   136→   136→  try {
+   137→   137→    const result = await c.env.DB.prepare(
+   138→   138→      'SELECT id, gateway, is_active, instructions, instructions_bn, sandbox_mode FROM payment_config WHERE is_active = 1'
+   139→   139→    ).all();
+   140→   140→
+   141→   141→    return c.json({ paymentConfig: result.results });
+   142→   142→  } catch (error) {
+   143→   143→    return c.json({ error: getErrorMessage(error) }, 500);
+   144→   144→  }
+   145→   145→});
+   146→   146→
+   147→   147→// ─── Institutes ───
+   148→   148→
+   149→   149→studentApiRoutes.get('/institutes', async (c) => {
+   150→   150→  try {
+   151→   151→    const division = c.req.query('division');
+   152→   152→    const search = c.req.query('search');
+   153→   153→    const page = parseInt(c.req.query('page') || '1');
+   154→   154→    const limit = parseInt(c.req.query('limit') || '50');
+   155→   155→    const offset = (page - 1) * limit;
+   156→   156→
+   157→   157→    let query = 'SELECT * FROM institutes WHERE is_active = 1';
+   158→   158→    let countQuery = 'SELECT COUNT(*) as total FROM institutes WHERE is_active = 1';
+   159→   159→    const params: any[] = [];
+   160→   160→
+   161→   161→    if (division) {
+   162→   162→      query += ' AND division = ?';
+   163→   163→      countQuery += ' AND division = ?';
+   164→   164→      params.push(division);
+   165→   165→    }
+   166→   166→
+   167→   167→    if (search) {
+   168→   168→      query += ' AND (name LIKE ? OR name_bn LIKE ?)';
+   169→   169→      countQuery += ' AND (name LIKE ? OR name_bn LIKE ?)';
+   170→   170→      params.push(`%${search}%`, `%${search}%`);
+   171→   171→    }
+   172→   172→
+   173→   173→    query += ' ORDER BY is_requested ASC, name ASC LIMIT ? OFFSET ?';
+   174→   174→
+   175→   175→    const countResult = await c.env.DB.prepare(countQuery).bind(...params).first();
+   176→   176→    const total = (countResult as any)?.total || 0;
+   177→   177→
+   178→   178→    const result = await c.env.DB.prepare(query).bind(...params, limit, offset).all();
+   179→   179→
+   180→   180→    return c.json({ institutes: result.results, total });
+   181→   181→  } catch (error) {
+   182→   182→    return c.json({ error: getErrorMessage(error) }, 500);
+   183→   183→  }
+   184→   184→});
+   185→   185→
+   186→   186→studentApiRoutes.get('/institutes/:id', async (c) => {
+   187→   187→  try {
+   188→   188→    const id = c.req.param('id');
+   189→   189→    const result = await c.env.DB.prepare(
+   190→   190→      'SELECT * FROM institutes WHERE id = ? AND is_active = 1'
+   191→   191→    ).bind(id).first();
+   192→   192→
+   193→   193→    if (!result) {
+   194→   194→      return c.json({ error: 'Institute not found' }, 404);
+   195→   195→    }
+   196→   196→
+   197→   197→    return c.json({ institute: result });
+   198→   198→  } catch (error) {
+   199→   199→    return c.json({ error: getErrorMessage(error) }, 500);
+   200→   200→  }
+   201→   201→});
+   202→   202→
+   203→   203→// ─── Technologies ───
+   204→   204→
+   205→   205→studentApiRoutes.get('/technologies', async (c) => {
+   206→   206→  try {
+   207→   207→    const result = await c.env.DB.prepare(
+   208→   208→      'SELECT * FROM technologies WHERE is_active = 1 ORDER BY name ASC'
+   209→   209→    ).all();
+   210→   210→
+   211→   211→    return c.json({ technologies: result.results });
+   212→   212→  } catch (error) {
+   213→   213→    return c.json({ error: getErrorMessage(error) }, 500);
+   214→   214→  }
+   215→   215→});
+   216→   216→
+   217→   217→// ─── Events ───
+   218→   218→
+   219→   219→studentApiRoutes.get('/events', async (c) => {
+   220→   220→  try {
+   221→   221→    const result = await c.env.DB.prepare(
+   222→   222→      "SELECT * FROM events WHERE is_active = 1 AND end_date >= date('now') ORDER BY start_date ASC"
+   223→   223→    ).all();
+   224→   224→
+   225→   225→    return c.json({ events: result.results });
+   226→   226→  } catch (error) {
+   227→   227→    return c.json({ error: getErrorMessage(error) }, 500);
+   228→   228→  }
+   229→   229→});
+   230→   230→
+   231→   231→// ─── Live Classes ───
+   232→   232→
+   233→   233→studentApiRoutes.get('/live-classes', async (c) => {
+   234→   234→  try {
+   235→   235→    const result = await c.env.DB.prepare(
+   236→   236→      "SELECT * FROM live_class_schedules WHERE is_active = 1 AND status IN ('scheduled', 'live') ORDER BY scheduled_at ASC"
+   237→   237→    ).all();
+   238→   238→
+   239→   239→    return c.json({ liveClasses: result.results });
+   240→   240→  } catch (error) {
+   241→   241→    return c.json({ error: getErrorMessage(error) }, 500);
+   242→   242→  }
+   243→   243→});
+   244→   244→
+   245→   245→// ─── Coupons ───
+   246→   246→
+   247→   247→studentApiRoutes.get('/coupons/validate', async (c) => {
+   248→   248→  try {
+   249→   249→    const code = c.req.query('code');
+   250→   250→    if (!code) {
+   251→   251→      return c.json({ error: 'Coupon code required' }, 400);
+   252→   252→    }
+   253→   253→
+   254→   254→    const coupon = await c.env.DB.prepare(
+   255→   255→      'SELECT * FROM coupons WHERE code = ? AND is_active = 1'
+   256→   256→    ).bind(code).first();
+   257→   257→
+   258→   258→    if (!coupon) {
+   259→   259→      return c.json({ valid: false, error: 'Invalid coupon code' }, 404);
+   260→   260→    }
+   261→   261→
+   262→   262→    const cp = coupon as any;
+   263→   263→    const now = new Date().toISOString();
+   264→   264→
+   265→   265→    if (cp.valid_from > now || cp.valid_until < now) {
+   266→   266→      return c.json({ valid: false, error: 'Coupon has expired or is not yet active' });
+   267→   267→    }
+   268→   268→
+   269→   269→    if (cp.usage_limit && cp.usage_count >= cp.usage_limit) {
+   270→   270→      return c.json({ valid: false, error: 'Coupon usage limit reached' });
+   271→   271→    }
+   272→   272→
+   273→   273→    return c.json({
+   274→   274→      valid: true,
+   275→   275→      coupon: {
+   276→   276→        code: cp.code,
+   277→   277→        discount_type: cp.discount_type,
+   278→   278→        discount_value: cp.discount_value,
+   279→   279→        max_discount: cp.max_discount,
+   280→   280→        min_purchase: cp.min_purchase,
+   281→   281→      },
+   282→   282→    });
+   283→   283→  } catch (error) {
+   284→   284→    return c.json({ error: getErrorMessage(error) }, 500);
+   285→   285→  }
+   286→   286→});
+   287→   287→
+   288→   288→// ─── Course Packages ───
+   289→   289→
+   290→   290→studentApiRoutes.get('/course-packages', async (c) => {
+   291→   291→  try {
+   292→   292→    const courseId = c.req.query('courseId');
+   293→   293→    if (!courseId) {
+   294→   294→      return c.json({ error: 'courseId required' }, 400);
+   295→   295→    }
+   296→   296→
+   297→   297→    // Get course price
+   298→   298→    const course = await c.env.DB.prepare(
+   299→   299→      'SELECT id, price FROM courses WHERE id = ? AND is_published = 1'
+   300→   300→    ).bind(courseId).first<{ id: string; price: number }>();
+   301→   301→
+   302→   302→    if (!course) {
+   303→   303→      return c.json({ packages: [] });
+   304→   304→    }
+   305→   305→
+   306→   306→    let result = await c.env.DB.prepare(
+   307→   307→      'SELECT * FROM course_packages WHERE course_id = ? AND is_active = 1 ORDER BY price ASC'
+   308→   308→    ).bind(courseId).all();
+   309→   309→
+   310→   310→    // Auto-generate Single & Duo packages if missing (always show both for paid courses)
+   311→   311→    if (course.price > 0) {
+   312→   312→      const existingTypes = new Set((result.results as any[]).map((p: any) => p.package_type));
+   313→   313→      let needsRefetch = false;
+   314→   314→
+   315→   315→      // Ensure Single package exists
+   316→   316→      if (!existingTypes.has('single')) {
+   317→   317→        await c.env.DB.prepare(`
+   318→   318→          INSERT INTO course_packages (course_id, package_type, price, duration_months, max_users, is_auto_assign, is_active, display_name, description)
+   319→   319→          VALUES (?, 'single', ?, 6, 1, 1, 1, 'Single', '1 জন ইউজারের জন্য')
+   320→   320→        `).bind(courseId, course.price).run();
+   321→   321→        needsRefetch = true;
+   322→   322→      }
+   323→   323→
+   324→   324→      // Ensure Duo package exists (original price + 15% extra)
+   325→   325→      if (!existingTypes.has('dual')) {
+   326→   326→        const duoPrice = Math.round(course.price * 1.15);
+   327→   327→        await c.env.DB.prepare(`
+   328→   328→          INSERT INTO course_packages (course_id, package_type, price, duration_months, max_users, is_auto_assign, is_active, display_name, description)
+   329→   329→          VALUES (?, 'dual', ?, 6, 2, 1, 1, 'Duo', '2 জন ইউজারের জন্য — বন্ধুকে শেয়ার করুন!')
+   330→   330→        `).bind(courseId, duoPrice).run();
+   331→   331→        needsRefetch = true;
+   332→   332→      }
+   333→   333→
+   334→   334→      // Re-fetch after auto-generation
+   335→   335→      if (needsRefetch) {
+   336→   336→        result = await c.env.DB.prepare(
+   337→   337→          'SELECT * FROM course_packages WHERE course_id = ? AND is_active = 1 AND package_type IN (\"single\", \"dual\") ORDER BY price ASC'
+   338→   338→        ).bind(courseId).all();
+   339→   339→      }
+   340→   340→    }
+   341→   341→
+   342→   342→    // Filter to only show Single and Duo packages (hide any other types)
+   343→   343→    const filteredPackages = (result.results as any[]).filter((p: any) => p.package_type === 'single' || p.package_type === 'dual');
+   344→   344→
+   345→   345→    return c.json({ packages: filteredPackages });
+   346→   346→  } catch (error) {
+   347→   347→    return c.json({ error: getErrorMessage(error) }, 500);
+   348→   348→  }
+   349→   349→});
+   350→   350→
+   351→   351→// GET /packages/mine — Get current user's purchased packages
+   352→   352→studentApiRoutes.get('/packages/mine', async (c) => {
+   353→   353→  try {
+   354→   354→    const auth = await getStudentAuth(c);
+   355→   355→    if (!auth.authorized) {
+   356→   356→      return c.json({ error: 'Unauthorized' }, 401);
+   357→   357→    }
+   358→   358→
+   359→   359→    const result = await c.env.DB.prepare(`
+   360→   360→      SELECT up.*, cp.package_type, cp.price, cp.duration_months, cp.course_id, cp.max_users,
+   361→   361→             c.title as course_title, c.thumbnail_url as course_thumbnail
+   362→   362→      FROM user_packages up
+   363→   363→      JOIN course_packages cp ON up.package_id = cp.id
+   364→   364→      LEFT JOIN courses c ON cp.course_id = c.id
+   365→   365→      WHERE up.user_id = ?
+   366→   366→      ORDER BY up.activated_at DESC
+   367→   367→    `).bind(auth.userId).all();
+   368→   368→
+   369→   369→    return c.json({ packages: result.results });
+   370→   370→  } catch (error) {
+   371→   371→    return c.json({ error: getErrorMessage(error) }, 500);
+   372→   372→  }
+   373→   373→});
+   374→   374→
+   375→   375→// GET /users/lookup?email=... — Look up a user by email (for duo member)
+   376→   376→studentApiRoutes.get('/users/lookup', async (c) => {
+   377→   377→  try {
+   378→   378→    const email = c.req.query('email');
+   379→   379→    if (!email) {
+   380→   380→      return c.json({ error: 'email query parameter required' }, 400);
+   381→   381→    }
+   382→   382→
+   383→   383→    const user = await c.env.DB.prepare(
+   384→   384→      'SELECT id, full_name, email, institute_id, technology, avatar_url FROM users WHERE email = ? AND is_active = 1'
+   385→   385→    ).bind(email).first();
+   386→   386→
+   387→   387→    if (!user) {
+   388→   388→      return c.json({ found: false, user: null });
+   389→   389→    }
+   390→   390→
+   391→   391→    const u = user as any;
+   392→   392→    const instituteName = await getInstituteName(c.env, u.institute_id || null);
+   393→   393→
+   394→   394→    return c.json({
+   395→   395→      found: true,
+   396→   396→      user: {
+   397→   397→        id: u.id,
+   398→   398→        name: u.full_name,
+   399→   399→        email: u.email,
+   400→   400→        technology: u.technology || null,
+   401→   401→        instituteName: instituteName || null,
+   402→   402→        avatarUrl: u.avatar_url || null,
+   403→   403→      },
+   404→   404→    });
+   405→   405→  } catch (error) {
+   406→   406→    return c.json({ error: getErrorMessage(error) }, 500);
+   407→   407→  }
+   408→   408→});
+   409→   409→
+   410→   410→// ─── Courses (from D1 — public catalog) ───
+   411→   411→
+   412→   412→studentApiRoutes.get('/courses', async (c) => {
+   413→   413→  try {
+   414→   414→    const technology = c.req.query('technology') || '';
+   415→   415→    const limit = parseInt(c.req.query('limit') || '20');
+   416→   416→    const offset = parseInt(c.req.query('offset') || '0');
+   417→   417→    const search = c.req.query('search') || '';
+   418→   418→    const level = c.req.query('level') || '';
+   419→   419→
+   420→   420→    let where = 'WHERE is_published = 1';
+   421→   421→    const params: unknown[] = [];
+   422→   422→
+   423→   423→    if (technology) {
+   424→   424→      where += ' AND technology_id = ?';
+   425→   425→      params.push(technology);
+   426→   426→    }
+   427→   427→    if (search) {
+   428→   428→      where += ' AND title LIKE ?';
+   429→   429→      params.push(`%${search}%`);
+   430→   430→    }
+   431→   431→    if (level) {
+   432→   432→      where += ' AND level = ?';
+   433→   433→      params.push(level);
+   434→   434→    }
+   435→   435→
+   436→   436→    const countResult = await c.env.DB.prepare(
+   437→   437→      `SELECT COUNT(*) as total FROM courses ${where}`
+   438→   438→    ).bind(...params).first();
+   439→   439→    const total = (countResult as any)?.total || 0;
+   440→   440→
+   441→   441→    const result = await c.env.DB.prepare(
+   442→   442→      `SELECT * FROM courses ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+   443→   443→    ).bind(...params, limit, offset).all();
+   444→   444→
+   445→   445→    // Enrich courses with auto-calculated duration from videos
+   446→   446→    const enrichedCourses = await Promise.all(result.results.map(async (course: any) => {
+   447→   447→      try {
+   448→   448→        const vidStats = await c.env.DB.prepare(
+   449→   449→          'SELECT COUNT(*) as count, COALESCE(SUM(duration), 0) as total_duration FROM videos WHERE course_id = ?'
+   450→   450→        ).bind(course.id).first();
+   451→   451→        const vc = (vidStats as any)?.count || 0;
+   452→   452→        const td = (vidStats as any)?.total_duration || 0;
+   453→   453→        const avg = vc > 0 ? Math.round(td / vc * 10) / 10 : 0;
+   454→   454→        return { ...course, duration: avg, total_videos: vc, total_video_duration: td };
+   455→   455→      } catch {
+   456→   456→        return course;
+   457→   457→      }
+   458→   458→    }));
+   459→   459→
+   460→   460→    return c.json({ courses: enrichedCourses, total });
+   461→   461→  } catch (error) {
+   462→   462→    return c.json({ error: getErrorMessage(error) }, 500);
+   463→   463→  }
+   464→   464→});
+   465→   465→
+   466→   466→studentApiRoutes.get('/courses/:id', async (c) => {
+   467→   467→  try {
+   468→   468→    const id = c.req.param('id');
+   469→   469→    const course = await c.env.DB.prepare(
+   470→   470→      'SELECT * FROM courses WHERE id = ? AND is_published = 1'
+   471→   471→    ).bind(id).first();
+   472→   472→
+   473→   473→    if (!course) {
+   474→   474→      return c.json({ error: 'Course not found' }, 404);
+   475→   475→    }
+   476→   476→
+   477→   477→    // Fetch all instructors for this course via course_instructors join table
+   478→   478→    let instructors: unknown[] = [];
+   479→   479→    try {
+   480→   480→      const instResult = await c.env.DB.prepare(
+   481→   481→        'SELECT i.* FROM instructors i JOIN course_instructors ci ON i.id = ci.instructor_id WHERE ci.course_id = ? ORDER BY ci.sort_order ASC'
+   482→   482→      ).bind(id).all();
+   483→   483→      instructors = instResult.results;
+   484→   484→    } catch {
+   485→   485→      // course_instructors table may not exist or no entries — fallback empty
+   486→   486→    }
+   487→   487→
+   488→   488→    // Fetch learning points for this course
+   489→   489→    let learningPoints: unknown[] = [];
+   490→   490→    try {
+   491→   491→      const lpResult = await c.env.DB.prepare(
+   492→   492→        'SELECT id, point_text, sort_order FROM course_learning_points WHERE course_id = ? ORDER BY sort_order ASC'
+   493→   493→      ).bind(id).all();
+   494→   494→      learningPoints = lpResult.results;
+   495→   495→    } catch {
+   496→   496→      // course_learning_points table may not exist — fallback empty
+   497→   497→    }
+   498→   498→
+   499→   499→    // Fetch subjects for this course via course_subjects join table
+   500→   500→    let subjects: unknown[] = [];
+   501→   501→    try {
+   502→   502→      const subResult = await c.env.DB.prepare(
+   503→   503→        'SELECT s.* FROM subjects s JOIN course_subjects cs ON s.id = cs.subject_id WHERE cs.course_id = ? ORDER BY cs.sort_order ASC'
+   504→   504→      ).bind(id).all();
+   505→   505→      subjects = subResult.results;
+   506→   506→    } catch {
+   507→   507→      // course_subjects or subjects table may not exist — fallback empty
+   508→   508→    }
+   509→   509→
+   510→   510→    // Auto-calculate duration from videos
+   511→   511→    let videoStats: any = null;
+   512→   512→    try {
+   513→   513→      videoStats = await c.env.DB.prepare(
+   514→   514→        'SELECT COUNT(*) as count, COALESCE(SUM(duration), 0) as total_duration FROM videos WHERE course_id = ?'
+   515→   515→      ).bind(id).first();
+   516→   516→    } catch {
+   517→   517→      // videos table may not exist — fallback empty
+   518→   518→    }
+   519→   519→    const videoCount = videoStats?.count || 0;
+   520→   520→    const totalDuration = videoStats?.total_duration || 0;
+   521→   521→    const avgDuration = videoCount > 0 ? Math.round(totalDuration / videoCount * 10) / 10 : 0;
+   522→   522→
+   523→   523→    return c.json({
+   524→   524→      course: {
+   525→   525→        ...(course as any),
+   526→   526→        duration: avgDuration,
+   527→   527→        total_videos: videoCount,
+   528→   528→        total_video_duration: totalDuration,
+   529→   529→      },
+   530→   530→      instructors,
+   531→   531→      learningPoints,
+   532→   532→      subjects,
+   533→   533→    });
+   534→   534→  } catch (error) {
+   535→   535→    return c.json({ error: getErrorMessage(error) }, 500);
+   536→   536→  }
+   537→   537→});
+   538→   538→
+   539→   539→// GET /courses/:id/curriculum — Get full curriculum structure for a course
+   540→   540→studentApiRoutes.get('/courses/:id/curriculum', async (c) => {
+   541→   541→  try {
+   542→   542→    const id = c.req.param('id');
+   543→   543→
+   544→   544→    // Verify course exists
+   545→   545→    const course = await c.env.DB.prepare(
+   546→   546→      'SELECT id FROM courses WHERE id = ? AND is_published = 1'
+   547→   547→    ).bind(id).first();
+   548→   548→
+   549→   549→    if (!course) {
+   550→   550→      return c.json({ error: 'Course not found' }, 404);
+   551→   551→    }
+   552→   552→
+   553→   553→    // Fetch subjects for this course via course_subjects join table
+   554→   554→    let subjects: unknown[] = [];
+   555→   555→    try {
+   556→   556→      const subResult = await c.env.DB.prepare(
+   557→   557→        'SELECT s.* FROM subjects s JOIN course_subjects cs ON s.id = cs.subject_id WHERE cs.course_id = ? ORDER BY cs.sort_order ASC'
+   558→   558→      ).bind(id).all();
+   559→   559→      subjects = subResult.results;
+   560→   560→    } catch {
+   561→   561→      // fallback empty
+   562→   562→    }
+   563→   563→
+   564→   564→    // Fetch chapters for this course
+   565→   565→    let chapters: unknown[] = [];
+   566→   566→    try {
+   567→   567→      const chapResult = await c.env.DB.prepare(
+   568→   568→        'SELECT * FROM chapters WHERE course_id = ? ORDER BY subject_id, sort_order ASC'
+   569→   569→      ).bind(id).all();
+   570→   570→      chapters = chapResult.results;
+   571→   571→    } catch {
+   572→   572→      // fallback empty
+   573→   573→    }
+   574→   574→
+   575→   575→    // Fetch lessons for this course
+   576→   576→    let lessons: unknown[] = [];
+   577→   577→    try {
+   578→   578→      const lesResult = await c.env.DB.prepare(
+   579→   579→        'SELECT * FROM lessons WHERE course_id = ? ORDER BY chapter_id, sort_order ASC'
+   580→   580→      ).bind(id).all();
+   581→   581→      lessons = lesResult.results;
+   582→   582→    } catch {
+   583→   583→      // fallback empty
+   584→   584→    }
+   585→   585→
+   586→   586→    // Fetch videos for this course
+   587→   587→    let videos: unknown[] = [];
+   588→   588→    try {
+   589→   589→      const vidResult = await c.env.DB.prepare(
+   590→   590→        'SELECT * FROM videos WHERE course_id = ? ORDER BY sort_order ASC'
+   591→   591→      ).bind(id).all();
+   592→   592→      videos = vidResult.results;
+   593→   593→    } catch {
+   594→   594→      // fallback empty
+   595→   595→    }
+   596→   596→
+   597→   597→    // Fetch learning points for this course
+   598→   598→    let learningPoints: unknown[] = [];
+   599→   599→    try {
+   600→   600→      const lpResult = await c.env.DB.prepare(
+   601→   601→        'SELECT id, point_text, sort_order FROM course_learning_points WHERE course_id = ? ORDER BY sort_order ASC'
+   602→   602→      ).bind(id).all();
+   603→   603→      learningPoints = lpResult.results;
+   604→   604→    } catch {
+   605→   605→      // fallback empty
+   606→   606→    }
+   607→   607→
+   608→   608→    return c.json({
+   609→   609→      subjects,
+   610→   610→      chapters,
+   611→   611→      lessons,
+   612→   612→      videos,
+   613→   613→      learningPoints,
+   614→   614→    });
+   615→   615→  } catch (error) {
+   616→   616→    return c.json({ error: getErrorMessage(error) }, 500);
+   617→   617→  }
+   618→   618→});
+   619→   619→
+   620→   620→studentApiRoutes.get('/courses/:id/videos', async (c) => {
+   621→   621→  try {
+   622→   622→    const id = c.req.param('id');
+   623→   623→    const limit = parseInt(c.req.query('limit') || '100');
+   624→   624→    const offset = parseInt(c.req.query('offset') || '0');
+   625→   625→
+   626→   626→    // Check if user is enrolled (optional auth)
+   627→   627→    const auth = await getStudentAuth(c);
+   628→   628→    let isEnrolled = false;
+   629→   629→    if (auth.authorized && auth.userId) {
+   630→   630→      const enrollment = await c.env.DB.prepare(
+   631→   631→        'SELECT id FROM enrollments WHERE user_id = ? AND course_id = ?'
+   632→   632→      ).bind(auth.userId, id).first();
+   633→   633→      isEnrolled = !!enrollment;
+   634→   634→    }
+   635→   635→
+   636→   636→    const countResult = await c.env.DB.prepare(
+   637→   637→      'SELECT COUNT(*) as total FROM videos WHERE course_id = ?'
+   638→   638→    ).bind(id).first();
+   639→   639→    const total = (countResult as any)?.total || 0;
+   640→   640→
+   641→   641→    const result = await c.env.DB.prepare(
+   642→   642→      'SELECT * FROM videos WHERE course_id = ? ORDER BY sort_order ASC LIMIT ? OFFSET ?'
+   643→   643→    ).bind(id, limit, offset).all();
+   644→   644→
+   645→   645→    // Filter out unpublished videos for non-enrolled users
+   646→   646→    const videos = (result.results as any[]).map(video => {
+   647→   647→      if (!isEnrolled && !video.is_preview) {
+   648→   648→        // Return limited info for non-enrolled non-preview videos
+   649→   649→        return {
+   650→   650→          ...video,
+   651→   651→          stream_url: null,
+   652→   652→          is_locked: true,
+   653→   653→        };
+   654→   654→      }
+   655→   655→      return { ...video, is_locked: false };
+   656→   656→    });
+   657→   657→
+   658→   658→    return c.json({ videos, total });
+   659→   659→  } catch (error) {
+   660→   660→    return c.json({ error: getErrorMessage(error) }, 500);
+   661→   661→  }
+   662→   662→});
+   663→   663→
+   664→   664→// ─── Instructors (from D1 — public) ───
+   665→   665→
+   666→   666→studentApiRoutes.get('/instructors', async (c) => {
+   667→   667→  try {
+   668→   668→    const limit = parseInt(c.req.query('limit') || '20');
+   669→   669→    const offset = parseInt(c.req.query('offset') || '0');
+   670→   670→    const search = c.req.query('search') || '';
+   671→   671→
+   672→   672→    let where = 'WHERE is_active = 1';
+   673→   673→    const params: unknown[] = [];
+   674→   674→
+   675→   675→    if (search) {
+   676→   676→      where += ' AND name LIKE ?';
+   677→   677→      params.push(`%${search}%`);
+   678→   678→    }
+   679→   679→
+   680→   680→    const countResult = await c.env.DB.prepare(
+   681→   681→      `SELECT COUNT(*) as total FROM instructors ${where}`
+   682→   682→    ).bind(...params).first();
+   683→   683→    const total = (countResult as any)?.total || 0;
+   684→   684→
+   685→   685→    const result = await c.env.DB.prepare(
+   686→   686→      `SELECT * FROM instructors ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+   687→   687→    ).bind(...params, limit, offset).all();
+   688→   688→
+   689→   689→    return c.json({ instructors: result.results, total });
+   690→   690→  } catch (error) {
+   691→   691→    return c.json({ error: getErrorMessage(error) }, 500);
+   692→   692→  }
+   693→   693→});
+   694→   694→
+   695→   695→studentApiRoutes.get('/instructors/:id', async (c) => {
+   696→   696→  try {
+   697→   697→    const id = c.req.param('id');
+   698→   698→    const instructor = await c.env.DB.prepare(
+   699→   699→      'SELECT * FROM instructors WHERE id = ? AND is_active = 1'
+   700→   700→    ).bind(id).first();
+   701→   701→
+   702→   702→    if (!instructor) {
+   703→   703→      return c.json({ error: 'Instructor not found' }, 404);
+   704→   704→    }
+   705→   705→
+   706→   706→    return c.json({ instructor });
+   707→   707→  } catch (error) {
+   708→   708→    return c.json({ error: getErrorMessage(error) }, 500);
+   709→   709→  }
+   710→   710→});
+   711→   711→
+   712→   712→// GET /instructors/:id/courses — List courses by instructor
+   713→   713→studentApiRoutes.get('/instructors/:id/courses', async (c) => {
+   714→   714→  try {
+   715→   715→    const instructorId = c.req.param('id');
+   716→   716→    const limit = parseInt(c.req.query('limit') || '20');
+   717→   717→    const offset = parseInt(c.req.query('offset') || '0');
+   718→   718→
+   719→   719→    // Verify instructor exists and is active
+   720→   720→    const instructor = await c.env.DB.prepare(
+   721→   721→      'SELECT id FROM instructors WHERE id = ? AND is_active = 1'
+   722→   722→    ).bind(instructorId).first();
+   723→   723→
+   724→   724→    if (!instructor) {
+   725→   725→      return c.json({ error: 'Instructor not found' }, 404);
+   726→   726→    }
+   727→   727→
+   728→   728→    const result = await c.env.DB.prepare(
+   729→   729→      'SELECT * FROM courses WHERE instructor_id = ? AND is_published = 1 ORDER BY created_at DESC LIMIT ? OFFSET ?'
+   730→   730→    ).bind(instructorId, limit, offset).all();
+   731→   731→
+   732→   732→    const countResult = await c.env.DB.prepare(
+   733→   733→      'SELECT COUNT(*) as total FROM courses WHERE instructor_id = ? AND is_published = 1'
+   734→   734→    ).bind(instructorId).first();
+   735→   735→    const total = (countResult as any)?.total || 0;
+   736→   736→
+   737→   737→    return c.json({ courses: result.results, total });
+   738→   738→  } catch (error) {
+   739→   739→    return c.json({ error: getErrorMessage(error) }, 500);
+   740→   740→  }
+   741→   741→});
+   742→   742→
+   743→   743→// ─── Video Streaming ───
+   744→   744→
+   745→   745→studentApiRoutes.get('/video/stream-url', async (c) => {
+   746→   746→  try {
+   747→   747→    const auth = await getStudentAuth(c);
+   748→   748→    if (!auth.authorized) {
+   749→   749→      return c.json({ error: 'Unauthorized — login required to stream videos' }, 401);
+   750→   750→    }
+   751→   751→    if (!auth.emailVerified) {
+   752→   752→      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+   753→   753→    }
+   754→   754→
+   755→   755→    const key = c.req.query('key');
+   756→   756→    const bucket = c.req.query('bucket') || 'videos';
+   757→   757→
+   758→   758→    if (!key) {
+   759→   759→      return c.json({ error: 'key parameter required' }, 400);
+   760→   760→    }
+   761→   761→
+   762→   762→    const r2Bucket = getBucketForType(bucket, c.env);
+   763→   763→    const fileInfo = await r2Bucket.head(key);
+   764→   764→    if (!fileInfo) {
+   765→   765→      return c.json({ error: 'Video not found' }, 404);
+   766→   766→    }
+   767→   767→
+   768→   768→    // Check enrollment for video access
+   769→   769→    if (auth.userId) {
+   770→   770→      // Look up the video record to get the course_id
+   771→   771→      const video = await c.env.DB.prepare(
+   772→   772→        'SELECT course_id, is_preview FROM videos WHERE video_url = ? OR id = ? LIMIT 1'
+   773→   773→      ).bind(key, key).first<{ course_id: string; is_preview: number }>();
+   774→   774→
+   775→   775→      if (video) {
+   776→   776→        const enrollment = await c.env.DB.prepare(
+   777→   777→          'SELECT id FROM enrollments WHERE user_id = ? AND course_id = ?'
+   778→   778→        ).bind(auth.userId, video.course_id).first();
+   779→   779→
+   780→   780→        if (!enrollment && !video.is_preview) {
+   781→   781→          return c.json({ error: 'Not enrolled in this course' }, 403);
+   782→   782→        }
+   783→   783→      }
+   784→   784→    }
+   785→   785→
+   786→   786→    const url = getPublicUrl(c.env, bucket, key);
+   787→   787→
+   788→   788→    return c.json({ url });
+   789→   789→  } catch (error) {
+   790→   790→    return c.json({ error: getErrorMessage(error) }, 500);
+   791→   791→  }
+   792→   792→});
+   793→   793→
+   794→   794→
+   795→   795→// ═══════════════════════════════════════════════════
+   796→   796→// AUTH ROUTES (D1-only — no Appwrite)
+   797→   797→// ═══════════════════════════════════════════════════
+   798→   798→
+   799→   799→// POST /auth/signup — Create student account
+   800→   800→studentApiRoutes.post('/auth/signup', async (c) => {
+   801→   801→  try {
+   802→   802→    const { fullName, email, password, instituteId, technology } = await c.req.json();
+   803→   803→
+   804→   804→    if (!fullName || !email || !password) {
+   805→   805→      return c.json({ error: 'fullName, email, and password are required' }, 400);
+   806→   806→    }
+   807→   807→
+   808→   808→    if (password.length < 8) {
+   809→   809→      return c.json({ error: 'Password must be at least 8 characters' }, 400);
+   810→   810→    }
+   811→   811→
+   812→   812→    // Check if user already exists
+   813→   813→    const existing = await c.env.DB.prepare(
+   814→   814→      'SELECT id FROM users WHERE email = ?'
+   815→   815→    ).bind(email).first();
+   816→   816→
+   817→   817→    if (existing) {
+   818→   818→      return c.json({ error: 'An account with this email already exists' }, 400);
+   819→   819→    }
+   820→   820→
+   821→   821→    // Create user in D1
+   822→   822→    const userId = crypto.randomUUID();
+   823→   823→    const passwordHash = await hashPassword(password);
+   824→   824→
+   825→   825→    await c.env.DB.prepare(`
+   826→   826→      INSERT INTO users (id, email, full_name, institute_id, technology, role, email_verified, is_active, enrolled_course_ids, password_hash)
+   827→   827→      VALUES (?, ?, ?, ?, ?, 'student', 0, 1, '[]', ?)
+   828→   828→    `).bind(userId, email, fullName, instituteId || null, technology || null, passwordHash).run();
+   829→   829→
+   830→   830→    // Create default user preferences
+   831→   831→    await c.env.DB.prepare(`
+   832→   832→      INSERT OR IGNORE INTO user_preferences (user_id, theme_mode, accent_color, font_size, border_radius, compact_mode)
+   833→   833→      VALUES (?, 'system', '#0ea5e9', 16, 16, 0)
+   834→   834→    `).bind(userId).run();
+   835→   835→
+   836→   836→    // Create default notification preferences
+   837→   837→    await c.env.DB.prepare(
+   838→   838→      'INSERT OR IGNORE INTO notification_preferences (user_id) VALUES (?)'
+   839→   839→    ).bind(userId).run();
+   840→   840→
+   841→   841→    // ── Per-user daily rate limit for verification emails ──
+   842→   842→    const rateLimit = await checkDailyEmailRateLimit(c.env.DB, email);
+   843→   843→    if (!rateLimit.allowed) {
+   844→   844→      return c.json({ error: `Too many verification emails. You can send up to ${rateLimit.limit} emails per day. Please try again tomorrow.`, code: 'RATE_LIMITED' }, 429);
+   845→   845→    }
+   846→   846→
+   847→   847→    // Generate and send email verification OTP (cryptographically secure)
+   848→   848→    const verifyOtp = generateOTP();
+   849→   849→    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+   850→   850→
+   851→   851→    await c.env.DB.prepare(
+   852→   852→      'INSERT INTO password_reset_otps (email, otp, purpose, expires_at, used, created_at) VALUES (?, ?, ?, ?, 0, ?)'
+   853→   853→    ).bind(email, verifyOtp, 'email_verification', otpExpiresAt, new Date().toISOString()).run();
+   854→   854→
+   855→   855→    // Send verification email
+   856→   856→    try {
+   857→   857→      const { sendEmail } = await import('../lib/resend');
+   858→   858→      await sendEmail(c.env, email, 'DAKKHO — Verify Your Email Address', `
+   859→   859→        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+   860→   860→          <div style="text-align: center; margin-bottom: 24px;">
+   861→   861→            <h1 style="color: #0ea5e9; font-size: 28px; margin: 0;">DAKKHO</h1>
+   862→   862→            <p style="color: #64748b; margin: 4px 0 0;">Bangladesh's Premier Polytechnic Platform</p>
+   863→   863→          </div>
+   864→   864→          <div style="background: #f8fafc; border-radius: 16px; padding: 32px; text-align: center;">
+   865→   865→            <h2 style="color: #0f172a; font-size: 20px; margin: 0 0 8px;">Welcome to DAKKHO, ${fullName}!</h2>
+   866→   866→            <p style="color: #334155; font-size: 16px; margin: 0 0 24px;">Please verify your email address to get started.</p>
+   867→   867→            <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0ea5e9; background: white; border: 2px dashed #e2e8f0; border-radius: 12px; padding: 16px; display: inline-block;">
+   868→   868→              ${verifyOtp}
+   869→   869→            </div>
+   870→   870→            <p style="color: #64748b; font-size: 14px; margin: 16px 0 0;">This code expires in 10 minutes.</p>
+   871→   871→            <p style="color: #94a3b8; font-size: 13px; margin: 8px 0 0;">If you did not create an account, please ignore this email.</p>
+   872→   872→          </div>
+   873→   873→          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+   874→   874→          <p style="color: #94a3b8; font-size: 12px; text-align: center;">
+   875→   875→            Sent from DAKKHO — Bangladesh's Premier Polytechnic Student Platform<br />
+   876→   876→            noreply@dakkho.pro.bd
+   877→   877→          </p>
+   878→   878→        </div>
+   879→   879→      `);
+   880→   880→    } catch (emailError: any) {
+   881→   881→      console.error('Failed to send verification email:', emailError.message);
+   882→   882→      // Don't fail signup if email fails, but log it
+   883→   883→    }
+   884→   884→
+   885→   885→    // Look up institute name and technology name for the response
+   886→   886→    const instituteName = await getInstituteName(c.env, instituteId || null);
+   887→   887→    const technologyName = await getTechnologyName(c.env, technology || null);
+   888→   888→
+   889→   889→    // Create D1 student session
+   890→   890→    const token = await createStudentSession(c.env, userId, email);
+   891→   891→
+   892→   892→    return c.json({
+   893→   893→      success: true,
+   894→   894→      token,
+   895→   895→      userId,
+   896→   896→      user: {
+   897→   897→        id: userId,
+   898→   898→        name: fullName,
+   899→   899→        email,
+   900→   900→        instituteId: instituteId || null,
+   901→   901→        instituteName: instituteName || null,
+   902→   902→        technology: technology || null,
+   903→   903→        technologyName: technologyName || null,
+   904→   904→        emailVerified: false,
+   905→   905→        packages: [],
+   906→   906→        themeMode: 'system',
+   907→   907→      },
+   908→   908→    });
+   909→   909→  } catch (error) {
+   910→   910→    return c.json({ error: getErrorMessage(error) }, 500);
+   911→   911→  }
+   912→   912→});
+   913→   913→
+   914→   914→// POST /auth/login — Login student
+   915→   915→studentApiRoutes.post('/auth/login', async (c) => {
+   916→   916→  try {
+   917→   917→    const { email, password } = await c.req.json();
+   918→   918→
+   919→   919→    if (!email || !password) {
+   920→   920→      return c.json({ error: 'Email and password are required' }, 400);
+   921→   921→    }
+   922→   922→
+   923→   923→    // Look up user in D1
+   924→   924→    const user = await c.env.DB.prepare(
+   925→   925→      'SELECT id, email, full_name, role, password_hash, institute_id, technology, email_verified, is_active FROM users WHERE email = ? AND is_active = 1'
+   926→   926→    ).bind(email).first<{ id: string; email: string; full_name: string; role: string; password_hash: string; institute_id: number | null; technology: string | null; email_verified: number; is_active: number }>();
+   927→   927→
+   928→   928→    if (!user) {
+   929→   929→      return c.json({ error: 'Invalid email or password' }, 401);
+   930→   930→    }
+   931→   931→
+   932→   932→    // Verify password using PBKDF2 (supports salt:hash format)
+   933→   933→    const validPassword = await verifyPassword(password, user.password_hash);
+   934→   934→    if (!validPassword) {
+   935→   935→      return c.json({ error: 'Invalid email or password' }, 401);
+   936→   936→    }
+   937→   937→
+   938→   938→    // Verify this is a student (not admin/super_admin)
+   939→   939→    if (user.role === 'admin' || user.role === 'super_admin') {
+   940→   940→      return c.json({ error: 'Admin accounts cannot login here. Use the admin panel.' }, 403);
+   941→   941→    }
+   942→   942→
+   943→   943→    // Get user packages from D1
+   944→   944→    let userPackages: any[] = [];
+   945→   945→    try {
+   946→   946→      const pkgResult = await c.env.DB.prepare(
+   947→   947→        "SELECT up.*, cp.package_type, cp.price, cp.duration_months FROM user_packages up JOIN course_packages cp ON up.package_id = cp.id WHERE up.user_id = ? AND up.status = 'active' ORDER BY up.activated_at DESC"
+   948→   948→      ).bind(user.id).all();
+   949→   949→      userPackages = pkgResult.results as any[];
+   950→   950→    } catch {}
+   951→   951→
+   952→   952→    // Get user theme preference from D1
+   953→   953→    let themeMode = 'system';
+   954→   954→    try {
+   955→   955→      const prefs = await c.env.DB.prepare(
+   956→   956→        'SELECT theme_mode FROM user_preferences WHERE user_id = ?'
+   957→   957→      ).bind(user.id).first();
+   958→   958→      if (prefs && (prefs as any).theme_mode) {
+   959→   959→        themeMode = (prefs as any).theme_mode;
+   960→   960→      }
+   961→   961→    } catch {}
+   962→   962→
+   963→   963→    // Look up institute name and technology name
+   964→   964→    const instituteName = await getInstituteName(c.env, user.institute_id || null);
+   965→   965→    const technologyName = await getTechnologyName(c.env, user.technology || null);
+   966→   966→
+   967→   967→    // Delete any existing D1 sessions and create new one
+   968→   968→    await c.env.DB.prepare('DELETE FROM student_sessions WHERE user_id = ?').bind(user.id).run();
+   969→   969→    const token = await createStudentSession(c.env, user.id, user.email);
+   970→   970→
+   971→   971→    return c.json({
+   972→   972→      success: true,
+   973→   973→      token,
+   974→   974→      userId: user.id,
+   975→   975→      user: {
+   976→   976→        id: user.id,
+   977→   977→        name: user.full_name,
+   978→   978→        email: user.email,
+   979→   979→        instituteId: user.institute_id || null,
+   980→   980→        instituteName: instituteName || null,
+   981→   981→        technology: user.technology || null,
+   982→   982→        technologyName: technologyName || null,
+   983→   983→        emailVerified: !!user.email_verified,
+   984→   984→        packages: userPackages,
+   985→   985→        themeMode,
+   986→   986→      },
+   987→   987→    });
+   988→   988→  } catch (error) {
+   989→   989→    const msg = getErrorMessage(error);
+   990→   990→    return c.json({ error: msg.includes('Invalid') ? msg : 'Invalid email or password' }, 401);
+   991→   991→  }
+   992→   992→});
+   993→   993→
+   994→   994→// POST /auth/logout — Logout student
+   995→   995→studentApiRoutes.post('/auth/logout', async (c) => {
+   996→   996→  try {
+   997→   997→    const auth = await getStudentAuth(c);
+   998→   998→    if (!auth.authorized) {
+   999→   999→      return c.json({ success: true });
+  1000→  1000→    }
+  1001→  1001→
+  1002→  1002→    const authHeader = c.req.header('Authorization');
+  1003→  1003→    const token = authHeader?.substring(7) || '';
+  1004→  1004→    await deleteStudentSession(c.env, token);
+  1005→  1005→
+  1006→  1006→    return c.json({ success: true });
+  1007→  1007→  } catch (error) {
+  1008→  1008→    return c.json({ error: getErrorMessage(error) }, 500);
+  1009→  1009→  }
+  1010→  1010→});
+  1011→  1011→
+  1012→  1012→// GET /auth/me — Get current student profile
+  1013→  1013→studentApiRoutes.get('/auth/me', async (c) => {
+  1014→  1014→  try {
+  1015→  1015→    const auth = await getStudentAuth(c);
+  1016→  1016→    if (!auth.authorized) {
+  1017→  1017→      return c.json({ error: 'Unauthorized' }, 401);
+  1018→  1018→    }
+  1019→  1019→
+  1020→  1020→    // Get user from D1
+  1021→  1021→    const userDoc = await getStudentUserDoc(c.env, auth.userId!);
+  1022→  1022→
+  1023→  1023→    // Get user packages from D1
+  1024→  1024→    let userPackages: any[] = [];
+  1025→  1025→    try {
+  1026→  1026→      const pkgResult = await c.env.DB.prepare(
+  1027→  1027→        "SELECT up.*, cp.package_type, cp.price, cp.duration_months FROM user_packages up JOIN course_packages cp ON up.package_id = cp.id WHERE up.user_id = ? AND up.status = 'active' ORDER BY up.activated_at DESC"
+  1028→  1028→      ).bind(auth.userId).all();
+  1029→  1029→      userPackages = pkgResult.results as any[];
+  1030→  1030→    } catch {}
+  1031→  1031→
+  1032→  1032→    const u = userDoc as any;
+  1033→  1033→
+  1034→  1034→    // Get user theme preference from D1
+  1035→  1035→    let themeMode = 'system';
+  1036→  1036→    try {
+  1037→  1037→      const prefs = await c.env.DB.prepare(
+  1038→  1038→        'SELECT theme_mode FROM user_preferences WHERE user_id = ?'
+  1039→  1039→      ).bind(auth.userId!).first();
+  1040→  1040→      if (prefs && (prefs as any).theme_mode) {
+  1041→  1041→        themeMode = (prefs as any).theme_mode;
+  1042→  1042→      }
+  1043→  1043→    } catch {}
+  1044→  1044→
+  1045→  1045→    // Look up institute name and technology name
+  1046→  1046→    const instituteName = await getInstituteName(c.env, (u?.institute_id as number) || null);
+  1047→  1047→    const technologyName = await getTechnologyName(c.env, (u?.technology as string) || null);
+  1048→  1048→
+  1049→  1049→    return c.json({
+  1050→  1050→      user: {
+  1051→  1051→        id: auth.userId,
+  1052→  1052→        name: u?.full_name || auth.name || '',
+  1053→  1053→        email: auth.email || u?.email || '',
+  1054→  1054→        phone: u?.phone || null,
+  1055→  1055→        bio: u?.bio || null,
+  1056→  1056→        semester: u?.semester || null,
+  1057→  1057→        instituteId: u?.institute_id || null,
+  1058→  1058→        instituteName: instituteName || null,
+  1059→  1059→        technology: u?.technology || null,
+  1060→  1060→        technologyName: technologyName || null,
+  1061→  1061→        emailVerified: !!u?.email_verified,
+  1062→  1062→        avatarUrl: u?.avatar_url || '',
+  1063→  1063→        role: u?.role || 'student',
+  1064→  1064→        isActive: u?.is_active !== undefined ? !!u?.is_active : true,
+  1065→  1065→        packages: userPackages,
+  1066→  1066→        themeMode,
+  1067→  1067→      },
+  1068→  1068→    });
+  1069→  1069→  } catch (error) {
+  1070→  1070→    return c.json({ error: getErrorMessage(error) }, 500);
+  1071→  1071→  }
+  1072→  1072→});
+  1073→  1073→
+  1074→  1074→// POST /auth/verify-otp — Verify email with OTP
+  1075→  1075→studentApiRoutes.post('/auth/verify-otp', async (c) => {
+  1076→  1076→  try {
+  1077→  1077→    const { email, otp } = await c.req.json();
+  1078→  1078→
+  1079→  1079→    if (!email || !otp) {
+  1080→  1080→      return c.json({ error: 'email and otp are required' }, 400);
+  1081→  1081→    }
+  1082→  1082→
+  1083→  1083→    // Validate OTP against stored codes — only email_verification purpose
+  1084→  1084→    // NOTE: We do NOT filter by `expires_at > datetime("now")` in SQL because
+  1085→  1085→    // expires_at is stored in ISO 8601 format (e.g. 2026-06-11T12:10:00.000Z) while
+  1086→  1086→    // SQLite's datetime("now") returns a different format (2026-06-11 12:00:00).
+  1087→  1087→    // Lexicographic comparison between these formats is unreliable, so we validate
+  1088→  1088→    // expiry in JavaScript instead — consistent with the reset-password endpoint.
+  1089→  1089→    const otpRecord = await c.env.DB.prepare(
+  1090→  1090→      'SELECT * FROM password_reset_otps WHERE email = ? AND otp = ? AND purpose = ? AND used = 0 ORDER BY created_at DESC LIMIT 1'
+  1091→  1091→    ).bind(email, otp, 'email_verification').first<{ id: number; email: string; otp: string; purpose: string; expires_at: string; used: number; created_at: string }>();
+  1092→  1092→
+  1093→  1093→    if (!otpRecord) {
+  1094→  1094→      // Debug: check if the OTP exists but is already used or has different purpose
+  1095→  1095→      const anyOtpRecord = await c.env.DB.prepare(
+  1096→  1096→        'SELECT id, email, otp, purpose, used, expires_at FROM password_reset_otps WHERE email = ? AND otp = ? ORDER BY created_at DESC LIMIT 1'
+  1097→  1097→      ).bind(email, otp).first<{ id: number; email: string; otp: string; purpose: string; used: number | null; expires_at: string }>();
+  1098→  1098→      if (anyOtpRecord) {
+  1099→  1099→        console.log(`OTP verify failed: email=${email}, otp=${otp}, found_purpose=${anyOtpRecord.purpose}, found_used=${anyOtpRecord.used}, expected_purpose=email_verification, expected_used=0`);
+  1100→  1100→      } else {
+  1101→  1101→        console.log(`OTP verify failed: no record found for email=${email}, otp=${otp}`);
+  1102→  1102→      }
+  1103→  1103→      return c.json({ success: false, message: 'Invalid or expired OTP' }, 400);
+  1104→  1104→    }
+  1105→  1105→
+  1106→  1106→    // Check expiry in JavaScript — works correctly with ISO 8601 dates
+  1107→  1107→    if (new Date(otpRecord.expires_at) < new Date()) {
+  1108→  1108→      // Mark expired OTP as used so it can't be retried
+  1109→  1109→      await c.env.DB.prepare(
+  1110→  1110→        'UPDATE password_reset_otps SET used = 1 WHERE id = ?'
+  1111→  1111→      ).bind(otpRecord.id).run();
+  1112→  1112→      return c.json({ success: false, message: 'OTP has expired. Please request a new one.' }, 400);
+  1113→  1113→    }
+  1114→  1114→
+  1115→  1115→    // Mark OTP as used
+  1116→  1116→    await c.env.DB.prepare(
+  1117→  1117→      'UPDATE password_reset_otps SET used = 1 WHERE id = ?'
+  1118→  1118→    ).bind(otpRecord.id).run();
+  1119→  1119→
+  1120→  1120→    // Mark email as verified
+  1121→  1121→    const session = await c.env.DB.prepare(
+  1122→  1122→      "SELECT user_id FROM student_sessions WHERE email = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1"
+  1123→  1123→    ).bind(email).first<{ user_id: string }>();
+  1124→  1124→
+  1125→  1125→    if (session?.user_id) {
+  1126→  1126→      await c.env.DB.prepare(
+  1127→  1127→        'UPDATE users SET email_verified = 1 WHERE id = ?'
+  1128→  1128→      ).bind(session.user_id).run();
+  1129→  1129→    } else {
+  1130→  1130→      // Fallback: verify by email directly
+  1131→  1131→      await c.env.DB.prepare(
+  1132→  1132→        'UPDATE users SET email_verified = 1 WHERE email = ?'
+  1133→  1133→      ).bind(email).run();
+  1134→  1134→    }
+  1135→  1135→
+  1136→  1136→    return c.json({ success: true, message: 'Email verified successfully' });
+  1137→  1137→  } catch (error) {
+  1138→  1138→    return c.json({ error: getErrorMessage(error) }, 500);
+  1139→  1139→  }
+  1140→  1140→});
+  1141→  1141→
+  1142→  1142→// GET /auth/otp-cooldown — Get remaining cooldown seconds for resending OTP (server-side)
+  1143→  1143→studentApiRoutes.get('/auth/otp-cooldown', async (c) => {
+  1144→  1144→  try {
+  1145→  1145→    const email = c.req.query('email');
+  1146→  1146→    if (!email) {
+  1147→  1147→      return c.json({ error: 'email query parameter is required' }, 400);
+  1148→  1148→    }
+  1149→  1149→
+  1150→  1150→    // Find the most recent OTP sent to this email (any purpose)
+  1151→  1151→    const lastOtp = await c.env.DB.prepare(
+  1152→  1152→      'SELECT created_at FROM password_reset_otps WHERE email = ? ORDER BY created_at DESC LIMIT 1'
+  1153→  1153→    ).bind(email).first<{ created_at: string | null }>();
+  1154→  1154→
+  1155→  1155→    if (!lastOtp || !lastOtp.created_at) {
+  1156→  1156→      return c.json({ cooldownSeconds: 0 });
+  1157→  1157→    }
+  1158→  1158→
+  1159→  1159→    // Calculate remaining cooldown (60 seconds since last OTP was sent)
+  1160→  1160→    const RESEND_COOLDOWN_SECONDS = 60;
+  1161→  1161→    const sentAt = new Date(lastOtp.created_at).getTime();
+  1162→  1162→    const now = Date.now();
+  1163→  1163→    const elapsed = Math.floor((now - sentAt) / 1000);
+  1164→  1164→    const remaining = Math.max(0, RESEND_COOLDOWN_SECONDS - elapsed);
+  1165→  1165→
+  1166→  1166→    return c.json({ cooldownSeconds: remaining });
+  1167→  1167→  } catch (error) {
+  1168→  1168→    // On error, return 0 cooldown so user isn't stuck
+  1169→  1169→    return c.json({ cooldownSeconds: 0 });
+  1170→  1170→  }
+  1171→  1171→});
+  1172→  1172→
+  1173→  1173→// ─── Helper: Generate a random 6-digit OTP ───
+  1174→  1174→function generateOTP(): string {
+  1175→  1175→  const bytes = new Uint8Array(3);
+  1176→  1176→  crypto.getRandomValues(bytes);
+  1177→  1177→  const num = (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
+  1178→  1178→  return (num % 1000000).toString().padStart(6, '0');
+  1179→  1179→}
+  1180→  1180→
+  1181→  1181→// ─── Helper: Send password reset OTP email via Resend ───
+  1182→  1182→async function sendPasswordResetEmail(
+  1183→  1183→  env: Env,
+  1184→  1184→  to: string,
+  1185→  1185→  otp: string
+  1186→  1186→): Promise<void> {
+  1187→  1187→  const { sendEmail } = await import('../lib/resend');
+  1188→  1188→  await sendEmail(
+  1189→  1189→    env,
+  1190→  1190→    to,
+  1191→  1191→    'DAKKHO — Password Reset Code',
+  1192→  1192→    `
+  1193→  1193→    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+  1194→  1194→      <div style="text-align: center; margin-bottom: 24px;">
+  1195→  1195→        <h1 style="color: #0ea5e9; font-size: 28px; margin: 0;">DAKKHO</h1>
+  1196→  1196→        <p style="color: #64748b; margin: 4px 0 0;">Password Reset</p>
+  1197→  1197→      </div>
+  1198→  1198→      <div style="background: #f8fafc; border-radius: 16px; padding: 32px; text-align: center;">
+  1199→  1199→        <p style="color: #334155; font-size: 16px; margin: 0 0 16px;">Your password reset code is:</p>
+  1200→  1200→        <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0ea5e9; background: white; border: 2px dashed #e2e8f0; border-radius: 12px; padding: 16px; display: inline-block;">
+  1201→  1201→          ${otp}
+  1202→  1202→        </div>
+  1203→  1203→        <p style="color: #64748b; font-size: 14px; margin: 16px 0 0;">This code expires in 5 minutes.</p>
+  1204→  1204→        <p style="color: #94a3b8; font-size: 13px; margin: 8px 0 0;">If you did not request a password reset, please ignore this email.</p>
+  1205→  1205→      </div>
+  1206→  1206→      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+  1207→  1207→      <p style="color: #94a3b8; font-size: 12px; text-align: center;">
+  1208→  1208→        Sent from DAKKHO — Bangladesh's Premier Polytechnic Student Platform<br />
+  1209→  1209→        Timestamp: ${new Date().toISOString()}
+  1210→  1210→      </p>
+  1211→  1211→    </div>
+  1212→  1212→    `
+  1213→  1213→  );
+  1214→  1214→}
+  1215→  1215→
+  1216→  1216→// PUT /auth/profile — Update student profile
+  1217→  1217→studentApiRoutes.put('/auth/profile', async (c) => {
+  1218→  1218→  try {
+  1219→  1219→    const auth = await getStudentAuth(c);
+  1220→  1220→    if (!auth.authorized) {
+  1221→  1221→      return c.json({ error: 'Unauthorized' }, 401);
+  1222→  1222→    }
+  1223→  1223→
+  1224→  1224→    const body = await c.req.json();
+  1225→  1225→    const { fullName, instituteId, technology, bio, phone, semester, avatarUrl } = body;
+  1226→  1226→
+  1227→  1227→    // Build update query dynamically - only update provided fields
+  1228→  1228→    const updates: string[] = [];
+  1229→  1229→    const params: unknown[] = [];
+  1230→  1230→
+  1231→  1231→    if (fullName !== undefined) { updates.push('full_name = ?'); params.push(fullName); }
+  1232→  1232→    if (instituteId !== undefined) { updates.push('institute_id = ?'); params.push(instituteId); }
+  1233→  1233→    if (technology !== undefined) { updates.push('technology = ?'); params.push(technology); }
+  1234→  1234→    if (bio !== undefined) { updates.push('bio = ?'); params.push(bio); }
+  1235→  1235→    if (phone !== undefined) { updates.push('phone = ?'); params.push(phone); }
+  1236→  1236→    if (semester !== undefined) { updates.push('semester = ?'); params.push(semester); }
+  1237→  1237→    if (avatarUrl !== undefined) { updates.push('avatar_url = ?'); params.push(avatarUrl); }
+  1238→  1238→
+  1239→  1239→    if (updates.length === 0) {
+  1240→  1240→      return c.json({ error: 'No fields to update' }, 400);
+  1241→  1241→    }
+  1242→  1242→
+  1243→  1243→    updates.push("updated_at = datetime('now')");
+  1244→  1244→    params.push(auth.userId);
+  1245→  1245→
+  1246→  1246→    await c.env.DB.prepare(
+  1247→  1247→      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`
+  1248→  1248→    ).bind(...params).run();
+  1249→  1249→
+  1250→  1250→    // Return updated user
+  1251→  1251→    const updatedUser = await getStudentUserDoc(c.env, auth.userId!);
+  1252→  1252→    const u = updatedUser as any;
+  1253→  1253→
+  1254→  1254→    // Look up institute name and technology name
+  1255→  1255→    const updatedInstituteName = await getInstituteName(c.env, (u?.institute_id as number) || null);
+  1256→  1256→    const updatedTechnologyName = await getTechnologyName(c.env, (u?.technology as string) || null);
+  1257→  1257→
+  1258→  1258→    return c.json({
+  1259→  1259→      success: true,
+  1260→  1260→      user: {
+  1261→  1261→        id: auth.userId,
+  1262→  1262→        name: u?.full_name || '',
+  1263→  1263→        email: u?.email || auth.email || '',
+  1264→  1264→        phone: u?.phone || null,
+  1265→  1265→        bio: u?.bio || null,
+  1266→  1266→        semester: u?.semester || null,
+  1267→  1267→        instituteId: u?.institute_id || null,
+  1268→  1268→        instituteName: updatedInstituteName || null,
+  1269→  1269→        technology: u?.technology || null,
+  1270→  1270→        technologyName: updatedTechnologyName || null,
+  1271→  1271→        emailVerified: !!u?.email_verified,
+  1272→  1272→        avatarUrl: u?.avatar_url || '',
+  1273→  1273→      },
+  1274→  1274→    });
+  1275→  1275→  } catch (error) {
+  1276→  1276→    return c.json({ error: getErrorMessage(error) }, 500);
+  1277→  1277→  }
+  1278→  1278→});
+  1279→  1279→
+  1280→  1280→// POST /auth/forgot-password — Request password reset OTP
+  1281→  1281→studentApiRoutes.post('/auth/forgot-password', async (c) => {
+  1282→  1282→  try {
+  1283→  1283→    const { email } = await c.req.json();
+  1284→  1284→
+  1285→  1285→    if (!email) {
+  1286→  1286→      return c.json({ error: 'Email is required' }, 400);
+  1287→  1287→    }
+  1288→  1288→
+  1289→  1289→    // Check if user exists
+  1290→  1290→    const user = await c.env.DB.prepare(
+  1291→  1291→      'SELECT id FROM users WHERE email = ? AND is_active = 1'
+  1292→  1292→    ).bind(email).first();
+  1293→  1293→
+  1294→  1294→    if (user) {
+  1295→  1295→      // ── Per-user daily rate limit ──
+  1296→  1296→      const rateLimit = await checkDailyEmailRateLimit(c.env.DB, email);
+  1297→  1297→      if (!rateLimit.allowed) {
+  1298→  1298→        // Don't reveal rate limit to prevent email enumeration — still return success
+  1299→  1299→        return c.json({ success: true, message: 'If an account exists with this email, a reset code has been sent.' });
+  1300→  1300→      }
+  1301→  1301→
+  1302→  1302→      // Delete any previous unused OTPs for this email with password_reset purpose
+  1303→  1303→      await c.env.DB.prepare(
+  1304→  1304→        'DELETE FROM password_reset_otps WHERE email = ? AND used = 0 AND purpose = ?'
+  1305→  1305→      ).bind(email, 'password_reset').run();
+  1306→  1306→
+  1307→  1307→      // Generate a 6-digit OTP
+  1308→  1308→      const otp = generateOTP();
+  1309→  1309→
+  1310→  1310→      // Store OTP in D1 with 5-minute expiration
+  1311→  1311→      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  1312→  1312→      await c.env.DB.prepare(
+  1313→  1313→        'INSERT INTO password_reset_otps (email, otp, purpose, expires_at, used, created_at) VALUES (?, ?, ?, ?, 0, ?)'
+  1314→  1314→      ).bind(email, otp, 'password_reset', expiresAt, new Date().toISOString()).run();
+  1315→  1315→
+  1316→  1316→      // Send OTP email via Resend
+  1317→  1317→      try {
+  1318→  1318→        await sendPasswordResetEmail(c.env, email, otp);
+  1319→  1319→      } catch (emailError) {
+  1320→  1320→        console.error('Failed to send password reset email:', emailError);
+  1321→  1321→        // Still return success for security — don't reveal email sending failure
+  1322→  1322→      }
+  1323→  1323→    }
+  1324→  1324→
+  1325→  1325→    // Always return success for security (don't reveal if email exists)
+  1326→  1326→    return c.json({ success: true, message: 'If an account exists with this email, a reset code has been sent.' });
+  1327→  1327→  } catch (error) {
+  1328→  1328→    return c.json({ error: getErrorMessage(error) }, 500);
+  1329→  1329→  }
+  1330→  1330→});
+  1331→  1331→
+  1332→  1332→// POST /auth/reset-password — Verify OTP and set new password
+  1333→  1333→studentApiRoutes.post('/auth/reset-password', async (c) => {
+  1334→  1334→  try {
+  1335→  1335→    const { email, otp, newPassword } = await c.req.json();
+  1336→  1336→
+  1337→  1337→    if (!email || !otp || !newPassword) {
+  1338→  1338→      return c.json({ error: 'email, otp, and newPassword are required' }, 400);
+  1339→  1339→    }
+  1340→  1340→
+  1341→  1341→    if (newPassword.length < 8) {
+  1342→  1342→      return c.json({ error: 'Password must be at least 8 characters' }, 400);
+  1343→  1343→    }
+  1344→  1344→
+  1345→  1345→    // Look up the most recent unused OTP for this email with password_reset purpose
+  1346→  1346→    const otpRecord = await c.env.DB.prepare(
+  1347→  1347→      'SELECT id, otp, expires_at, used FROM password_reset_otps WHERE email = ? AND purpose = ? AND used = 0 ORDER BY created_at DESC LIMIT 1'
+  1348→  1348→    ).bind(email, 'password_reset').first<{ id: number; otp: string; expires_at: string; used: number }>();
+  1349→  1349→
+  1350→  1350→    if (!otpRecord) {
+  1351→  1351→      return c.json({ error: 'Invalid or expired reset code. Please request a new one.' }, 400);
+  1352→  1352→    }
+  1353→  1353→
+  1354→  1354→    // Check if OTP has expired
+  1355→  1355→    if (new Date(otpRecord.expires_at) < new Date()) {
+  1356→  1356→      // Mark expired OTP as used
+  1357→  1357→      await c.env.DB.prepare(
+  1358→  1358→        'UPDATE password_reset_otps SET used = 1 WHERE id = ?'
+  1359→  1359→      ).bind(otpRecord.id).run();
+  1360→  1360→      return c.json({ error: 'Reset code has expired. Please request a new one.' }, 400);
+  1361→  1361→    }
+  1362→  1362→
+  1363→  1363→    // Verify OTP
+  1364→  1364→    if (otpRecord.otp !== otp) {
+  1365→  1365→      return c.json({ error: 'Invalid reset code. Please try again.' }, 400);
+  1366→  1366→    }
+  1367→  1367→
+  1368→  1368→    // Mark OTP as used
+  1369→  1369→    await c.env.DB.prepare(
+  1370→  1370→      'UPDATE password_reset_otps SET used = 1 WHERE id = ?'
+  1371→  1371→    ).bind(otpRecord.id).run();
+  1372→  1372→
+  1373→  1373→    // Update the user's password
+  1374→  1374→    const newPasswordHash = await hashPassword(newPassword);
+  1375→  1375→    await c.env.DB.prepare(
+  1376→  1376→      'UPDATE users SET password_hash = ?, updated_at = datetime(\'now\') WHERE email = ?'
+  1377→  1377→    ).bind(newPasswordHash, email).run();
+  1378→  1378→
+  1379→  1379→    // Invalidate all active student sessions for this user (force re-login)
+  1380→  1380→    await c.env.DB.prepare(
+  1381→  1381→      'UPDATE student_sessions SET is_active = 0 WHERE email = ?'
+  1382→  1382→    ).bind(email).run();
+  1383→  1383→
+  1384→  1384→    return c.json({ success: true, message: 'Password has been reset successfully.' });
+  1385→  1385→  } catch (error) {
+  1386→  1386→    return c.json({ error: getErrorMessage(error) }, 500);
+  1387→  1387→  }
+  1388→  1388→});
+  1389→  1389→
+  1390→  1390→// ─── Helper: Check per-user daily email rate limit ───
+  1391→  1391→const EMAIL_OTP_DAILY_LIMIT = 10; // Max 10 verification emails per user per day
+  1392→  1392→
+  1393→  1393→async function checkDailyEmailRateLimit(db: D1Database, email: string): Promise<{ allowed: boolean; count: number; limit: number }> {
+  1394→  1394→  try {
+  1395→  1395→    // Count OTPs created for this email in the last 24 hours (both purposes)
+  1396→  1396→    // NOTE: created_at is stored in ISO 8601 format, so we validate in JavaScript
+  1397→  1397→    // to avoid SQLite datetime format mismatch issues.
+  1398→  1398→    const now = new Date();
+  1399→  1399→    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  1400→  1400→    const result = await db.prepare(
+  1401→  1401→      'SELECT created_at FROM password_reset_otps WHERE email = ?'
+  1402→  1402→    ).bind(email).all<{ created_at: string | null }>();
+  1403→  1403→
+  1404→  1404→    // Filter in JavaScript to handle ISO 8601 dates correctly
+  1405→  1405→    const recentCount = result.results.filter(row => {
+  1406→  1406→      if (!row.created_at) return false;
+  1407→  1407→      try {
+  1408→  1408→        return new Date(row.created_at) >= new Date(twentyFourHoursAgo);
+  1409→  1409→      } catch {
+  1410→  1410→        return false;
+  1411→  1411→      }
+  1412→  1412→    }).length;
+  1413→  1413→
+  1414→  1414→    return { allowed: recentCount < EMAIL_OTP_DAILY_LIMIT, count: recentCount, limit: EMAIL_OTP_DAILY_LIMIT };
+  1415→  1415→  } catch {
+  1416→  1416→    // If the check fails, allow the request (fail open)
+  1417→  1417→    return { allowed: true, count: 0, limit: EMAIL_OTP_DAILY_LIMIT };
+  1418→  1418→  }
+  1419→  1419→}
+  1420→  1420→
+  1421→  1421→// POST /auth/resend-otp — Resend OTP for email verification or password reset
+  1422→  1422→studentApiRoutes.post('/auth/resend-otp', async (c) => {
+  1423→  1423→  try {
+  1424→  1424→    const { email } = await c.req.json();
+  1425→  1425→
+  1426→  1426→    if (!email) {
+  1427→  1427→      return c.json({ error: 'Email is required' }, 400);
+  1428→  1428→    }
+  1429→  1429→
+  1430→  1430→    // Check if user exists
+  1431→  1431→    const user = await c.env.DB.prepare(
+  1432→  1432→      'SELECT id FROM users WHERE email = ? AND is_active = 1'
+  1433→  1433→    ).bind(email).first();
+  1434→  1434→
+  1435→  1435→    if (user) {
+  1436→  1436→      // Delete any previous unused OTPs for this email (both purposes — resend can be for email_verification or password_reset)
+  1437→  1437→      const userForPurpose = await c.env.DB.prepare(
+  1438→  1438→        'SELECT email_verified FROM users WHERE email = ?'
+  1439→  1439→      ).bind(email).first<{ email_verified: number }>();
+  1440→  1440→      const resendPurpose = (userForPurpose && !userForPurpose.email_verified) ? 'email_verification' : 'password_reset';
+  1441→  1441→
+  1442→  1442→      // ── Server-side cooldown: prevent resend within 60 seconds ──
+  1443→  1443→      const lastOtp = await c.env.DB.prepare(
+  1444→  1444→        'SELECT created_at FROM password_reset_otps WHERE email = ? ORDER BY created_at DESC LIMIT 1'
+  1445→  1445→      ).bind(email).first<{ created_at: string | null }>();
+  1446→  1446→      if (lastOtp?.created_at) {
+  1447→  1447→        const lastSentAt = new Date(lastOtp.created_at).getTime();
+  1448→  1448→        const elapsedSec = Math.floor((Date.now() - lastSentAt) / 1000);
+  1449→  1449→        if (elapsedSec < 60) {
+  1450→  1450→          return c.json({
+  1451→  1451→            error: `Please wait ${60 - elapsedSec} seconds before requesting a new code.`,
+  1452→  1452→            code: 'COOLDOWN_ACTIVE',
+  1453→  1453→            cooldownSeconds: 60 - elapsedSec,
+  1454→  1454→          }, 429);
+  1455→  1455→        }
+  1456→  1456→      }
+  1457→  1457→
+  1458→  1458→      // ── Per-user daily rate limit ──
+  1459→  1459→      const rateLimit = await checkDailyEmailRateLimit(c.env.DB, email);
+  1460→  1460→      if (!rateLimit.allowed) {
+  1461→  1461→        return c.json({
+  1462→  1462→          error: `Too many verification emails. You can send up to ${rateLimit.limit} emails per day. Please try again tomorrow.`,
+  1463→  1463→          code: 'RATE_LIMITED',
+  1464→  1464→        }, 429);
+  1465→  1465→      }
+  1466→  1466→
+  1467→  1467→      await c.env.DB.prepare(
+  1468→  1468→        'DELETE FROM password_reset_otps WHERE email = ? AND used = 0 AND purpose = ?'
+  1469→  1469→      ).bind(email, resendPurpose).run();
+  1470→  1470→
+  1471→  1471→      // Generate a new 6-digit OTP
+  1472→  1472→      const otp = generateOTP();
+  1473→  1473→
+  1474→  1474→      // Store OTP with appropriate expiry: 10 min for email_verification, 5 min for password_reset
+  1475→  1475→      const expiryMinutes = resendPurpose === 'email_verification' ? 10 : 5;
+  1476→  1476→      const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString();
+  1477→  1477→      await c.env.DB.prepare(
+  1478→  1478→        'INSERT INTO password_reset_otps (email, otp, purpose, expires_at, used, created_at) VALUES (?, ?, ?, ?, 0, ?)'
+  1479→  1479→      ).bind(email, otp, resendPurpose, expiresAt, new Date().toISOString()).run();
+  1480→  1480→
+  1481→  1481→      // Send OTP email via Resend
+  1482→  1482→      try {
+  1483→  1483→        if (resendPurpose === 'email_verification') {
+  1484→  1484→          const { sendEmail } = await import('../lib/resend');
+  1485→  1485→          await sendEmail(c.env, email, 'DAKKHO — Your Verification Code', `
+  1486→  1486→            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+  1487→  1487→              <div style="text-align: center; margin-bottom: 24px;">
+  1488→  1488→                <h1 style="color: #0ea5e9; font-size: 28px; margin: 0;">DAKKHO</h1>
+  1489→  1489→                <p style="color: #64748b; margin: 4px 0 0;">Email Verification</p>
+  1490→  1490→              </div>
+  1491→  1491→              <div style="background: #f8fafc; border-radius: 16px; padding: 32px; text-align: center;">
+  1492→  1492→                <p style="color: #334155; font-size: 16px; margin: 0 0 16px;">Your email verification code is:</p>
+  1493→  1493→                <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0ea5e9; background: white; border: 2px dashed #e2e8f0; border-radius: 12px; padding: 16px; display: inline-block;">
+  1494→  1494→                  ${otp}
+  1495→  1495→                </div>
+  1496→  1496→                <p style="color: #64748b; font-size: 14px; margin: 16px 0 0;">This code expires in ${expiryMinutes} minutes.</p>
+  1497→  1497→                <p style="color: #94a3b8; font-size: 13px; margin: 8px 0 0;">If you did not request this, please ignore this email.</p>
+  1498→  1498→              </div>
+  1499→  1499→              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+  1500→  1500→              <p style="color: #94a3b8; font-size: 12px; text-align: center;">
+  1501→  1501→                Sent from DAKKHO — Bangladesh's Premier Polytechnic Student Platform<br />
+  1502→  1502→                noreply@dakkho.pro.bd
+  1503→  1503→              </p>
+  1504→  1504→            </div>
+  1505→  1505→          `);
+  1506→  1506→        } else {
+  1507→  1507→          await sendPasswordResetEmail(c.env, email, otp);
+  1508→  1508→        }
+  1509→  1509→      } catch (emailError) {
+  1510→  1510→        console.error('Failed to resend OTP email:', emailError);
+  1511→  1511→      }
+  1512→  1512→    }
+  1513→  1513→
+  1514→  1514→    // Always return success for security
+  1515→  1515→    return c.json({ success: true, message: 'If an account exists, a new code has been sent.' });
+  1516→  1516→  } catch (error) {
+  1517→  1517→    return c.json({ error: getErrorMessage(error) }, 500);
+  1518→  1518→  }
+  1519→  1519→});
+  1520→  1520→
+  1521→  1521→
+  1522→  1522→// ═══════════════════════════════════════════════════
+  1523→  1523→// AUTHENTICATED ROUTES
+  1524→  1524→// ═══════════════════════════════════════════════════
+  1525→  1525→
+  1526→  1526→// POST /institutes/requests — Request new institute (student)
+  1527→  1527→studentApiRoutes.post('/institutes/requests', async (c) => {
+  1528→  1528→  try {
+  1529→  1529→    const auth = await getStudentAuth(c);
+  1530→  1530→    if (!auth.authorized) {
+  1531→  1531→      return c.json({ error: 'Unauthorized' }, 401);
+  1532→  1532→    }
+  1533→  1533→    if (!auth.emailVerified) {
+  1534→  1534→      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+  1535→  1535→    }
+  1536→  1536→
+  1537→  1537→    const data = await c.req.json();
+  1538→  1538→    const { institute_name, institute_name_bn, division, district } = data;
+  1539→  1539→
+  1540→  1540→    if (!institute_name) {
+  1541→  1541→      return c.json({ error: 'Institute name required' }, 400);
+  1542→  1542→    }
+  1543→  1543→
+  1544→  1544→    const existing = await c.env.DB.prepare(
+  1545→  1545→      'SELECT id FROM institutes WHERE name = ? AND is_active = 1'
+  1546→  1546→    ).bind(institute_name).first();
+  1547→  1547→
+  1548→  1548→    if (existing) {
+  1549→  1549→      return c.json({ error: 'This institute already exists' }, 400);
+  1550→  1550→    }
+  1551→  1551→
+  1552→  1552→    const pending = await c.env.DB.prepare(
+  1553→  1553→      "SELECT id FROM institute_requests WHERE institute_name = ? AND status = 'pending'"
+  1554→  1554→    ).bind(institute_name).first();
+  1555→  1555→
+  1556→  1556→    if (pending) {
+  1557→  1557→      return c.json({ error: 'A request for this institute is already pending' }, 400);
+  1558→  1558→    }
+  1559→  1559→
+  1560→  1560→    await c.env.DB.prepare(`
+  1561→  1561→      INSERT INTO institute_requests (user_id, user_email, user_name, institute_name, institute_name_bn, division, district, status)
+  1562→  1562→      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+  1563→  1563→    `).bind(auth.userId, auth.email, auth.name || null, institute_name, institute_name_bn || null, division || null, district || null).run();
+  1564→  1564→
+  1565→  1565→    return c.json({ success: true, message: 'Institute request submitted' });
+  1566→  1566→  } catch (error) {
+  1567→  1567→    return c.json({ error: getErrorMessage(error) }, 500);
+  1568→  1568→  }
+  1569→  1569→});
+  1570→  1570→
+  1571→  1571→studentApiRoutes.get('/institutes/requests/mine', async (c) => {
+  1572→  1572→  try {
+  1573→  1573→    const auth = await getStudentAuth(c);
+  1574→  1574→    if (!auth.authorized) {
+  1575→  1575→      return c.json({ error: 'Unauthorized' }, 401);
+  1576→  1576→    }
+  1577→  1577→    if (!auth.emailVerified) {
+  1578→  1578→      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+  1579→  1579→    }
+  1580→  1580→
+  1581→  1581→    const result = await c.env.DB.prepare(
+  1582→  1582→      'SELECT * FROM institute_requests WHERE user_id = ? ORDER BY created_at DESC'
+  1583→  1583→    ).bind(auth.userId).all();
+  1584→  1584→
+  1585→  1585→    return c.json({ requests: result.results });
+  1586→  1586→  } catch (error) {
+  1587→  1587→    return c.json({ error: getErrorMessage(error) }, 500);
+  1588→  1588→  }
+  1589→  1589→});
+  1590→  1590→
+  1591→  1591→studentApiRoutes.post('/push/register', async (c) => {
+  1592→  1592→  try {
+  1593→  1593→    const auth = await getStudentAuth(c);
+  1594→  1594→    if (!auth.authorized) {
+  1595→  1595→      return c.json({ error: 'Unauthorized' }, 401);
+  1596→  1596→    }
+  1597→  1597→    if (!auth.emailVerified) {
+  1598→  1598→      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+  1599→  1599→    }
+  1600→  1600→
+  1601→  1601→    const { push_token, device_type, device_info } = await c.req.json();
+  1602→  1602→    if (!push_token) {
+  1603→  1603→      return c.json({ error: 'push_token required' }, 400);
+  1604→  1604→    }
+  1605→  1605→
+  1606→  1606→    await registerPushToken(c.env, auth.userId!, push_token, device_type, device_info);
+  1607→  1607→
+  1608→  1608→    return c.json({ success: true });
+  1609→  1609→  } catch (error) {
+  1610→  1610→    return c.json({ error: getErrorMessage(error) }, 500);
+  1611→  1611→  }
+  1612→  1612→});
+  1613→  1613→
+  1614→  1614→studentApiRoutes.delete('/push/unregister', async (c) => {
+  1615→  1615→  try {
+  1616→  1616→    const auth = await getStudentAuth(c);
+  1617→  1617→    if (!auth.authorized) {
+  1618→  1618→      return c.json({ error: 'Unauthorized' }, 401);
+  1619→  1619→    }
+  1620→  1620→    if (!auth.emailVerified) {
+  1621→  1621→      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+  1622→  1622→    }
+  1623→  1623→
+  1624→  1624→    const { push_token } = await c.req.json();
+  1625→  1625→    if (!push_token) {
+  1626→  1626→      return c.json({ error: 'push_token required' }, 400);
+  1627→  1627→    }
+  1628→  1628→
+  1629→  1629→    await unregisterPushToken(c.env, push_token);
+  1630→  1630→
+  1631→  1631→    return c.json({ success: true });
+  1632→  1632→  } catch (error) {
+  1633→  1633→    return c.json({ error: getErrorMessage(error) }, 500);
+  1634→  1634→  }
+  1635→  1635→});
+  1636→  1636→
+  1637→  1637→// GET /push/vapid-key — Get VAPID public key for web push subscription
+  1638→  1638→studentApiRoutes.get('/push/vapid-key', async (c) => {
+  1639→  1639→  try {
+  1640→  1640→    const publicKey = c.env.VAPID_PUBLIC_KEY;
+  1641→  1641→    if (!publicKey) {
+  1642→  1642→      return c.json({ error: 'Web push not configured' }, 503);
+  1643→  1643→    }
+  1644→  1644→    return c.json({ publicKey });
+  1645→  1645→  } catch (error) {
+  1646→  1646→    return c.json({ error: getErrorMessage(error) }, 500);
+  1647→  1647→  }
+  1648→  1648→});
+  1649→  1649→
+  1650→  1650→// POST /push/subscribe — Subscribe to web push notifications (stores PushSubscription)
+  1651→  1651→studentApiRoutes.post('/push/subscribe', async (c) => {
+  1652→  1652→  try {
+  1653→  1653→    const auth = await getStudentAuth(c);
+  1654→  1654→    if (!auth.authorized) {
+  1655→  1655→      return c.json({ error: 'Unauthorized' }, 401);
+  1656→  1656→    }
+  1657→  1657→    if (!auth.emailVerified) {
+  1658→  1658→      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+  1659→  1659→    }
+  1660→  1660→
+  1661→  1661→    const { subscription } = await c.req.json();
+  1662→  1662→    if (!subscription || !subscription.endpoint) {
+  1663→  1663→      return c.json({ error: 'subscription object with endpoint required' }, 400);
+  1664→  1664→    }
+  1665→  1665→
+  1666→  1666→    // Store the full subscription JSON as push_token (endpoint + keys)
+  1667→  1667→    // Also register as a simple push token for backward compat
+  1668→  1668→    const subscriptionJson = JSON.stringify(subscription);
+  1669→  1669→    const deviceType = 'webpush';
+  1670→  1670→
+  1671→  1671→    await env_push_upsert(c.env, auth.userId!, subscription.endpoint, subscriptionJson, deviceType);
+  1672→  1672→
+  1673→  1673→    return c.json({ success: true });
+  1674→  1674→  } catch (error) {
+  1675→  1675→    return c.json({ error: getErrorMessage(error) }, 500);
+  1676→  1676→  }
+  1677→  1677→});
+  1678→  1678→
+  1679→  1679→// Helper: Upsert push subscription
+  1680→  1680→async function env_push_upsert(
+  1681→  1681→  env: any,
+  1682→  1682→  userId: string,
+  1683→  1683→  endpoint: string,
+  1684→  1684→  subscriptionJson: string,
+  1685→  1685→  deviceType: string
+  1686→  1686→): Promise<void> {
+  1687→  1687→  // Check if this endpoint already exists
+  1688→  1688→  const existing = await env.DB.prepare(
+  1689→  1689→    'SELECT id FROM user_push_tokens WHERE user_id = ? AND push_token = ?'
+  1690→  1690→  ).bind(userId, endpoint).first();
+  1691→  1691→
+  1692→  1692→  if (existing) {
+  1693→  1693→    await env.DB.prepare(
+  1694→  1694→      "UPDATE user_push_tokens SET device_info = ?, is_active = 1, updated_at = datetime('now') WHERE user_id = ? AND push_token = ?"
+  1695→  1695→    ).bind(subscriptionJson, userId, endpoint).run();
+  1696→  1696→  } else {
+  1697→  1697→    await env.DB.prepare(`
+  1698→  1698→      INSERT INTO user_push_tokens (id, user_id, push_token, device_type, device_info, is_active, created_at)
+  1699→  1699→      VALUES (?, ?, ?, ?, ?, 1, datetime('now'))
+  1700→  1700→    `).bind(generateId(), userId, endpoint, deviceType, subscriptionJson).run();
+  1701→  1701→  }
+  1702→  1702→}
+  1703→  1703→
+  1704→  1704→studentApiRoutes.post('/payments/submit', async (c) => {
+  1705→  1705→  try {
+  1706→  1706→    const auth = await getStudentAuth(c);
+  1707→  1707→    if (!auth.authorized) {
+  1708→  1708→      return c.json({ error: 'Unauthorized' }, 401);
+  1709→  1709→    }
+  1710→  1710→    if (!auth.emailVerified) {
+  1711→  1711→      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+  1712→  1712→    }
+  1713→  1713→
+  1714→  1714→    const { package_id, trx_id, phone, proof_url, duoMemberEmail } = await c.req.json();
+  1715→  1715→    if (!package_id || !trx_id) {
+  1716→  1716→      return c.json({ error: 'package_id and trx_id required' }, 400);
+  1717→  1717→    }
+  1718→  1718→
+  1719→  1719→    const pkg = await c.env.DB.prepare(
+  1720→  1720→      'SELECT * FROM course_packages WHERE id = ? AND is_active = 1'
+  1721→  1721→    ).bind(package_id).first();
+  1722→  1722→
+  1723→  1723→    if (!pkg) {
+  1724→  1724→      return c.json({ error: 'Package not found' }, 404);
+  1725→  1725→    }
+  1726→  1726→
+  1727→  1727→    const p = pkg as any;
+  1728→  1728→
+  1729→  1729→    const submitMetadata = JSON.stringify({ duoMemberEmail: duoMemberEmail || null });
+  1730→  1730→
+  1731→  1731→    await c.env.DB.prepare(`
+  1732→  1732→      INSERT INTO payments (user_id, package_id, course_id, amount, currency, gateway, trx_id_submitted, phone_submitted, proof_url, status, metadata)
+  1733→  1733→      VALUES (?, ?, ?, ?, 'BDT', 'manual', ?, ?, ?, 'pending', ?)
+  1734→  1734→    `).bind(auth.userId, package_id, p.course_id, p.price, trx_id, phone || null, proof_url || null, submitMetadata).run();
+  1735→  1735→
+  1736→  1736→    return c.json({ success: true, message: 'Payment submitted for verification' });
+  1737→  1737→  } catch (error) {
+  1738→  1738→    return c.json({ error: getErrorMessage(error) }, 500);
+  1739→  1739→  }
+  1740→  1740→});
+  1741→  1741→
+  1742→  1742→// ─── Helper: Auto-activate package after payment verification ───
+  1743→  1743→async function autoActivatePackage(env: any, userId: string, packageId: number, courseId: string): Promise<void> {
+  1744→  1744→  const pkg = await env.DB.prepare('SELECT * FROM course_packages WHERE id = ?').bind(packageId).first();
+  1745→  1745→  if (pkg) {
+  1746→  1746→    const pkgData = pkg as any;
+  1747→  1747→    const expiresAt = new Date(Date.now() + pkgData.duration_months * 30 * 24 * 60 * 60 * 1000).toISOString();
+  1748→  1748→
+  1749→  1749→    // 1. Create user_packages entry
+  1750→  1750→    await env.DB.prepare(`
+  1751→  1751→      INSERT INTO user_packages (user_id, package_id, course_id, package_type, activated_at, expires_at, status)
+  1752→  1752→      VALUES (?, ?, ?, ?, datetime('now'), ?, 'active')
+  1753→  1753→    `).bind(userId, packageId, courseId, pkgData.package_type, expiresAt).run();
+  1754→  1754→
+  1755→  1755→    // 2. Create enrollment entry (so student can actually watch videos!)
+  1756→  1756→    try {
+  1757→  1757→      // Check if already enrolled
+  1758→  1758→      const existingEnrollment = await env.DB.prepare(
+  1759→  1759→        'SELECT id FROM enrollments WHERE user_id = ? AND course_id = ?'
+  1760→  1760→      ).bind(userId, courseId).first();
+  1761→  1761→
+  1762→  1762→      if (!existingEnrollment) {
+  1763→  1763→        const enrollmentId = crypto.randomUUID();
+  1764→  1764→        await env.DB.prepare(`
+  1765→  1765→          INSERT INTO enrollments (id, user_id, course_id, package_id, expires_at, status, created_at, updated_at)
+  1766→  1766→          VALUES (?, ?, ?, ?, ?, 'active', datetime('now'), datetime('now'))
+  1767→  1767→        `).bind(enrollmentId, userId, courseId, packageId, expiresAt).run();
+  1768→  1768→      } else {
+  1769→  1769→        // Update existing enrollment to active
+  1770→  1770→        await env.DB.prepare(`
+  1771→  1771→          UPDATE enrollments SET status = 'active', expires_at = ?, updated_at = datetime('now')
+  1772→  1772→          WHERE user_id = ? AND course_id = ?
+  1773→  1773→        `).bind(expiresAt, userId, courseId).run();
+  1774→  1774→      }
+  1775→  1775→    } catch (enrollErr: any) {
+  1776→  1776→      // If enrollments table doesn't have package_id/expires_at/status columns yet,
+  1777→  1777→      // fall back to basic enrollment insert
+  1778→  1778→      try {
+  1779→  1779→        const existingEnrollment = await env.DB.prepare(
+  1780→  1780→          'SELECT id FROM enrollments WHERE user_id = ? AND course_id = ?'
+  1781→  1781→        ).bind(userId, courseId).first();
+  1782→  1782→
+  1783→  1783→        if (!existingEnrollment) {
+  1784→  1784→          const enrollmentId = crypto.randomUUID();
+  1785→  1785→          await env.DB.prepare(`
+  1786→  1786→            INSERT INTO enrollments (id, user_id, course_id, progress, completed, created_at, updated_at)
+  1787→  1787→            VALUES (?, ?, ?, 0, 0, datetime('now'), datetime('now'))
+  1788→  1788→          `).bind(enrollmentId, userId, courseId).run();
+  1789→  1789→        }
+  1790→  1790→      } catch (fallbackErr) {
+  1791→  1791→        console.error('Failed to create enrollment:', fallbackErr);
+  1792→  1792→      }
+  1793→  1793→    }
+  1794→  1794→  }
+  1795→  1795→}
+  1796→  1796→
+  1797→  1797→// POST /payments/create — Create PipraPay payment session
+  1798→  1798→studentApiRoutes.post('/payments/create', async (c) => {
+  1799→  1799→  try {
+  1800→  1800→    const auth = await getStudentAuth(c);
+  1801→  1801→    if (!auth.authorized) {
+  1802→  1802→      return c.json({ error: 'Unauthorized' }, 401);
+  1803→  1803→    }
+  1804→  1804→    if (!auth.emailVerified) {
+  1805→  1805→      return c.json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' }, 403);
+  1806→  1806→    }
+  1807→  1807→
+  1808→  1808→    const { packageId, couponCode, duoMemberEmail } = await c.req.json();
+  1809→  1809→    if (!packageId) {
+  1810→  1810→      return c.json({ error: 'packageId is required' }, 400);
+  1811→  1811→    }
+  1812→  1812→
+  1813→  1813→    // Check if PipraPay is active
+  1814→  1814→    const pipraPayConfig = await c.env.DB.prepare(
+  1815→  1815→      "SELECT * FROM payment_config WHERE gateway = 'piprapay' AND is_active = 1"
+  1816→  1816→    ).first();
+  1817→  1817→
+  1818→  1818→    if (!pipraPayConfig) {
+  1819→  1819→      return c.json({ error: 'PipraPay payment is not available right now. Please use manual payment.' }, 400);
+  1820→  1820→    }
+  1821→  1821→
+  1822→  1822→    // Get package details
+  1823→  1823→    const pkg = await c.env.DB.prepare(
+  1824→  1824→      'SELECT * FROM course_packages WHERE id = ? AND is_active = 1'
+  1825→  1825→    ).bind(packageId).first();
+  1826→  1826→
+  1827→  1827→    if (!pkg) {
+  1828→  1828→      return c.json({ error: 'Package not found' }, 404);
+  1829→  1829→    }
+  1830→  1830→
+  1831→  1831→    const p = pkg as any;
+  1832→  1832→    let finalAmount = p.price;
+  1833→  1833→
+  1834→  1834→    // Validate coupon if provided
+  1835→  1835→    if (couponCode) {
+  1836→  1836→      const coupon = await c.env.DB.prepare(
+  1837→  1837→        'SELECT * FROM coupons WHERE code = ? AND is_active = 1'
+  1838→  1838→      ).bind(couponCode).first();
+  1839→  1839→
+  1840→  1840→      if (coupon) {
+  1841→  1841→        const cp = coupon as any;
+  1842→  1842→        const now = new Date().toISOString();
+  1843→  1843→        if (cp.valid_from <= now && cp.valid_until >= now) {
+  1844→  1844→          if (!cp.usage_limit || cp.usage_count < cp.usage_limit) {
+  1845→  1845→            if (cp.discount_type === 'percentage') {
+  1846→  1846→              const discount = finalAmount * (cp.discount_value / 100);
+  1847→  1847→              finalAmount = Math.max(0, finalAmount - (cp.max_discount ? Math.min(discount, cp.max_discount) : discount));
+  1848→  1848→            } else if (cp.discount_type === 'flat') {
+  1849→  1849→              finalAmount = Math.max(0, finalAmount - cp.discount_value);
+  1850→  1850→            }
+  1851→  1851→            // Increment coupon usage
+  1852→  1852→            await c.env.DB.prepare(
+  1853→  1853→              'UPDATE coupons SET usage_count = usage_count + 1 WHERE code = ?'
+  1854→  1854→            ).bind(couponCode).run();
+  1855→  1855→          }
+  1856→  1856→        }
+  1857→  1857→      }
+  1858→  1858→    }
+  1859→  1859→
+  1860→  1860→    // Get user details for PipraPay
+  1861→  1861→    const userDoc = await getStudentUserDoc(c.env, auth.userId!);
+  1862→  1862→    const u = userDoc as any;
+  1863→  1863→    const fullName = u?.full_name || auth.name || 'Student';
+  1864→  1864→    const email = u?.email || auth.email || '';
+  1865→  1865→    const phone = u?.phone || '';
+  1866→  1866→
+  1867→  1867→    // Insert pending payment in D1
+  1868→  1868→    const paymentResult = await c.env.DB.prepare(`
+  1869→  1869→      INSERT INTO payments (user_id, package_id, course_id, amount, currency, gateway, status, metadata)
+  1870→  1870→      VALUES (?, ?, ?, ?, 'BDT', 'piprapay', 'pending', ?)
+  1871→  1871→    `).bind(
+  1872→  1872→      auth.userId,
+  1873→  1873→      packageId,
+  1874→  1874→      p.course_id,
+  1875→  1875→      finalAmount,
+  1876→  1876→      JSON.stringify({ couponCode: couponCode || null, originalPrice: p.price, discountedPrice: finalAmount, duoMemberEmail: duoMemberEmail || null })
+  1877→  1877→    ).run();
+  1878→  1878→
+  1879→  1879→    // Get the inserted payment ID
+  1880→  1880→    const paymentRow = await c.env.DB.prepare(
+  1881→  1881→      'SELECT id FROM payments WHERE user_id = ? AND gateway = ? AND status = ? ORDER BY created_at DESC LIMIT 1'
+  1882→  1882→    ).bind(auth.userId, 'piprapay', 'pending').first();
+  1883→  1883→
+  1884→  1884→    const paymentId = (paymentRow as any)?.id;
+  1885→  1885→
+  1886→  1886→    // Call PipraPay API
+  1887→  1887→    const { createPipraPayPayment } = await import('../lib/payment');
+  1888→  1888→    const returnUrl = `https://dakkho-student.pages.dev/payment-result?pp_id={pp_id}&payment_id=${paymentId}`;
+  1889→  1889→    const webhookUrl = `https://dakkho-admin-api.dakkho-admin.workers.dev/api/payments/piprapay/webhook`;
+  1890→  1890→
+  1891→  1891→    const result = await createPipraPayPayment(c.env, {
+  1892→  1892→      full_name: fullName,
+  1893→  1893→      email_address: email,
+  1894→  1894→      mobile_number: phone || '0000000000',
+  1895→  1895→      amount: finalAmount,
+  1896→  1896→      currency: 'BDT',
+  1897→  1897→      return_url: returnUrl,
+  1898→  1898→      webhook_url: webhookUrl,
+  1899→  1899→      metadata: {
+  1900→  1900→        user_id: auth.userId,
+  1901→  1901→        package_id: packageId,
+  1902→  1902→        course_id: p.course_id,
+  1903→  1903→        payment_id: paymentId,
+  1904→  1904→        duo_member_email: duoMemberEmail || null,
+  1905→  1905→      },
+  1906→  1906→    });
+  1907→  1907→
+  1908→  1908→    if ('error' in result) {
+  1909→  1909→      // Update payment as failed
+  1910→  1910→      await c.env.DB.prepare(
+  1911→  1911→        "UPDATE payments SET status = 'failed', metadata = ? WHERE id = ?"
+  1912→  1912→      ).bind(JSON.stringify({ error: result.error }), paymentId).run();
+  1913→  1913→
+  1914→  1914→      return c.json({ error: result.error }, 400);
+  1915→  1915→    }
+  1916→  1916→
+  1917→  1917→    // Store pp_id in payment row
+  1918→  1918→    await c.env.DB.prepare(
+  1919→  1919→      'UPDATE payments SET gateway_payment_id = ?, gateway_trx_id = ? WHERE id = ?'
+  1920→  1920→    ).bind(result.pp_id, result.pp_id, paymentId).run();
+  1921→  1921→
+  1922→  1922→    return c.json({
+  1923→  1923→      success: true,
+  1924→  1924→      pp_id: result.pp_id,
+  1925→  1925→      pp_url: result.pp_url,
+  1926→  1926→      payment_id: paymentId,
+  1927→  1927→    });
+  1928→  1928→  } catch (error) {
+  1929→  1929→    return c.json({ error: getErrorMessage(error) }, 500);
+  1930→  1930→  }
+  1931→  1931→});
+  1932→  1932→
+  1933→  1933→// POST /payments/verify — Verify PipraPay payment status
+  1934→  1934→studentApiRoutes.post('/payments/verify', async (c) => {
+  1935→  1935→  try {
+  1936→  1936→    const auth = await getStudentAuth(c);
+  1937→  1937→    if (!auth.authorized) {
+  1938→  1938→      return c.json({ error: 'Unauthorized' }, 401);
+  1939→  1939→    }
+  1940→  1940→
+  1941→  1941→    const { pp_id } = await c.req.json();
+  1942→  1942→    if (!pp_id) {
+  1943→  1943→      return c.json({ error: 'pp_id is required' }, 400);
+  1944→  1944→    }
+  1945→  1945→
+  1946→  1946→    // Find the payment in D1
+  1947→  1947→    const payment = await c.env.DB.prepare(
+  1948→  1948→      'SELECT * FROM payments WHERE gateway_payment_id = ? OR gateway_trx_id = ? ORDER BY created_at DESC LIMIT 1'
+  1949→  1949→    ).bind(pp_id, pp_id).first();
+  1950→  1950→
+  1951→  1951→    if (!payment) {
+  1952→  1952→      return c.json({ error: 'Payment not found' }, 404);
+  1953→  1953→    }
+  1954→  1954→
+  1955→  1955→    const p = payment as any;
+  1956→  1956→
+  1957→  1957→    // If already verified, return status directly
+  1958→  1958→    if (p.status === 'verified') {
+  1959→  1959→      return c.json({
+  1960→  1960→        status: 'completed',
+  1961→  1961→        amount: p.amount,
+  1962→  1962→        gateway: p.gateway,
+  1963→  1963→        transaction_id: p.gateway_trx_id,
+  1964→  1964→        enrolled_course_id: p.course_id,
+  1965→  1965→      });
+  1966→  1966→    }
+  1967→  1967→
+  1968→  1968→    // Verify with PipraPay API
+  1969→  1969→    const { verifyPipraPayPayment } = await import('../lib/payment');
+  1970→  1970→    const result = await verifyPipraPayPayment(c.env, pp_id);
+  1971→  1971→
+  1972→  1972→    if ('error' in result) {
+  1973→  1973→      return c.json({
+  1974→  1974→        status: 'error',
+  1975→  1975→        amount: p.amount,
+  1976→  1976→        gateway: p.gateway,
+  1977→  1977→        transaction_id: p.gateway_trx_id,
+  1978→  1978→        message: result.error,
+  1979→  1979→      });
+  1980→  1980→    }
+  1981→  1981→
+  1982→  1982→    // Map PipraPay status to our system
+  1983→  1983→    const mappedStatus = result.status?.toLowerCase();
+  1984→  1984→    if (mappedStatus === 'completed' && p.status !== 'verified') {
+  1985→  1985→      // Auto-verify and activate package
+  1986→  1986→      await c.env.DB.prepare(`
+  1987→  1987→        UPDATE payments SET status = 'verified', gateway_trx_id = ?, verified_at = datetime('now'), updated_at = datetime('now') WHERE id = ?
+  1988→  1988→      `).bind(pp_id, p.id).run();
+  1989→  1989→
+  1990→  1990→      // Auto-activate package
+  1991→  1991→      if (p.package_id && p.course_id) {
+  1992→  1992→        await autoActivatePackage(c.env, p.user_id, p.package_id, p.course_id);
+  1993→  1993→      }
+  1994→  1994→
+  1995→  1995→      return c.json({
+  1996→  1996→        status: 'completed',
+  1997→  1997→        amount: p.amount,
+  1998→  1998→        gateway: p.gateway,
+  1999→  1999→        transaction_id: pp_id,
+  2000→  2000→        enrolled_course_id: p.course_id,
+
+[showing lines 1-2000 of 2002; use offset=2001 with limit to continue reading]

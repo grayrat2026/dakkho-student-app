@@ -2912,6 +2912,109 @@ studentAuthenticated.put('/preferences', async (c) => {
   }
 });
 
+// GET /student/learning-stats — Learning stats for the current student
+studentAuthenticated.get('/student/learning-stats', async (c) => {
+  try {
+    const userId = c.get('userId') as string;
+    const range = c.req.query('range') || '30d';
+
+    // Calculate date range
+    const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
+
+    // Get daily activity data
+    const dailyData: Array<{ date: string; videos: number; activities: number }> = [];
+    try {
+      const rows = await c.env.DB.prepare(`
+        SELECT DATE(created_at) as day,
+               COUNT(CASE WHEN activity_type = 'video_watch' THEN 1 END) as videos,
+               COUNT(*) as activities
+        FROM student_activity
+        WHERE user_id = ? AND created_at >= datetime('now', '-${days} days')
+        GROUP BY DATE(created_at)
+        ORDER BY day ASC
+      `).bind(userId).all();
+      for (const row of (rows.results || []) as any[]) {
+        dailyData.push({ date: row.day, videos: row.videos || 0, activities: row.activities || 0 });
+      }
+    } catch {}
+
+    // Get subject progress from enrollments
+    const subjectProgress: Array<{ subject: string; progress: number }> = [];
+    try {
+      const rows = await c.env.DB.prepare(`
+        SELECT t.name as technology, e.progress
+        FROM enrollments e
+        INNER JOIN courses c ON e.course_id = c.id
+        LEFT JOIN technologies t ON c.technology_id = t.id
+        WHERE e.user_id = ?
+      `).bind(userId).all();
+      for (const row of (rows.results || []) as any[]) {
+        subjectProgress.push({ subject: row.technology || 'General', progress: row.progress || 0 });
+      }
+    } catch {}
+
+    // Get overview stats
+    let hoursWatched = 0;
+    let coursesEnrolled = 0;
+    let certificates = 0;
+    let currentStreak = 0;
+
+    try {
+      const watchStats = await c.env.DB.prepare(
+        "SELECT SUM(CASE WHEN metadata LIKE '%watchMinutes%' THEN CAST(json_extract(metadata, '$.watchMinutes') AS REAL) ELSE 0 END) as total_minutes FROM student_activity WHERE user_id = ? AND activity_type = 'video_watch'"
+      ).bind(userId).first<{ total_minutes: number }>();
+      hoursWatched = Math.round((watchStats?.total_minutes || 0) / 60 * 10) / 10;
+    } catch {}
+
+    try {
+      const enrollCount = await c.env.DB.prepare(
+        'SELECT COUNT(*) as total FROM enrollments WHERE user_id = ?'
+      ).bind(userId).first<{ total: number }>();
+      coursesEnrolled = enrollCount?.total || 0;
+    } catch {}
+
+    try {
+      const certCount = await c.env.DB.prepare(
+        "SELECT COUNT(*) as total FROM certificates WHERE user_id = ? AND status = 'issued'"
+      ).bind(userId).first<{ total: number }>();
+      certificates = certCount?.total || 0;
+    } catch {}
+
+    try {
+      const streakRows = await c.env.DB.prepare(
+        "SELECT DATE(created_at) as day FROM student_activity WHERE user_id = ? GROUP BY DATE(created_at) ORDER BY day DESC LIMIT 30"
+      ).bind(userId).all();
+      const activeDays = (streakRows.results || []).map((r: any) => r.day);
+      const today = new Date().toISOString().split('T')[0];
+      let streak = 0;
+      let checkDate = new Date();
+      // If no activity today, start checking from yesterday
+      if (!activeDays.includes(today)) {
+        checkDate.setDate(checkDate.getDate() - 1);
+      }
+      for (let i = 0; i < 60; i++) {
+        const dateStr = checkDate.toISOString().split('T')[0];
+        if (activeDays.includes(dateStr)) {
+          streak++;
+          checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+      currentStreak = streak;
+    } catch {}
+
+    return c.json({
+      dailyData,
+      subjectProgress,
+      overview: { hoursWatched, coursesEnrolled, certificates, currentStreak },
+      range,
+    });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+
 // Mount authenticated routes
 studentApiRoutes.route('/', studentAuthenticated);
 

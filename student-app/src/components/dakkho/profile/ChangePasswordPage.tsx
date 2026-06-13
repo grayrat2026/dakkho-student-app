@@ -66,7 +66,7 @@ export function ChangePasswordPage() {
     if (!validate()) return;
     setIsChanging(true);
     try {
-      await api.post('/student/change-password', {
+      await api.post('/api/student/change-password', {
         currentPassword,
         newPassword,
       });

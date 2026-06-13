@@ -416,13 +416,13 @@ export const leaderboardApi = {
     if (params?.technology) query.set('technology', params.technology);
     if (params?.period) query.set('period', params.period);
     if (params?.limit) query.set('limit', String(params.limit));
-    return apiGet<{ entries: Array<{ rank: number; userId: string; name: string; technology: string; xp: number; breakdown: { video: number; quiz: number; assignment: number; streak: number }; activeDays: number }>; yourRank: number | null; yourXp: number; period: string }>(`/api/student/leaderboard?${query.toString()}`);
+    return apiGet<{ entries: Array<{ rank: number; userId: string; name: string; technology: string; xp: number; breakdown: { video: number; quiz: number; assignment: number; streak: number }; activeDays: number }>; yourRank: number | null; yourXp: number; period: string }>(`/api/leaderboard?${query.toString()}`);
   },
 };
 
 // ─── Student Achievements ───
 export const achievementsApi = {
-  list: () => apiGet<{ achievements: Array<{ id: number; slug: string; name: string; nameBn: string | null; description: string; descriptionBn: string | null; category: string; icon: string; xp: number; unlocked: boolean; unlockedAt: string | null }>; totalXp: number; unlockedCount: number; totalCount: number }>('/api/student/achievements'),
+  list: () => apiGet<{ achievements: Array<{ id: number; slug: string; name: string; nameBn: string | null; description: string; descriptionBn: string | null; category: string; icon: string; xp: number; unlocked: boolean; unlockedAt: string | null }>; totalXp: number; unlockedCount: number; totalCount: number }>('/api/achievements'),
 };
 
 // ─── Student Activity ───
@@ -432,20 +432,20 @@ export const activityApi = {
     if (params?.limit) query.set('limit', String(params.limit));
     if (params?.offset) query.set('offset', String(params.offset));
     if (params?.type) query.set('type', params.type);
-    return apiGet<{ activities: Array<{ id: number; type: string; resourceType: string; resourceId: string | null; title: string; description: string | null; metadata: Record<string, unknown>; createdAt: string }>; total: number }>(`/api/student/activity?${query.toString()}`);
+    return apiGet<{ activities: Array<{ id: number; type: string; resourceType: string; resourceId: string | null; title: string; description: string | null; metadata: Record<string, unknown>; createdAt: string }>; total: number }>(`/api/activity?${query.toString()}`);
   },
 };
 
 // ─── Student Settings ───
 export const studentSettingsApi = {
-  get: () => apiGet<{ preferences: Record<string, unknown> }>('/api/student/settings'),
-  update: (preferences: Record<string, unknown>) => apiPut<{ success: boolean }>('/api/student/settings', preferences),
+  get: () => apiGet<{ preferences: Record<string, unknown> }>('/api/settings'),
+  update: (preferences: Record<string, unknown>) => apiPut<{ success: boolean }>('/api/settings', preferences),
 };
 
 // ─── User Preferences (Theme, Privacy, Appearance) ───
 export const userPreferencesApi = {
-  get: () => apiGet<{ preferences: Record<string, unknown> }>('/api/student/preferences'),
-  update: (preferences: Record<string, unknown>) => apiPut<{ success: boolean }>('/api/student/preferences', preferences),
+  get: () => apiGet<{ preferences: Record<string, unknown> }>('/api/preferences'),
+  update: (preferences: Record<string, unknown>) => apiPut<{ success: boolean }>('/api/preferences', preferences),
 };
 
 // ─── Student Learning Stats ───
@@ -454,4 +454,16 @@ export const learningStatsApi = {
     const query = range ? `?range=${range}` : '';
     return apiGet<{ dailyData: Array<{ date: string; videos: number; activities: number }>; subjectProgress: Array<{ subject: string; progress: number }>; overview: { hoursWatched: number; coursesEnrolled: number; certificates: number; currentStreak: number }; range: string }>(`/api/student/learning-stats${query}`);
   },
+};
+
+// ─── Support Tickets ───
+export const supportApi = {
+  getMyTickets: () =>
+    apiGet<{ success: boolean; tickets: Array<any> }>('/api/support/tickets'),
+  getTicket: (ticketId: string) =>
+    apiGet<{ success: boolean; ticket: any; messages: Array<any> }>(`/api/support/tickets/${ticketId}`),
+  addMessage: (ticketId: string, data: { message: string; sender_type?: string }) =>
+    apiPost<{ success: boolean; message: any }>(`/api/support/tickets/${ticketId}/messages`, data),
+  sendEmail: (data: { name: string; email: string; subject: string; message: string }) =>
+    apiPost<{ success: boolean; message: string }>('/api/support/tickets', data),
 };

@@ -41,7 +41,7 @@ function formatCourseRow(row: Record<string, unknown>): Record<string, unknown> 
     $id: row.id,
     $createdAt: row.created_at,
     isPublished: row.is_published,
-    price: row.price_bdt,
+    price: row.price_bdt ?? row.price,
     instructorId: row.instructor_id,
   };
 }
@@ -1152,7 +1152,7 @@ instructorRoutes.post('/courses', instructorOrAdminMiddleware, async (c) => {
     if (idError) return idError;
 
     const body = await c.req.json();
-    const { title, description, level, language, price, technology_id, category_id, tags, semester, what_you_learn } = body;
+    const { title, description, level, language, price, technology_id, category_id, tags, semester, what_you_learn, subject_ids } = body;
 
     if (!title) {
       return c.json({ error: 'title is required' }, 400);
@@ -1191,6 +1191,19 @@ instructorRoutes.post('/courses', instructorOrAdminMiddleware, async (c) => {
         VALUES (?, ?, 0, ?)
       `).bind(courseId, instructorId, now).run();
     } catch {}
+
+    // Link subjects if provided (subject_ids array)
+    if (Array.isArray(subject_ids) && subject_ids.length > 0) {
+      try {
+        for (let i = 0; i < subject_ids.length; i++) {
+          const subjectId = subject_ids[i];
+          await c.env.DB.prepare(`
+            INSERT OR IGNORE INTO course_subjects (course_id, subject_id, sort_order, created_at)
+            VALUES (?, ?, ?, ?)
+          `).bind(courseId, subjectId, i, now).run();
+        }
+      } catch {}
+    }
 
     // Auto-create default course packages (single + friend)
     const packageName = title || 'Course';
@@ -2095,249 +2108,6 @@ instructorRoutes.get('/support/tickets', instructorOrAdminMiddleware, async (c) 
     const result = await c.env.DB.prepare(query).bind(...params).all();
 
     return c.json({ success: true, tickets: result.results });
-  } catch (error) {
-    return c.json({ error: getErrorMessage(error) }, 500);
-  }
-});
-
-// ═══════════════════════════════════════════════════
-// DASHBOARD ROUTE (instructorOrAdmin)
-// ═══════════════════════════════════════════════════
-
-// GET /dashboard — Dashboard stats
-instructorRoutes.get('/dashboard', instructorOrAdminMiddleware, async (c) => {
-  try {
-    const authRole = c.get('authRole');
-    let instructorId: string;
-
-    if (authRole === 'admin') {
-      instructorId = c.req.query('instructorId') || '';
-      if (!instructorId) {
-        return c.json({ error: 'instructorId query param required for admin access' }, 400);
-      }
-    } else {
-      instructorId = c.get('instructorId');
-    }
-
-    // Get course count from D1 courses table
-    let courseCount = 0;
-    try {
-      const courseCountResult = await c.env.DB.prepare(
-        'SELECT COUNT(*) as total FROM courses WHERE instructor_id = ?'
-      ).bind(instructorId).first<{ total: number }>();
-      courseCount = courseCountResult?.total || 0;
-    } catch {}
-
-    // Also count from course_instructors
-    let subjectCourseCount = 0;
-    try {
-      const subjectResult = await c.env.DB.prepare(
-        'SELECT COUNT(DISTINCT course_id) as count FROM course_instructors WHERE instructor_id = ?'
-      ).bind(instructorId).first<{ count: number }>();
-      subjectCourseCount = subjectResult?.count || 0;
-    } catch {}
-    courseCount = Math.max(courseCount, subjectCourseCount);
-
-    // Total students across all courses — get all course IDs for this instructor
-    let totalStudents = 0;
-    try {
-      // Get enrollment count for courses where instructor_id matches in courses table
-      const studentCountResult = await c.env.DB.prepare(`
-        SELECT COUNT(DISTINCT e.user_id) as total
-        FROM enrollments e
-        INNER JOIN courses c ON e.course_id = c.id
-        WHERE c.instructor_id = ?
-      `).bind(instructorId).first<{ total: number }>();
-      totalStudents = studentCountResult?.total || 0;
-
-      // Also add students from course_instructors assigned courses
-      const subjectStudentResult = await c.env.DB.prepare(`
-        SELECT COUNT(DISTINCT e.user_id) as total
-        FROM enrollments e
-        INNER JOIN course_instructors ci ON e.course_id = ci.course_id
-        WHERE ci.instructor_id = ?
-      `).bind(instructorId).first<{ total: number }>();
-      totalStudents = Math.max(totalStudents, subjectStudentResult?.total || 0);
-    } catch {}
-
-    // Upcoming live classes
-    let upcomingClasses = 0;
-    try {
-      const classResult = await c.env.DB.prepare(
-        "SELECT COUNT(*) as count FROM live_class_schedules WHERE instructor_id = ? AND scheduled_at > datetime('now') AND is_active = 1"
-      ).bind(instructorId).first<{ count: number }>();
-      upcomingClasses = classResult?.count || 0;
-    } catch {}
-
-    // Review stats
-    let avgRating = 0;
-    let totalReviews = 0;
-    try {
-      const ratingStats = await c.env.DB.prepare(
-        'SELECT AVG(rating) as avg, COUNT(*) as count FROM instructor_reviews WHERE instructor_id = ?'
-      ).bind(instructorId).first<{ avg: number; count: number }>();
-      avgRating = ratingStats?.avg ? Math.round(ratingStats.avg * 10) / 10 : 0;
-      totalReviews = ratingStats?.count || 0;
-    } catch {}
-
-    // Revenue — get all course IDs for this instructor and sum payments
-    let totalRevenue = 0;
-    try {
-      // Revenue from courses where instructor_id matches directly
-      const directRevenue = await c.env.DB.prepare(`
-        SELECT COALESCE(SUM(p.amount), 0) as total
-        FROM payments p
-        INNER JOIN courses c ON p.course_id = c.id
-        WHERE c.instructor_id = ? AND p.status = 'completed'
-      `).bind(instructorId).first<{ total: number }>();
-      totalRevenue = directRevenue?.total || 0;
-
-      // Also add revenue from course_subjects assigned courses
-      const subjectRevenue = await c.env.DB.prepare(`
-        SELECT COALESCE(SUM(p.amount), 0) as total
-        FROM payments p
-        INNER JOIN course_subjects cs ON p.course_id = cs.course_id
-        WHERE cs.instructor_id = ? AND p.status = 'completed'
-      `).bind(instructorId).first<{ total: number }>();
-      totalRevenue = Math.max(totalRevenue, subjectRevenue?.total || 0);
-    } catch {}
-
-    return c.json({
-      success: true,
-      dashboard: {
-        courseCount,
-        totalStudents,
-        upcomingClasses,
-        avgRating,
-        totalReviews,
-        totalRevenue,
-      },
-    });
-  } catch (error) {
-    return c.json({ error: getErrorMessage(error) }, 500);
-  }
-});
-
-// ═══════════════════════════════════════════════════
-// COURSE CRUD (Create, Update — instructors can only manage their own courses)
-// ═══════════════════════════════════════════════════
-
-// POST /courses — Create a new course (instructor is auto-assigned)
-instructorRoutes.post('/courses', instructorOrAdminMiddleware, async (c) => {
-  try {
-    const authRole = c.get('authRole');
-    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
-
-    if (!instructorId) {
-      return c.json({ error: 'instructorId is required' }, 400);
-    }
-
-    const body = await c.req.json();
-    const { title, description, slug, technology_id, semester, level, price_bdt, is_published, thumbnail_url } = body;
-
-    if (!title) {
-      return c.json({ error: 'title is required' }, 400);
-    }
-
-    const courseId = generateId();
-    const courseSlug = slug || slugify(title);
-    const now = new Date().toISOString();
-
-    await c.env.DB.prepare(`
-      INSERT INTO courses (id, title, slug, description, technology_id, semester, level, price_bdt, is_published, instructor_id, thumbnail_url, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      courseId, title, courseSlug, description || null, technology_id || null,
-      semester || null, level || null, price_bdt || 0, is_published ? 1 : 0,
-      instructorId, thumbnail_url || null, now, now
-    ).run();
-
-    // Auto-create course_instructors junction entry
-    try {
-      await c.env.DB.prepare(`
-        INSERT INTO course_instructors (course_id, instructor_id, sort_order, created_at)
-        VALUES (?, ?, 0, ?)
-      `).bind(courseId, instructorId, now).run();
-    } catch {}
-
-    // Auto-create a "single" course_package with the same price
-    try {
-      await c.env.DB.prepare(`
-        INSERT INTO course_packages (course_id, name, price_bdt, original_price, package_type, features, is_active, sort_order, created_at, updated_at)
-        VALUES (?, 'Single', ?, ?, 'single', '', 1, 0, ?, ?)
-      `).bind(courseId, price_bdt || 0, price_bdt || 0, now, now).run();
-    } catch {}
-
-    const row = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(courseId).first();
-    const course = formatCourseRow(row as Record<string, unknown>);
-
-    return c.json({ success: true, course }, 201);
-  } catch (error) {
-    return c.json({ error: getErrorMessage(error) }, 500);
-  }
-});
-
-// PUT /courses/:id — Update course (only if instructor owns it)
-instructorRoutes.put('/courses/:id', instructorOrAdminMiddleware, async (c) => {
-  try {
-    const authRole = c.get('authRole');
-    const instructorId = authRole === 'admin' ? c.req.query('instructorId')! : c.get('instructorId');
-    const courseId = c.req.param('id');
-
-    if (!instructorId) {
-      return c.json({ error: 'instructorId is required' }, 400);
-    }
-
-    // Verify ownership
-    const owns = await verifyCourseOwnership(c.env, courseId, instructorId);
-    if (!owns) {
-      return c.json({ error: 'You do not own this course' }, 403);
-    }
-
-    const body = await c.req.json();
-
-    const fieldMapping: Record<string, string> = {
-      title: 'title',
-      slug: 'slug',
-      description: 'description',
-      technology_id: 'technology_id',
-      technologyId: 'technology_id',
-      semester: 'semester',
-      level: 'level',
-      price_bdt: 'price_bdt',
-      priceBdt: 'price_bdt',
-      is_published: 'is_published',
-      isPublished: 'is_published',
-      thumbnail_url: 'thumbnail_url',
-      thumbnailUrl: 'thumbnail_url',
-    };
-
-    const setClauses: string[] = [];
-    const params: unknown[] = [];
-
-    for (const [bodyField, dbColumn] of Object.entries(fieldMapping)) {
-      if (body[bodyField] !== undefined) {
-        setClauses.push(`${dbColumn} = ?`);
-        params.push(body[bodyField]);
-      }
-    }
-
-    if (setClauses.length === 0) {
-      return c.json({ error: 'No valid fields to update' }, 400);
-    }
-
-    setClauses.push('updated_at = ?');
-    params.push(new Date().toISOString());
-    params.push(courseId);
-
-    await c.env.DB.prepare(
-      `UPDATE courses SET ${setClauses.join(', ')} WHERE id = ?`
-    ).bind(...params).run();
-
-    const row = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(courseId).first();
-    const course = formatCourseRow(row as Record<string, unknown>);
-
-    return c.json({ success: true, course });
   } catch (error) {
     return c.json({ error: getErrorMessage(error) }, 500);
   }

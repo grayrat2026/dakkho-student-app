@@ -3643,7 +3643,7 @@ function formatCourseRow(row) {
     $id: row.id,
     $createdAt: row.created_at,
     isPublished: row.is_published,
-    price: row.price_bdt,
+    price: row.price_bdt ?? row.price,
     instructorId: row.instructor_id
   };
 }
@@ -4512,7 +4512,7 @@ instructorRoutes2.post("/courses", instructorOrAdminMiddleware, async (c) => {
     const { instructorId, error: idError } = getInstructorId(c);
     if (idError) return idError;
     const body = await c.req.json();
-    const { title, description, level, language, price, technology_id, category_id, tags, semester, what_you_learn } = body;
+    const { title, description, level, language, price, technology_id, category_id, tags, semester, what_you_learn, subject_ids } = body;
     if (!title) {
       return c.json({ error: "title is required" }, 400);
     }
@@ -4545,6 +4545,18 @@ instructorRoutes2.post("/courses", instructorOrAdminMiddleware, async (c) => {
         VALUES (?, ?, 0, ?)
       `).bind(courseId, instructorId, now).run();
     } catch {
+    }
+    if (Array.isArray(subject_ids) && subject_ids.length > 0) {
+      try {
+        for (let i = 0; i < subject_ids.length; i++) {
+          const subjectId = subject_ids[i];
+          await c.env.DB.prepare(`
+            INSERT OR IGNORE INTO course_subjects (course_id, subject_id, sort_order, created_at)
+            VALUES (?, ?, ?, ?)
+          `).bind(courseId, subjectId, i, now).run();
+        }
+      } catch {
+      }
     }
     const packageName = title || "Course";
     try {
@@ -5258,210 +5270,6 @@ instructorRoutes2.get("/support/tickets", instructorOrAdminMiddleware, async (c)
     params.push(limit, offset);
     const result = await c.env.DB.prepare(query).bind(...params).all();
     return c.json({ success: true, tickets: result.results });
-  } catch (error) {
-    return c.json({ error: getErrorMessage(error) }, 500);
-  }
-});
-instructorRoutes2.get("/dashboard", instructorOrAdminMiddleware, async (c) => {
-  try {
-    const authRole = c.get("authRole");
-    let instructorId;
-    if (authRole === "admin") {
-      instructorId = c.req.query("instructorId") || "";
-      if (!instructorId) {
-        return c.json({ error: "instructorId query param required for admin access" }, 400);
-      }
-    } else {
-      instructorId = c.get("instructorId");
-    }
-    let courseCount = 0;
-    try {
-      const courseCountResult = await c.env.DB.prepare(
-        "SELECT COUNT(*) as total FROM courses WHERE instructor_id = ?"
-      ).bind(instructorId).first();
-      courseCount = courseCountResult?.total || 0;
-    } catch {
-    }
-    let subjectCourseCount = 0;
-    try {
-      const subjectResult = await c.env.DB.prepare(
-        "SELECT COUNT(DISTINCT course_id) as count FROM course_instructors WHERE instructor_id = ?"
-      ).bind(instructorId).first();
-      subjectCourseCount = subjectResult?.count || 0;
-    } catch {
-    }
-    courseCount = Math.max(courseCount, subjectCourseCount);
-    let totalStudents = 0;
-    try {
-      const studentCountResult = await c.env.DB.prepare(`
-        SELECT COUNT(DISTINCT e.user_id) as total
-        FROM enrollments e
-        INNER JOIN courses c ON e.course_id = c.id
-        WHERE c.instructor_id = ?
-      `).bind(instructorId).first();
-      totalStudents = studentCountResult?.total || 0;
-      const subjectStudentResult = await c.env.DB.prepare(`
-        SELECT COUNT(DISTINCT e.user_id) as total
-        FROM enrollments e
-        INNER JOIN course_instructors ci ON e.course_id = ci.course_id
-        WHERE ci.instructor_id = ?
-      `).bind(instructorId).first();
-      totalStudents = Math.max(totalStudents, subjectStudentResult?.total || 0);
-    } catch {
-    }
-    let upcomingClasses = 0;
-    try {
-      const classResult = await c.env.DB.prepare(
-        "SELECT COUNT(*) as count FROM live_class_schedules WHERE instructor_id = ? AND scheduled_at > datetime('now') AND is_active = 1"
-      ).bind(instructorId).first();
-      upcomingClasses = classResult?.count || 0;
-    } catch {
-    }
-    let avgRating = 0;
-    let totalReviews = 0;
-    try {
-      const ratingStats = await c.env.DB.prepare(
-        "SELECT AVG(rating) as avg, COUNT(*) as count FROM instructor_reviews WHERE instructor_id = ?"
-      ).bind(instructorId).first();
-      avgRating = ratingStats?.avg ? Math.round(ratingStats.avg * 10) / 10 : 0;
-      totalReviews = ratingStats?.count || 0;
-    } catch {
-    }
-    let totalRevenue = 0;
-    try {
-      const directRevenue = await c.env.DB.prepare(`
-        SELECT COALESCE(SUM(p.amount), 0) as total
-        FROM payments p
-        INNER JOIN courses c ON p.course_id = c.id
-        WHERE c.instructor_id = ? AND p.status = 'completed'
-      `).bind(instructorId).first();
-      totalRevenue = directRevenue?.total || 0;
-      const subjectRevenue = await c.env.DB.prepare(`
-        SELECT COALESCE(SUM(p.amount), 0) as total
-        FROM payments p
-        INNER JOIN course_subjects cs ON p.course_id = cs.course_id
-        WHERE cs.instructor_id = ? AND p.status = 'completed'
-      `).bind(instructorId).first();
-      totalRevenue = Math.max(totalRevenue, subjectRevenue?.total || 0);
-    } catch {
-    }
-    return c.json({
-      success: true,
-      dashboard: {
-        courseCount,
-        totalStudents,
-        upcomingClasses,
-        avgRating,
-        totalReviews,
-        totalRevenue
-      }
-    });
-  } catch (error) {
-    return c.json({ error: getErrorMessage(error) }, 500);
-  }
-});
-instructorRoutes2.post("/courses", instructorOrAdminMiddleware, async (c) => {
-  try {
-    const authRole = c.get("authRole");
-    const instructorId = authRole === "admin" ? c.req.query("instructorId") : c.get("instructorId");
-    if (!instructorId) {
-      return c.json({ error: "instructorId is required" }, 400);
-    }
-    const body = await c.req.json();
-    const { title, description, slug, technology_id, semester, level, price_bdt, is_published, thumbnail_url } = body;
-    if (!title) {
-      return c.json({ error: "title is required" }, 400);
-    }
-    const courseId = generateId();
-    const courseSlug = slug || slugify(title);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    await c.env.DB.prepare(`
-      INSERT INTO courses (id, title, slug, description, technology_id, semester, level, price_bdt, is_published, instructor_id, thumbnail_url, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      courseId,
-      title,
-      courseSlug,
-      description || null,
-      technology_id || null,
-      semester || null,
-      level || null,
-      price_bdt || 0,
-      is_published ? 1 : 0,
-      instructorId,
-      thumbnail_url || null,
-      now,
-      now
-    ).run();
-    try {
-      await c.env.DB.prepare(`
-        INSERT INTO course_instructors (course_id, instructor_id, sort_order, created_at)
-        VALUES (?, ?, 0, ?)
-      `).bind(courseId, instructorId, now).run();
-    } catch {
-    }
-    try {
-      await c.env.DB.prepare(`
-        INSERT INTO course_packages (course_id, name, price_bdt, original_price, package_type, features, is_active, sort_order, created_at, updated_at)
-        VALUES (?, 'Single', ?, ?, 'single', '', 1, 0, ?, ?)
-      `).bind(courseId, price_bdt || 0, price_bdt || 0, now, now).run();
-    } catch {
-    }
-    const row = await c.env.DB.prepare("SELECT * FROM courses WHERE id = ?").bind(courseId).first();
-    const course = formatCourseRow(row);
-    return c.json({ success: true, course }, 201);
-  } catch (error) {
-    return c.json({ error: getErrorMessage(error) }, 500);
-  }
-});
-instructorRoutes2.put("/courses/:id", instructorOrAdminMiddleware, async (c) => {
-  try {
-    const authRole = c.get("authRole");
-    const instructorId = authRole === "admin" ? c.req.query("instructorId") : c.get("instructorId");
-    const courseId = c.req.param("id");
-    if (!instructorId) {
-      return c.json({ error: "instructorId is required" }, 400);
-    }
-    const owns = await verifyCourseOwnership(c.env, courseId, instructorId);
-    if (!owns) {
-      return c.json({ error: "You do not own this course" }, 403);
-    }
-    const body = await c.req.json();
-    const fieldMapping = {
-      title: "title",
-      slug: "slug",
-      description: "description",
-      technology_id: "technology_id",
-      technologyId: "technology_id",
-      semester: "semester",
-      level: "level",
-      price_bdt: "price_bdt",
-      priceBdt: "price_bdt",
-      is_published: "is_published",
-      isPublished: "is_published",
-      thumbnail_url: "thumbnail_url",
-      thumbnailUrl: "thumbnail_url"
-    };
-    const setClauses = [];
-    const params = [];
-    for (const [bodyField, dbColumn] of Object.entries(fieldMapping)) {
-      if (body[bodyField] !== void 0) {
-        setClauses.push(`${dbColumn} = ?`);
-        params.push(body[bodyField]);
-      }
-    }
-    if (setClauses.length === 0) {
-      return c.json({ error: "No valid fields to update" }, 400);
-    }
-    setClauses.push("updated_at = ?");
-    params.push((/* @__PURE__ */ new Date()).toISOString());
-    params.push(courseId);
-    await c.env.DB.prepare(
-      `UPDATE courses SET ${setClauses.join(", ")} WHERE id = ?`
-    ).bind(...params).run();
-    const row = await c.env.DB.prepare("SELECT * FROM courses WHERE id = ?").bind(courseId).first();
-    const course = formatCourseRow(row);
-    return c.json({ success: true, course });
   } catch (error) {
     return c.json({ error: getErrorMessage(error) }, 500);
   }
@@ -10877,6 +10685,99 @@ studentAuthenticated.put("/preferences", async (c) => {
       prefs.language || "bn"
     ).run();
     return c.json({ success: true });
+  } catch (error) {
+    return c.json({ error: getErrorMessage(error) }, 500);
+  }
+});
+studentAuthenticated.get("/student/learning-stats", async (c) => {
+  try {
+    const userId = c.get("userId");
+    const range = c.req.query("range") || "30d";
+    const days = range === "7d" ? 7 : range === "90d" ? 90 : 30;
+    const dailyData = [];
+    try {
+      const rows = await c.env.DB.prepare(`
+        SELECT DATE(created_at) as day,
+               COUNT(CASE WHEN activity_type = 'video_watch' THEN 1 END) as videos,
+               COUNT(*) as activities
+        FROM student_activity
+        WHERE user_id = ? AND created_at >= datetime('now', '-${days} days')
+        GROUP BY DATE(created_at)
+        ORDER BY day ASC
+      `).bind(userId).all();
+      for (const row of rows.results || []) {
+        dailyData.push({ date: row.day, videos: row.videos || 0, activities: row.activities || 0 });
+      }
+    } catch {
+    }
+    const subjectProgress = [];
+    try {
+      const rows = await c.env.DB.prepare(`
+        SELECT t.name as technology, e.progress
+        FROM enrollments e
+        INNER JOIN courses c ON e.course_id = c.id
+        LEFT JOIN technologies t ON c.technology_id = t.id
+        WHERE e.user_id = ?
+      `).bind(userId).all();
+      for (const row of rows.results || []) {
+        subjectProgress.push({ subject: row.technology || "General", progress: row.progress || 0 });
+      }
+    } catch {
+    }
+    let hoursWatched = 0;
+    let coursesEnrolled = 0;
+    let certificates = 0;
+    let currentStreak = 0;
+    try {
+      const watchStats = await c.env.DB.prepare(
+        "SELECT SUM(CASE WHEN metadata LIKE '%watchMinutes%' THEN CAST(json_extract(metadata, '$.watchMinutes') AS REAL) ELSE 0 END) as total_minutes FROM student_activity WHERE user_id = ? AND activity_type = 'video_watch'"
+      ).bind(userId).first();
+      hoursWatched = Math.round((watchStats?.total_minutes || 0) / 60 * 10) / 10;
+    } catch {
+    }
+    try {
+      const enrollCount = await c.env.DB.prepare(
+        "SELECT COUNT(*) as total FROM enrollments WHERE user_id = ?"
+      ).bind(userId).first();
+      coursesEnrolled = enrollCount?.total || 0;
+    } catch {
+    }
+    try {
+      const certCount = await c.env.DB.prepare(
+        "SELECT COUNT(*) as total FROM certificates WHERE user_id = ? AND status = 'issued'"
+      ).bind(userId).first();
+      certificates = certCount?.total || 0;
+    } catch {
+    }
+    try {
+      const streakRows = await c.env.DB.prepare(
+        "SELECT DATE(created_at) as day FROM student_activity WHERE user_id = ? GROUP BY DATE(created_at) ORDER BY day DESC LIMIT 30"
+      ).bind(userId).all();
+      const activeDays = (streakRows.results || []).map((r) => r.day);
+      const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      let streak = 0;
+      let checkDate = /* @__PURE__ */ new Date();
+      if (!activeDays.includes(today)) {
+        checkDate.setDate(checkDate.getDate() - 1);
+      }
+      for (let i = 0; i < 60; i++) {
+        const dateStr = checkDate.toISOString().split("T")[0];
+        if (activeDays.includes(dateStr)) {
+          streak++;
+          checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+      currentStreak = streak;
+    } catch {
+    }
+    return c.json({
+      dailyData,
+      subjectProgress,
+      overview: { hoursWatched, coursesEnrolled, certificates, currentStreak },
+      range
+    });
   } catch (error) {
     return c.json({ error: getErrorMessage(error) }, 500);
   }

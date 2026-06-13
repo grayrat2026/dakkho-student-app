@@ -58,7 +58,7 @@ export function DeleteAccountPage() {
 
     try {
       // Call the Worker API to delete the account (verifies password server-side)
-      await api.post('/student/delete-account', {
+      await api.post('/api/student/delete-account', {
         password,
         reason: selectedReason,
         feedback,
