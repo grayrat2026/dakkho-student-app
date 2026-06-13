@@ -47,3 +47,33 @@ Stage Summary:
 - Admin panel: All 26 pages (dashboard, users, courses, videos, instructors, categories, subjects, technologies, institutes, institute-requests, coupons, discounts, payments, packages, enrollments, events, live-classes, support, achievements, push, notifications, config, email, analytics, settings, about) load correctly on direct page load
 - Routing fix: _worker.js updated to serve route-specific HTML + client-side URL-based page detection
 - Both apps deployed to production on Cloudflare Pages
+---
+Task ID: 1-9
+Agent: Main Agent
+Task: Fix routing, enhance CourseSettings, add video search + PDF upload to CourseSubject, add multi-tech subjects, build & deploy
+
+Work Log:
+- Fixed 404 on refresh for both instructor and admin apps by rewriting _worker.js to always fall back to index.html for SPA routing
+- Created _routes.json for instructor app (was missing)
+- Updated package.json build scripts to copy _routes.json from public/
+- Enhanced CourseSettings page: added Course ID, creation date, last updated, price, language metadata section; added courseId fallback from URL; added "no course selected" empty state
+- Enhanced CourseSubject page: added "Search My Uploaded Videos" feature that searches instructor's uploaded videos by title; added Attachment/PDF/Note upload with drag-and-drop UI; added document_url support in create/update lesson hooks; added PDF badge display on lesson rows
+- Added `useSearchInstructorVideos` hook to api-hooks.ts
+- Updated `useCreateLesson` and `useUpdateLesson` to support `documentUrl` field
+- Added video search endpoint `GET /instructor/videos/search` to worker API
+- Created `subject_technologies` junction table migration SQL and executed on D1
+- Updated subjects API to support multi-technology: GET returns technology_ids/names, POST/PUT accept technology_ids array, added GET/POST/DELETE for /:subjectId/technologies
+- Updated admin subjects-table.tsx: multi-select technology picker, display multiple technology badges, send technology_ids in save payload
+- Built and deployed worker, instructor app, and admin app to Cloudflare
+- Pushed all changes to GitHub
+
+Stage Summary:
+- Instructor 404 on refresh: FIXED ✅ (all routes return 200)
+- Admin 404 on refresh: FIXED ✅ (all routes return 200)
+- CourseSettings: Enhanced with metadata, no blank state ✅
+- CourseSubject: Video search + PDF upload + attachment support ✅
+- Multi-tech subjects: Junction table created, API updated, admin UI updated ✅
+- All apps deployed and APIs verified working
+- Worker: https://dakkho-admin-api.dakkho-admin.workers.dev
+- Instructor: https://dakkho-instructor.pages.dev
+- Admin: https://dakkho-admin.pages.dev

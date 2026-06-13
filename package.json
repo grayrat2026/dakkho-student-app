@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
-    "build": "next build && cp out/index.html out/404.html && cp public/_worker.js out/_worker.js && echo '{\"version\":1,\"include\":[\"/*\"],\"exclude\":[\"/_next/*\",\"/dakkho-logo.png\",\"/logo.svg\",\"/robots.txt\",\"/favicon.ico\"]}' > out/_routes.json && echo '/*\n  X-Content-Type-Options: nosniff\n  X-Frame-Options: DENY\n\n/*.html\n  Cache-Control: public, max-age=0, must-revalidate\n\n/index.html\n  Cache-Control: public, max-age=0, must-revalidate\n\n/_next/static/*\n  Cache-Control: public, max-age=31536000, immutable' > out/_headers && echo '/* /index.html 200' > out/_redirects",
+    "build": "next build && cp out/index.html out/404.html && cp public/_worker.js out/_worker.js && cp public/_routes.json out/_routes.json && echo '/*\n  X-Content-Type-Options: nosniff\n  X-Frame-Options: DENY\n\n/*.html\n  Cache-Control: public, max-age=0, must-revalidate\n\n/index.html\n  Cache-Control: public, max-age=0, must-revalidate\n\n/_next/static/*\n  Cache-Control: public, max-age=31536000, immutable' > out/_headers && echo '/* /index.html 200' > out/_redirects",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
     "db:push": "prisma db push",

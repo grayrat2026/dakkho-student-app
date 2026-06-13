@@ -1,0 +1,757 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback, useRef } from 'react';
+     4→import { motion } from 'framer-motion';
+     5→import { useRouter } from 'next/navigation';
+     6→import {
+     7→  Users,
+     8→  BookOpen,
+     9→  Video,
+    10→  GraduationCap,
+    11→  DollarSign,
+    12→  Clock,
+    13→  Package,
+    14→  UserPlus,
+    15→  Star,
+    16→  Shield,
+    17→  Trash2,
+    18→  Settings,
+    19→  Send,
+    20→  FileText,
+    21→  Eye,
+    22→  Plus,
+    23→  Edit,
+    24→  Activity,
+    25→  TrendingUp,
+    26→  TrendingDown,
+    27→  CreditCard,
+    28→  Bell,
+    29→  Cog,
+    30→  CheckCircle,
+    31→  AlertCircle,
+    32→  BarChart3,
+    33→  ArrowUpRight,
+    34→} from 'lucide-react';
+    35→import {
+    36→  AreaChart,
+    37→  Area,
+    38→  XAxis,
+    39→  YAxis,
+    40→  CartesianGrid,
+    41→  Tooltip,
+    42→  ResponsiveContainer,
+    43→} from 'recharts';
+    44→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    45→import { Badge } from '@/components/ui/badge';
+    46→import { Progress } from '@/components/ui/progress';
+    47→import { DashboardStats } from '@/lib/types';
+    48→import { apiGet } from '@/lib/api-client';
+    49→
+    50→// ============================================================
+    51→// Animation Variants
+    52→// ============================================================
+    53→const containerVariants = {
+    54→  hidden: { opacity: 0 },
+    55→  visible: {
+    56→    opacity: 1,
+    57→    transition: { staggerChildren: 0.06 },
+    58→  },
+    59→};
+    60→
+    61→const itemVariants = {
+    62→  hidden: { opacity: 0, y: 20 },
+    63→  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+    64→};
+    65→
+    66→const cardHoverVariants = {
+    67→  rest: { scale: 1 },
+    68→  hover: { scale: 1.02, transition: { duration: 0.2 } },
+    69→};
+    70→
+    71→// ============================================================
+    72→// Action Icon / Color Maps for Timeline
+    73→// ============================================================
+    74→const actionIcons: Record<string, React.ElementType> = {
+    75→  LOGIN: Shield,
+    76→  CREATE_COURSE: Plus,
+    77→  UPDATE_COURSE: Edit,
+    78→  DELETE_COURSE: Trash2,
+    79→  CREATE_VIDEO: Plus,
+    80→  DELETE_VIDEO: Trash2,
+    81→  SEND_TEST_EMAIL: Send,
+    82→  SEND_CUSTOM_EMAIL: Send,
+    83→  UPLOAD_FILE: FileText,
+    84→  UPDATE_CONFIG: Settings,
+    85→  VIEW_RESOURCE: Eye,
+    86→};
+    87→
+    88→const actionColors: Record<string, string> = {
+    89→  LOGIN: 'text-blue-400 bg-blue-500/10',
+    90→  CREATE_COURSE: 'text-green-400 bg-green-500/10',
+    91→  UPDATE_COURSE: 'text-amber-400 bg-amber-500/10',
+    92→  DELETE_COURSE: 'text-red-400 bg-red-500/10',
+    93→  CREATE_VIDEO: 'text-green-400 bg-green-500/10',
+    94→  DELETE_VIDEO: 'text-red-400 bg-red-500/10',
+    95→  SEND_TEST_EMAIL: 'text-purple-400 bg-purple-500/10',
+    96→  SEND_CUSTOM_EMAIL: 'text-purple-400 bg-purple-500/10',
+    97→  UPLOAD_FILE: 'text-cyan-400 bg-cyan-500/10',
+    98→  UPDATE_CONFIG: 'text-amber-400 bg-amber-500/10',
+    99→  VIEW_RESOURCE: 'text-blue-400 bg-blue-500/10',
+   100→};
+   101→
+   102→// ============================================================
+   103→// Stat Card Definitions
+   104→// ============================================================
+   105→interface StatCardDef {
+   106→  title: string;
+   107→  key: keyof DashboardStats;
+   108→  icon: React.ElementType;
+   109→  gradientClass: string;
+   110→  iconBg: string;
+   111→  iconColor: string;
+   112→  trend: number;
+   113→  format?: 'number' | 'currency';
+   114→  prefix?: string;
+   115→}
+   116→
+   117→const statCardDefs: StatCardDef[] = [
+   118→  { title: 'Total Users', key: 'totalUsers', icon: Users, gradientClass: 'gradient-stat-blue', iconBg: 'bg-blue-500/15', iconColor: 'text-blue-400', trend: 0 },
+   119→  { title: 'Total Courses', key: 'totalCourses', icon: BookOpen, gradientClass: 'gradient-stat-emerald', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400', trend: 0 },
+   120→  { title: 'Total Videos', key: 'totalVideos', icon: Video, gradientClass: 'gradient-stat-purple', iconBg: 'bg-purple-500/15', iconColor: 'text-purple-400', trend: 0 },
+   121→  { title: 'Enrollments', key: 'totalEnrollments', icon: GraduationCap, gradientClass: 'gradient-stat-amber', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400', trend: 0 },
+   122→  { title: 'Revenue', key: 'totalRevenue', icon: DollarSign, gradientClass: 'gradient-stat-teal', iconBg: 'bg-teal-500/15', iconColor: 'text-teal-400', trend: 0, format: 'currency', prefix: '৳' },
+   123→  { title: 'Pending Payments', key: 'pendingPayments', icon: Clock, gradientClass: 'gradient-stat-rose', iconBg: 'bg-rose-500/15', iconColor: 'text-rose-400', trend: 0 },
+   124→  { title: 'Active Packages', key: 'activePackages', icon: Package, gradientClass: 'gradient-stat-cyan', iconBg: 'bg-cyan-500/15', iconColor: 'text-cyan-400', trend: 0 },
+   125→  { title: 'New Today', key: 'newSignupsToday', icon: UserPlus, gradientClass: 'gradient-stat-orange', iconBg: 'bg-orange-500/15', iconColor: 'text-orange-400', trend: 0 },
+   126→];
+   127→
+   128→// ============================================================
+   129→// Quick Actions
+   130→// ============================================================
+   131→const quickActions = [
+   132→  { label: 'Add Course', icon: Plus, href: '/courses', gradient: 'from-blue-500 to-cyan-400' },
+   133→  { label: 'Send Notification', icon: Bell, href: '/notifications', gradient: 'from-purple-500 to-pink-400' },
+   134→  { label: 'View Payments', icon: CreditCard, href: '/payments', gradient: 'from-teal-500 to-emerald-400' },
+   135→  { label: 'Manage Config', icon: Cog, href: '/config', gradient: 'from-amber-500 to-orange-400' },
+   136→] as const;
+   137→
+   138→// Chart data will be fetched from API; initialized as empty
+   139→
+   140→// ============================================================
+   141→// Animated Counter Hook
+   142→// ============================================================
+   143→function useAnimatedCounter(target: number, duration = 1200, enabled = true) {
+   144→  const [count, setCount] = useState(0);
+   145→  const prevTarget = useRef(0);
+   146→  const rafIdRef = useRef<number | null>(null);
+   147→
+   148→  useEffect(() => {
+   149→    if (!enabled) return;
+   150→    const start = prevTarget.current;
+   151→    const diff = target - start;
+   152→    if (diff === 0) return; // already at target
+   153→    const startTime = performance.now();
+   154→
+   155→    const step = (now: number) => {
+   156→      const elapsed = now - startTime;
+   157→      const progress = Math.min(elapsed / duration, 1);
+   158→      // ease-out cubic
+   159→      const eased = 1 - Math.pow(1 - progress, 3);
+   160→      const nextVal = Math.round(start + diff * eased);
+   161→      setCount(nextVal);
+   162→      if (progress < 1) {
+   163→        rafIdRef.current = requestAnimationFrame(step);
+   164→      } else {
+   165→        prevTarget.current = target;
+   166→        rafIdRef.current = null;
+   167→      }
+   168→    };
+   169→    rafIdRef.current = requestAnimationFrame(step);
+   170→    return () => {
+   171→      if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+   172→    };
+   173→  }, [target, duration, enabled]);
+   174→
+   175→  return count;
+   176→}
+   177→
+   178→// ============================================================
+   179→// Stat Card Sub-Component
+   180→// ============================================================
+   181→function StatCard({ def, value, loading }: { def: StatCardDef; value: number; loading: boolean }) {
+   182→  const Icon = def.icon;
+   183→  const animatedValue = useAnimatedCounter(value, 1000, !loading);
+   184→  const isPositive = def.trend >= 0;
+   185→
+   186→  const displayValue = loading
+   187→    ? '—'
+   188→    : def.format === 'currency'
+   189→      ? `${def.prefix || ''}${animatedValue.toLocaleString()}`
+   190→      : animatedValue.toLocaleString();
+   191→
+   192→  return (
+   193→    <motion.div variants={cardHoverVariants} initial="rest" whileHover="hover">
+   194→      <Card className={`glass-card gradient-border rounded-xl border-0 overflow-hidden ${def.gradientClass}`}>
+   195→        <CardContent className="p-4 md:p-5">
+   196→          <div className="flex items-start justify-between gap-2">
+   197→            <div className="min-w-0 flex-1">
+   198→              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider truncate">
+   199→                {def.title}
+   200→              </p>
+   201→              <p className={`text-2xl md:text-3xl font-bold mt-1.5 ${def.iconColor} tabular-nums`}>
+   202→                {displayValue}
+   203→              </p>
+   204→              <div className="flex items-center gap-1 mt-1.5">
+   205→                {isPositive ? (
+   206→                  <TrendingUp className="h-3 w-3 text-emerald-400" />
+   207→                ) : (
+   208→                  <TrendingDown className="h-3 w-3 text-rose-400" />
+   209→                )}
+   210→                <span className={`text-xs font-medium ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+   211→                  {isPositive ? '+' : ''}{def.trend}%
+   212→                </span>
+   213→                <span className="text-xs text-muted-foreground ml-0.5">vs last week</span>
+   214→              </div>
+   215→            </div>
+   216→            <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl ${def.iconBg} flex items-center justify-center flex-shrink-0`}>
+   217→              <Icon className={`h-5 w-5 md:h-5.5 md:w-5.5 ${def.iconColor}`} />
+   218→            </div>
+   219→          </div>
+   220→        </CardContent>
+   221→      </Card>
+   222→    </motion.div>
+   223→  );
+   224→}
+   225→
+   226→// ============================================================
+   227→// Skeleton Loaders
+   228→// ============================================================
+   229→function StatCardSkeleton() {
+   230→  return (
+   231→    <Card className="glass-card gradient-border rounded-xl border-0 overflow-hidden">
+   232→      <CardContent className="p-4 md:p-5">
+   233→        <div className="flex items-start justify-between gap-2">
+   234→          <div className="flex-1">
+   235→            <div className="h-3 w-20 rounded bg-white/5 animate-shimmer" />
+   236→            <div className="h-7 w-28 rounded mt-2 bg-white/5 animate-shimmer" />
+   237→            <div className="h-3 w-24 rounded mt-2 bg-white/5 animate-shimmer" />
+   238→          </div>
+   239→          <div className="w-10 h-10 rounded-xl bg-white/5 animate-shimmer" />
+   240→        </div>
+   241→      </CardContent>
+   242→    </Card>
+   243→  );
+   244→}
+   245→
+   246→function RowSkeleton({ count = 3 }: { count?: number }) {
+   247→  return (
+   248→    <div className="space-y-2">
+   249→      {Array.from({ length: count }).map((_, i) => (
+   250→        <div key={i} className="h-12 rounded-lg bg-white/5 animate-shimmer" />
+   251→      ))}
+   252→    </div>
+   253→  );
+   254→}
+   255→
+   256→function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message: string }) {
+   257→  return (
+   258→    <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+   259→      <Icon className="h-8 w-8 mb-2 opacity-40" />
+   260→      <p className="text-sm">{message}</p>
+   261→    </div>
+   262→  );
+   263→}
+   264→
+   265→// ============================================================
+   266→// Main Dashboard Component
+   267→// ============================================================
+   268→export default function Dashboard() {
+   269→  const router = useRouter();
+   270→  const [stats, setStats] = useState<DashboardStats | null>(null);
+   271→  const [popularCourses, setPopularCourses] = useState<Record<string, unknown>[]>([]);
+   272→  const [recentEnrollments, setRecentEnrollments] = useState<Record<string, unknown>[]>([]);
+   273→  const [recentLogs, setRecentLogs] = useState<Record<string, unknown>[]>([]);
+   274→  const [pendingPayments, setPendingPayments] = useState<Record<string, unknown>[]>([]);
+   275→  const [chartData, setChartData] = useState<Record<string, unknown>[]>([]);
+   276→  const [loading, setLoading] = useState(true);
+   277→  const [error, setError] = useState<string | null>(null);
+   278→
+   279→  const fetchAnalytics = useCallback(async () => {
+   280→    setLoading(true);
+   281→    setError(null);
+   282→    try {
+   283→      const data = await apiGet('/analytics') as Record<string, unknown>;
+   284→      setStats(data.stats as DashboardStats);
+   285→      setPopularCourses((data.popularCourses as Record<string, unknown>[]) || []);
+   286→      setRecentEnrollments((data.recentEnrollments as Record<string, unknown>[]) || []);
+   287→      setRecentLogs((data.recentLogs as Record<string, unknown>[]) || []);
+   288→      setPendingPayments((data.pendingPayments as Record<string, unknown>[]) || []);
+   289→      if (data.chartData) {
+   290→        setChartData(data.chartData as Record<string, unknown>[]);
+   291→      }
+   292→    } catch (err) {
+   293→      console.error('Failed to fetch analytics:', err);
+   294→      setError('Failed to load dashboard data. Please check your connection and try again.');
+   295→      // On error, keep all data as empty/null — do NOT set mock data
+   296→    } finally {
+   297→      setLoading(false);
+   298→    }
+   299→  }, []);
+   300→
+   301→  useEffect(() => {
+   302→    fetchAnalytics();
+   303→  }, [fetchAnalytics]);
+   304→
+   305→  const formatTime = (dateStr: string) => {
+   306→    try {
+   307→      const d = new Date(dateStr);
+   308→      const now = new Date();
+   309→      const diffMs = now.getTime() - d.getTime();
+   310→      const diffMins = Math.floor(diffMs / 60000);
+   311→      if (diffMins < 1) return 'Just now';
+   312→      if (diffMins < 60) return `${diffMins}m ago`;
+   313→      const diffHours = Math.floor(diffMins / 60);
+   314→      if (diffHours < 24) return `${diffHours}h ago`;
+   315→      const diffDays = Math.floor(diffHours / 24);
+   316→      if (diffDays < 7) return `${diffDays}d ago`;
+   317→      return d.toLocaleDateString();
+   318→    } catch {
+   319→      return dateStr;
+   320→    }
+   321→  };
+   322→
+   323→  const renderStars = (rating: number) => {
+   324→    const stars = [];
+   325→    const fullStars = Math.floor(rating);
+   326→    const hasHalf = rating - fullStars >= 0.5;
+   327→    for (let i = 0; i < 5; i++) {
+   328→      if (i < fullStars) {
+   329→        stars.push(<Star key={i} className="h-3 w-3 fill-amber-400 text-amber-400" />);
+   330→      } else if (i === fullStars && hasHalf) {
+   331→        stars.push(<Star key={i} className="h-3 w-3 fill-amber-400/50 text-amber-400" />);
+   332→      } else {
+   333→        stars.push(<Star key={i} className="h-3 w-3 text-white/20" />);
+   334→      }
+   335→    }
+   336→    return stars;
+   337→  };
+   338→
+   339→  return (
+   340→    <motion.div
+   341→      variants={containerVariants}
+   342→      initial="hidden"
+   343→      animate="visible"
+   344→      className="space-y-6"
+   345→    >
+   346→      {/* ============================================================ 
+   347→          Section 1: Enhanced Stat Cards (8 cards)
+   348→          ============================================================ */}
+   349→      <motion.div variants={itemVariants}>
+   350→        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+   351→          {loading
+   352→            ? Array.from({ length: 8 }).map((_, i) => <StatCardSkeleton key={i} />)
+   353→            : statCardDefs.map((def) => (
+   354→                <StatCard
+   355→                  key={def.title}
+   356→                  def={{ ...def, trend: stats?.trends?.[def.key] ?? def.trend }}
+   357→                  value={stats?.[def.key] ?? 0}
+   358→                  loading={loading}
+   359→                />
+   360→              ))}
+   361→        </div>
+   362→      </motion.div>
+   363→
+   364→      {/* ============================================================ 
+   365→          Section 2: Quick Actions Row
+   366→          ============================================================ */}
+   367→      <motion.div variants={itemVariants}>
+   368→        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   369→          {quickActions.map((action) => {
+   370→            const Icon = action.icon;
+   371→            return (
+   372→              <motion.button
+   373→                key={action.label}
+   374→                onClick={() => router.push(action.href)}
+   375→                className="group relative glass-card gradient-border rounded-xl overflow-hidden p-4 flex items-center gap-3 transition-all duration-300 hover:border-white/10"
+   376→                whileHover={{ scale: 1.02 }}
+   377→                whileTap={{ scale: 0.98 }}
+   378→              >
+   379→                {/* Hover gradient overlay */}
+   380→                <div className={`absolute inset-0 bg-gradient-to-r ${action.gradient} opacity-0 group-hover:opacity-10 transition-opacity duration-300`} />
+   381→                <div className={`w-9 h-9 rounded-lg bg-gradient-to-r ${action.gradient} flex items-center justify-center flex-shrink-0 shadow-lg`}>
+   382→                  <Icon className="h-4 w-4 text-white" />
+   383→                </div>
+   384→                <div className="text-left relative z-10">
+   385→                  <p className="text-sm font-medium text-foreground">{action.label}</p>
+   386→                  <div className="flex items-center gap-0.5 mt-0.5">
+   387→                    <ArrowUpRight className="h-3 w-3 text-muted-foreground group-hover:text-dakkho-teal transition-colors" />
+   388→                    <span className="text-xs text-muted-foreground group-hover:text-dakkho-teal transition-colors">Go</span>
+   389→                  </div>
+   390→                </div>
+   391→              </motion.button>
+   392→            );
+   393→          })}
+   394→        </div>
+   395→      </motion.div>
+   396→
+   397→      {/* ============================================================ 
+   398→          Section 3: Two-Column Layout (Popular Courses + Activity Timeline)
+   399→          ============================================================ */}
+   400→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+   401→        {/* Popular Courses */}
+   402→        <motion.div variants={itemVariants}>
+   403→          <Card className="glass-card gradient-border rounded-xl border-0 overflow-hidden">
+   404→            <CardHeader className="pb-3">
+   405→              <CardTitle className="text-lg flex items-center gap-2">
+   406→                <Star className="h-5 w-5 text-amber-400" />
+   407→                Popular Courses
+   408→              </CardTitle>
+   409→            </CardHeader>
+   410→            <CardContent>
+   411→              {loading ? (
+   412→                <RowSkeleton count={5} />
+   413→              ) : popularCourses.length === 0 ? (
+   414→                <EmptyState icon={BookOpen} message="No course data available" />
+   415→              ) : (
+   416→                <div className="space-y-2 max-h-96 overflow-y-auto">
+   417→                  {popularCourses.slice(0, 5).map((course, i) => {
+   418→                    const rating = Number(course.rating ?? 0);
+   419→                    const students = Number(course.totalStudents ?? 0);
+   420→                    return (
+   421→                      <motion.div
+   422→                        key={i}
+   423→                        initial={{ opacity: 0, x: -10 }}
+   424→                        animate={{ opacity: 1, x: 0 }}
+   425→                        transition={{ delay: i * 0.05 }}
+   426→                        className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+   427→                      >
+   428→                        {/* Thumbnail placeholder */}
+   429→                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-dakkho-blue/30 to-dakkho-teal/30 flex items-center justify-center flex-shrink-0 overflow-hidden">
+   430→                          {(course.thumbnailUrl as string) ? (
+   431→                            <img
+   432→                              src={course.thumbnailUrl as string}
+   433→                              alt={String(course.title || 'Course')}
+   434→                              className="w-full h-full object-cover"
+   435→                            />
+   436→                          ) : (
+   437→                            <span className="text-sm font-bold text-dakkho-teal">{i + 1}</span>
+   438→                          )}
+   439→                        </div>
+   440→                        <div className="min-w-0 flex-1">
+   441→                          <p className="text-sm font-medium truncate">{String(course.title || 'Untitled')}</p>
+   442→                          <div className="flex items-center gap-2 mt-0.5">
+   443→                            <div className="flex items-center gap-0.5">
+   444→                              {renderStars(rating)}
+   445→                            </div>
+   446→                            <span className="text-xs text-muted-foreground">{rating.toFixed(1)}</span>
+   447→                          </div>
+   448→                        </div>
+   449→                        <div className="text-right flex-shrink-0 ml-2">
+   450→                          <p className="text-sm font-semibold text-dakkho-teal">{students}</p>
+   451→                          <p className="text-xs text-muted-foreground">students</p>
+   452→                        </div>
+   453→                      </motion.div>
+   454→                    );
+   455→                  })}
+   456→                </div>
+   457→              )}
+   458→            </CardContent>
+   459→          </Card>
+   460→        </motion.div>
+   461→
+   462→        {/* Activity Timeline */}
+   463→        <motion.div variants={itemVariants}>
+   464→          <Card className="glass-card gradient-border rounded-xl border-0 overflow-hidden">
+   465→            <CardHeader className="pb-3">
+   466→              <CardTitle className="text-lg flex items-center gap-2">
+   467→                <Clock className="h-5 w-5 text-dakkho-teal" />
+   468→                Activity Timeline
+   469→              </CardTitle>
+   470→            </CardHeader>
+   471→            <CardContent>
+   472→              {loading ? (
+   473→                <RowSkeleton count={6} />
+   474→              ) : recentLogs.length === 0 ? (
+   475→                <EmptyState icon={Activity} message="No activity yet" />
+   476→              ) : (
+   477→                <div className="space-y-1 max-h-96 overflow-y-auto">
+   478→                  {recentLogs.slice(0, 8).map((log, i) => {
+   479→                    const action = String(log.action || 'UNKNOWN');
+   480→                    const Icon = actionIcons[action] || Activity;
+   481→                    const colorClass = actionColors[action] || 'text-gray-400 bg-gray-500/10';
+   482→                    const [textColor, bgColor] = colorClass.split(' ');
+   483→                    return (
+   484→                      <motion.div
+   485→                        key={i}
+   486→                        initial={{ opacity: 0, x: 10 }}
+   487→                        animate={{ opacity: 1, x: 0 }}
+   488→                        transition={{ delay: i * 0.04 }}
+   489→                        className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-white/[0.03] transition-colors"
+   490→                      >
+   491→                        <div className={`w-8 h-8 rounded-lg ${bgColor} flex items-center justify-center flex-shrink-0`}>
+   492→                          <Icon className={`h-4 w-4 ${textColor}`} />
+   493→                        </div>
+   494→                        <div className="min-w-0 flex-1">
+   495→                          <p className="text-sm truncate">
+   496→                            <span className="font-medium">{String(log.userEmail || 'System')}</span>
+   497→                            <span className="text-muted-foreground"> {action.replace(/_/g, ' ').toLowerCase()}</span>
+   498→                          </p>
+   499→                          <p className="text-xs text-muted-foreground">
+   500→                            {log.resourceType && String(log.resourceType)}
+   501→                            {log.resourceId && ` \u00B7 ${String(log.resourceId).slice(0, 8)}...`}
+   502→                          </p>
+   503→                        </div>
+   504→                        <span className="text-xs text-muted-foreground flex-shrink-0 whitespace-nowrap">
+   505→                          {log.createdAt ? formatTime(String(log.createdAt)) : ''}
+   506→                        </span>
+   507→                      </motion.div>
+   508→                    );
+   509→                  })}
+   510→                </div>
+   511→              )}
+   512→            </CardContent>
+   513→          </Card>
+   514→        </motion.div>
+   515→      </div>
+   516→
+   517→      {/* ============================================================ 
+   518→          Section 4: Full-Width Activity Chart
+   519→          ============================================================ */}
+   520→      <motion.div variants={itemVariants}>
+   521→        <Card className="glass-card gradient-border rounded-xl border-0 overflow-hidden">
+   522→          <CardHeader className="pb-2">
+   523→            <div className="flex items-center justify-between">
+   524→              <CardTitle className="text-lg flex items-center gap-2">
+   525→                <BarChart3 className="h-5 w-5 text-dakkho-blue" />
+   526→                Activity Overview
+   527→              </CardTitle>
+   528→              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+   529→                <div className="flex items-center gap-1.5">
+   530→                  <div className="w-2.5 h-2.5 rounded-full bg-dakkho-teal" />
+   531→                  <span>Enrollments</span>
+   532→                </div>
+   533→                <div className="flex items-center gap-1.5">
+   534→                  <div className="w-2.5 h-2.5 rounded-full bg-dakkho-blue" />
+   535→                  <span>Revenue</span>
+   536→                </div>
+   537→              </div>
+   538→            </div>
+   539→          </CardHeader>
+   540→          <CardContent>
+   541→            {loading ? (
+   542→              <div className="h-64 rounded-lg animate-shimmer bg-white/5" />
+   543→            ) : (
+   544→              <div className="h-64 md:h-72">
+   545→                <ResponsiveContainer width="100%" height="100%">
+   546→                  <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+   547→                    <defs>
+   548→                      <linearGradient id="gradientEnrollments" x1="0" y1="0" x2="0" y2="1">
+   549→                        <stop offset="5%" stopColor="#00D4AA" stopOpacity={0.3} />
+   550→                        <stop offset="95%" stopColor="#00D4AA" stopOpacity={0} />
+   551→                      </linearGradient>
+   552→                      <linearGradient id="gradientRevenue" x1="0" y1="0" x2="0" y2="1">
+   553→                        <stop offset="5%" stopColor="#4A90E2" stopOpacity={0.3} />
+   554→                        <stop offset="95%" stopColor="#4A90E2" stopOpacity={0} />
+   555→                      </linearGradient>
+   556→                    </defs>
+   557→                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+   558→                    <XAxis
+   559→                      dataKey="day"
+   560→                      axisLine={false}
+   561→                      tickLine={false}
+   562→                      tick={{ fill: '#94A3B8', fontSize: 12 }}
+   563→                    />
+   564→                    <YAxis
+   565→                      axisLine={false}
+   566→                      tickLine={false}
+   567→                      tick={{ fill: '#94A3B8', fontSize: 12 }}
+   568→                    />
+   569→                    <Tooltip
+   570→                      contentStyle={{
+   571→                        background: 'rgba(20, 20, 42, 0.95)',
+   572→                        border: '1px solid rgba(255,255,255,0.08)',
+   573→                        borderRadius: '12px',
+   574→                        color: '#F8FAFC',
+   575→                        fontSize: '12px',
+   576→                        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+   577→                      }}
+   578→                      labelStyle={{ color: '#94A3B8', marginBottom: 4 }}
+   579→                    />
+   580→                    <Area
+   581→                      type="monotone"
+   582→                      dataKey="enrollments"
+   583→                      stroke="#00D4AA"
+   584→                      strokeWidth={2}
+   585→                      fill="url(#gradientEnrollments)"
+   586→                    />
+   587→                    <Area
+   588→                      type="monotone"
+   589→                      dataKey="revenue"
+   590→                      stroke="#4A90E2"
+   591→                      strokeWidth={2}
+   592→                      fill="url(#gradientRevenue)"
+   593→                    />
+   594→                  </AreaChart>
+   595→                </ResponsiveContainer>
+   596→              </div>
+   597→            )}
+   598→          </CardContent>
+   599→        </Card>
+   600→      </motion.div>
+   601→
+   602→      {/* ============================================================ 
+   603→          Section 5: Bottom Row (Recent Enrollments + Pending Payments)
+   604→          ============================================================ */}
+   605→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+   606→        {/* Recent Enrollments */}
+   607→        <motion.div variants={itemVariants}>
+   608→          <Card className="glass-card gradient-border rounded-xl border-0 overflow-hidden">
+   609→            <CardHeader className="pb-3">
+   610→              <CardTitle className="text-lg flex items-center gap-2">
+   611→                <GraduationCap className="h-5 w-5 text-dakkho-teal" />
+   612→                Recent Enrollments
+   613→              </CardTitle>
+   614→            </CardHeader>
+   615→            <CardContent>
+   616→              {loading ? (
+   617→                <RowSkeleton count={4} />
+   618→              ) : recentEnrollments.length === 0 ? (
+   619→                <EmptyState icon={GraduationCap} message="No enrollment data available" />
+   620→              ) : (
+   621→                <div className="space-y-2 max-h-80 overflow-y-auto">
+   622→                  {recentEnrollments.slice(0, 6).map((enrollment, i) => {
+   623→                    const progress = Number(enrollment.progress ?? 0);
+   624→                    const userName = String(enrollment.userName ?? `User ${String(enrollment.userId ?? 'Unknown').slice(0, 8)}`);
+   625→                    const courseName = String(enrollment.courseName ?? `Course ${String(enrollment.courseId ?? 'N/A').slice(0, 8)}`);
+   626→                    const time = enrollment.createdAt
+   627→                      ? formatTime(String(enrollment.createdAt))
+   628→                      : '';
+   629→                    const completed = Boolean(enrollment.completed);
+   630→
+   631→                    return (
+   632→                      <motion.div
+   633→                        key={i}
+   634→                        initial={{ opacity: 0, y: 5 }}
+   635→                        animate={{ opacity: 1, y: 0 }}
+   636→                        transition={{ delay: i * 0.05 }}
+   637→                        className="p-3 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+   638→                      >
+   639→                        <div className="flex items-center justify-between mb-2">
+   640→                          <div className="min-w-0 flex-1">
+   641→                            <p className="text-sm font-medium truncate">{userName}</p>
+   642→                            <p className="text-xs text-muted-foreground truncate">{courseName}</p>
+   643→                          </div>
+   644→                          <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+   645→                            {completed ? (
+   646→                              <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/20 text-xs">
+   647→                                <CheckCircle className="h-3 w-3 mr-1" />
+   648→                                Done
+   649→                              </Badge>
+   650→                            ) : (
+   651→                              <span className="text-xs text-muted-foreground">{time}</span>
+   652→                            )}
+   653→                          </div>
+   654→                        </div>
+   655→                        <div className="flex items-center gap-2">
+   656→                          <Progress
+   657→                            value={progress}
+   658→                            className="h-1.5 flex-1 bg-white/5"
+   659→                          />
+   660→                          <span className="text-xs font-medium text-muted-foreground tabular-nums w-8 text-right">
+   661→                            {progress}%
+   662→                          </span>
+   663→                        </div>
+   664→                      </motion.div>
+   665→                    );
+   666→                  })}
+   667→                </div>
+   668→              )}
+   669→            </CardContent>
+   670→          </Card>
+   671→        </motion.div>
+   672→
+   673→        {/* Pending Payments */}
+   674→        <motion.div variants={itemVariants}>
+   675→          <Card className="glass-card gradient-border rounded-xl border-0 overflow-hidden">
+   676→            <CardHeader className="pb-3">
+   677→              <CardTitle className="text-lg flex items-center gap-2">
+   678→                <CreditCard className="h-5 w-5 text-amber-400" />
+   679→                Pending Payments
+   680→              </CardTitle>
+   681→            </CardHeader>
+   682→            <CardContent>
+   683→              {loading ? (
+   684→                <RowSkeleton count={4} />
+   685→              ) : pendingPayments.length === 0 ? (
+   686→                <EmptyState icon={CheckCircle} message="All payments are up to date" />
+   687→              ) : (
+   688→                <div className="space-y-2 max-h-80 overflow-y-auto">
+   689→                  {pendingPayments.slice(0, 6).map((payment, i) => {
+   690→                    const amount = Number(payment.amount ?? 0);
+   691→                    const gateway = String(payment.gateway ?? 'Unknown');
+   692→                    const status = String(payment.status ?? 'pending');
+   693→                    const userName = String(payment.userName ?? `User ${String(payment.userId ?? 'Unknown').slice(0, 8)}`);
+   694→                    const trxId = String(payment.trxIdSubmitted ?? payment.gatewayTrxId ?? 'N/A');
+   695→
+   696→                    const statusColorMap: Record<string, string> = {
+   697→                      pending: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
+   698→                      verified: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
+   699→                      rejected: 'bg-rose-500/15 text-rose-400 border-rose-500/20',
+   700→                      refunded: 'bg-purple-500/15 text-purple-400 border-purple-500/20',
+   701→                    };
+   702→
+   703→                    return (
+   704→                      <motion.div
+   705→                        key={i}
+   706→                        initial={{ opacity: 0, y: 5 }}
+   707→                        animate={{ opacity: 1, y: 0 }}
+   708→                        transition={{ delay: i * 0.05 }}
+   709→                        className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+   710→                      >
+   711→                        <div className="min-w-0 flex-1">
+   712→                          <p className="text-sm font-medium truncate">{userName}</p>
+   713→                          <p className="text-xs text-muted-foreground font-mono">{trxId.length > 12 ? `${trxId.slice(0, 12)}...` : trxId}</p>
+   714→                        </div>
+   715→                        <div className="text-right flex-shrink-0 mr-2">
+   716→                          <p className="text-sm font-semibold">৳{amount.toLocaleString()}</p>
+   717→                          <p className="text-xs text-muted-foreground capitalize">{gateway}</p>
+   718→                        </div>
+   719→                        <Badge className={`${statusColorMap[status] || 'bg-white/5 text-white/40'} text-xs`}>
+   720→                          {status}
+   721→                        </Badge>
+   722→                        {status === 'pending' && (
+   723→                          <motion.button
+   724→                            whileHover={{ scale: 1.05 }}
+   725→                            whileTap={{ scale: 0.95 }}
+   726→                            className="px-2.5 py-1 rounded-lg gradient-primary text-white text-xs font-medium flex items-center gap-1 hover:shadow-lg hover:shadow-dakkho-teal/20 transition-shadow"
+   727→                            onClick={() => router.push('/payments')}
+   728→                          >
+   729→                            <CheckCircle className="h-3 w-3" />
+   730→                            Verify
+   731→                          </motion.button>
+   732→                        )}
+   733→                      </motion.div>
+   734→                    );
+   735→                  })}
+   736→                </div>
+   737→              )}
+   738→            </CardContent>
+   739→          </Card>
+   740→        </motion.div>
+   741→      </div>
+   742→
+   743→      {/* Error Banner */}
+   744→      {error && !loading && (
+   745→        <motion.div
+   746→          initial={{ opacity: 0, y: 10 }}
+   747→          animate={{ opacity: 1, y: 0 }}
+   748→          className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm"
+   749→        >
+   750→          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+   751→          <span>{error}</span>
+   752→        </motion.div>
+   753→      )}
+   754→    </motion.div>
+   755→  );
+   756→}
+   757→

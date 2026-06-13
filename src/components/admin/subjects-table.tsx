@@ -65,7 +65,7 @@ import type { Subject } from '@/lib/types';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function mapSubject(doc: Record<string, unknown>): Subject {
+function mapSubject(doc: Record<string, unknown>): Subject & { technologyIds?: number[]; technologyNames?: string[] } {
   return {
     id: String(doc.id ?? ''),
     name: String(doc.name ?? ''),
@@ -74,6 +74,8 @@ function mapSubject(doc: Record<string, unknown>): Subject {
     icon: doc.icon ? String(doc.icon) : undefined,
     color: doc.color ? String(doc.color) : undefined,
     technologyId: doc.technologyId ? Number(doc.technologyId) : undefined,
+    technologyIds: Array.isArray(doc.technologyIds) ? doc.technologyIds.map(Number) : (doc.technology_ids ? (doc.technology_ids as unknown[]).map(Number) : undefined),
+    technologyNames: Array.isArray(doc.technologyNames) ? doc.technologyNames.map(String) : (doc.technology_names ? (doc.technology_names as unknown[]).map(String) : undefined),
     sortOrder: Number(doc.sortOrder ?? 0),
     courseCount: Number(doc.courseCount ?? 0),
     isActive: Boolean(doc.isActive),
@@ -125,6 +127,7 @@ export default function SubjectsTable() {
     slug: '',
     description: '',
     technologyId: '',
+    technologyIds: [] as number[],
     icon: '',
     color: '#10B981',
     sortOrder: 0,
@@ -196,6 +199,7 @@ export default function SubjectsTable() {
       slug: '',
       description: '',
       technologyId: '',
+      technologyIds: [],
       icon: '',
       color: '#10B981',
       sortOrder: 0,
@@ -206,13 +210,14 @@ export default function SubjectsTable() {
     setFormOpen(true);
   };
 
-  const openEditDialog = (subject: Subject) => {
+  const openEditDialog = (subject: Subject & { technologyIds?: number[]; technologyNames?: string[] }) => {
     setEditSubject(subject);
     setForm({
       name: subject.name,
       slug: subject.slug,
       description: subject.description ?? '',
       technologyId: subject.technologyId ? String(subject.technologyId) : '',
+      technologyIds: subject.technologyIds || (subject.technologyId ? [subject.technologyId] : []),
       icon: subject.icon ?? '',
       color: subject.color ?? '#10B981',
       sortOrder: subject.sortOrder,
@@ -237,6 +242,7 @@ export default function SubjectsTable() {
         slug,
         description: form.description || undefined,
         technology_id: form.technologyId ? Number(form.technologyId) : undefined,
+        technology_ids: form.technologyIds.length > 0 ? form.technologyIds : (form.technologyId ? [Number(form.technologyId)] : undefined),
         icon: form.icon || undefined,
         color: form.color || undefined,
         sort_order: form.sortOrder,
@@ -528,13 +534,18 @@ export default function SubjectsTable() {
                       {subject.slug || '—'}
                     </td>
 
-                    {/* Technology */}
+                    {/* Technologies (multiple) */}
                     <td className="hidden lg:table-cell">
-                      {subject.technologyId ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-white/[0.04] text-muted-foreground border-white/[0.08] text-xs"
-                        >
+                      {(subject as any).technologyNames && (subject as any).technologyNames.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {(subject as any).technologyNames.map((name: string, i: number) => (
+                            <Badge key={i} variant="outline" className="bg-white/[0.04] text-muted-foreground border-white/[0.08] text-xs">
+                              {name}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : subject.technologyId ? (
+                        <Badge variant="outline" className="bg-white/[0.04] text-muted-foreground border-white/[0.08] text-xs">
                           {getTechnologyName(subject.technologyId)}
                         </Badge>
                       ) : (
@@ -771,11 +782,17 @@ export default function SubjectsTable() {
                   >
                     {subject.isActive ? 'Active' : 'Inactive'}
                   </span>
-                  {subject.technologyId && (
+                  {(subject as any).technologyNames && (subject as any).technologyNames.length > 0 ? (
+                    (subject as any).technologyNames.map((name: string, i: number) => (
+                      <span key={i} className="status-badge bg-white/[0.04] text-muted-foreground border border-white/[0.08]">
+                        {name}
+                      </span>
+                    ))
+                  ) : subject.technologyId ? (
                     <span className="status-badge bg-white/[0.04] text-muted-foreground border border-white/[0.08]">
                       {getTechnologyName(subject.technologyId)}
                     </span>
-                  )}
+                  ) : null}
                   {subject.courseCount > 0 && (
                     <span className="status-badge bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
                       {subject.courseCount} courses
@@ -875,24 +892,42 @@ export default function SubjectsTable() {
               />
             </div>
 
-            {/* Technology */}
+            {/* Technologies (Multi-select) */}
             <div className="space-y-2">
-              <Label className="text-muted-foreground">Technology</Label>
-              <Select
-                value={form.technologyId}
-                onValueChange={(v) => setForm((f) => ({ ...f, technologyId: v }))}
-              >
-                <SelectTrigger className="w-full bg-white/[0.04] border-white/[0.08]">
-                  <SelectValue placeholder="Select technology" />
-                </SelectTrigger>
-                <SelectContent>
-                  {technologies.map((tech) => (
-                    <SelectItem key={tech.id} value={String(tech.id)}>
-                      {tech.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label className="text-muted-foreground">Technologies</Label>
+              <p className="text-xs text-muted-foreground/60">A subject can belong to multiple technologies (same subject, different departments)</p>
+              <div className="flex flex-wrap gap-2 p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
+                {technologies.map((tech) => {
+                  const isSelected = form.technologyIds.includes(tech.id);
+                  return (
+                    <button
+                      key={tech.id}
+                      type="button"
+                      onClick={() => {
+                        setForm((f) => ({
+                          ...f,
+                          technologyIds: isSelected
+                            ? f.technologyIds.filter((id) => id !== tech.id)
+                            : [...f.technologyIds, tech.id],
+                          technologyId: isSelected
+                            ? (f.technologyIds.length <= 1 ? '' : String(f.technologyIds.find((id) => id !== tech.id) || ''))
+                            : String(tech.id),
+                        }));
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                        isSelected
+                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                          : 'bg-white/[0.04] text-muted-foreground border-white/[0.08] hover:bg-white/[0.08]'
+                      }`}
+                    >
+                      {isSelected && '✓ '} {tech.name}
+                    </button>
+                  );
+                })}
+                {technologies.length === 0 && (
+                  <p className="text-xs text-muted-foreground/50 py-1">No technologies available</p>
+                )}
+              </div>
 
               {/* Inline create technology */}
               {!showInlineTech ? (
